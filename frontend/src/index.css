@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #141414;
+    color: #ffffff;
+    font-family: 'Netflix Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  body::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/WebView */
+  }
+}
+
+/* TV Focusable Styles */
+.tv-focusable {
+  outline: none;
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1),
+              box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1),
+              border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
+  border: 3px solid transparent;
+}
+
+.tv-focused {
+  transform: scale(1.08) !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.85), 0 0 10px rgba(255, 255, 255, 0.35) !important;
+  z-index: 50 !important;
+}
+
+.tv-button-focused {
+  transform: scale(1.06) !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.6) !important;
+}
+
+.tv-nav-focused {
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Overscan safe area for Android TV */
+.tv-safe-container {
+  padding-left: clamp(24px, 4vw, 56px);
+  padding-right: clamp(24px, 4vw, 56px);
+}

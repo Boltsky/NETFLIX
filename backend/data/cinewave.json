@@ -1,0 +1,81 @@
+{
+  "profiles": [
+    {
+      "id": "default-profile",
+      "name": "Primary Viewer",
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&q=80",
+      "createdAt": "2026-10-27T06:25:39.973Z"
+    }
+  ],
+  "watchlist": [],
+  "progress": [
+    {
+      "profileId": "default-profile",
+      "contentId": "60574",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T09:16:41.719Z"
+    },
+    {
+      "profileId": "default-profile",
+      "contentId": "1396",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T09:15:33.920Z"
+    },
+    {
+      "profileId": "default-profile",
+      "contentId": "969681",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T09:09:25.743Z"
+    },
+    {
+      "profileId": "default-profile",
+      "contentId": "1416",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T09:07:22.564Z"
+    },
+    {
+      "profileId": "default-profile",
+      "contentId": "1283515",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T09:08:03.656Z"
+    },
+    {
+      "profileId": "default-profile",
+      "contentId": "1384216",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T08:50:37.829Z"
+    },
+    {
+      "profileId": "test-profile",
+      "contentId": "prog-101",
+      "mediaType": "movie",
+      "positionMs": 65000,
+      "durationMs": 7200000,
+      "title": "Progress Test Title",
+      "updatedAt": "2026-10-27T08:46:31.301Z"
+    }
+  ],
+  "settings": {
+    "theme": "netflix-dark",
+    "autoplay": "true",
+    "defaultQuality": "1080p"
+  }
+}

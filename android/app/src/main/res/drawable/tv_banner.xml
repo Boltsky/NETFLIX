@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Netflix Black Background -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M0,0h320v180h-320z" />
+
+    <!-- Netflix Red Ribbon "N" Left Column -->
+    <path
+        android:fillColor="#B81D24"
+        android:pathData="M136,36h14v108h-14z" />
+
+    <!-- Netflix Red Ribbon "N" Right Column -->
+    <path
+        android:fillColor="#B81D24"
+        android:pathData="M170,36h14v108h-14z" />
+
+    <!-- Netflix Bright Red Ribbon "N" Diagonal with Dimension -->
+    <path
+        android:fillColor="#E50914"
+        android:pathData="M136,36h14l34,108h-14z" />
+</vector>
