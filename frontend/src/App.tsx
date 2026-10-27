@@ -19,7 +19,10 @@ const DEFAULT_PROFILE: NetflixProfile = {
 
 type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player';
 
-const ScreenFocusController: React.FC<{ screen: Screen }> = ({ screen }) => {
+const ScreenFocusController: React.FC<{
+  screen: Screen;
+  lastFocusedSearchCardId?: string | null;
+}> = ({ screen, lastFocusedSearchCardId }) => {
   const { setFocusedKey } = useFocus();
 
   useEffect(() => {
@@ -31,11 +34,15 @@ const ScreenFocusController: React.FC<{ screen: Screen }> = ({ screen }) => {
       } else if (screen === 'details') {
         setFocusedKey('detail-play');
       } else if (screen === 'search') {
-        setFocusedKey('search-char-A');
+        if (lastFocusedSearchCardId) {
+          setFocusedKey(`search-card-${lastFocusedSearchCardId}`);
+        } else {
+          setFocusedKey('kb-Q');
+        }
       }
     }, 60);
     return () => clearTimeout(timer);
-  }, [screen, setFocusedKey]);
+  }, [screen, lastFocusedSearchCardId, setFocusedKey]);
 
   return null;
 };
@@ -43,10 +50,16 @@ const ScreenFocusController: React.FC<{ screen: Screen }> = ({ screen }) => {
 export const App: React.FC = () => {
   const [activeProfile, setActiveProfile] = useState<NetflixProfile>(DEFAULT_PROFILE);
   const [currentScreen, setCurrentScreen] = useState<Screen>('profiles');
+  const [previousScreen, setPreviousScreen] = useState<Screen>('home');
   const [catalog, setCatalog] = useState<HomeCatalog | null>(null);
   const [loading, setLoading] = useState(true);
   const [progressList, setProgressList] = useState<PlaybackProgress[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+
+  // Search state lifted for persistence
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
+  const [lastFocusedSearchCardId, setLastFocusedSearchCardId] = useState<string | null>(null);
 
   // Selected media for details / player
   const [selectedTitle, setSelectedTitle] = useState<MediaItem | null>(null);
@@ -90,7 +103,7 @@ export const App: React.FC = () => {
         if (currentScreen === 'player') {
           // Handled inside VideoPlayer
         } else if (currentScreen === 'details') {
-          setCurrentScreen('home');
+          setCurrentScreen(previousScreen);
         } else if (
           currentScreen === 'search' ||
           currentScreen === 'watchlist' ||
@@ -107,11 +120,12 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleGlobalBack);
     return () => window.removeEventListener('keydown', handleGlobalBack);
-  }, [currentScreen]);
+  }, [currentScreen, previousScreen]);
 
   // Open Details Screen
   const handleOpenDetails = (item: MediaItem) => {
     setSelectedTitle(item);
+    setPreviousScreen(currentScreen);
     setCurrentScreen('details');
   };
 
@@ -124,7 +138,7 @@ export const App: React.FC = () => {
   // Exit Player
   const handleExitPlayer = () => {
     setPlayerTarget(null);
-    setCurrentScreen(selectedTitle ? 'details' : 'home');
+    setCurrentScreen(selectedTitle ? 'details' : previousScreen);
     api.getProgress().then(setProgressList).catch(() => {});
   };
 
@@ -184,7 +198,10 @@ export const App: React.FC = () => {
 
   return (
     <FocusProvider>
-      <ScreenFocusController screen={currentScreen} />
+      <ScreenFocusController
+        screen={currentScreen}
+        lastFocusedSearchCardId={lastFocusedSearchCardId}
+      />
       <div className="relative min-h-screen bg-[#141414] text-white">
         {/* SCREEN 0: Who's Watching? Profile Selection */}
         {currentScreen === 'profiles' && (
@@ -196,7 +213,7 @@ export const App: React.FC = () => {
           <NetflixSidebar
             currentTab={
               currentScreen === 'details'
-                ? 'home'
+                ? (previousScreen as NetflixNavTab)
                 : (currentScreen as NetflixNavTab)
             }
             onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
@@ -221,7 +238,7 @@ export const App: React.FC = () => {
             contentId={selectedTitle.id}
             mediaType={selectedTitle.type}
             onPlay={handleLaunchPlayer}
-            onBack={() => setCurrentScreen('home')}
+            onBack={() => setCurrentScreen(previousScreen)}
             isInWatchlist={isInWatchlist(selectedTitle.id)}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectRelated={handleOpenDetails}
@@ -231,7 +248,16 @@ export const App: React.FC = () => {
         {/* SCREEN 3: Netflix Search */}
         {currentScreen === 'search' && (
           <div className="pl-18">
-            <SearchScreen onSelectTitle={handleOpenDetails} />
+            <SearchScreen
+              query={searchQuery}
+              onQueryChange={setSearchQuery}
+              results={searchResults}
+              onResultsChange={setSearchResults}
+              profileId={activeProfile.id}
+              onSelectTitle={handleOpenDetails}
+              onSelectCardFocus={(cardId) => setLastFocusedSearchCardId(cardId)}
+              recommendedTitles={top10Items.length > 0 ? top10Items : (catalog?.rails?.[0]?.items || [])}
+            />
           </div>
         )}
 

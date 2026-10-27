@@ -16,10 +16,10 @@ declare global {
 }
 
 function getBackendBaseUrl(): string {
-  if (window.CINEWAVE_BACKEND_URL) {
+  if (typeof window !== 'undefined' && window.CINEWAVE_BACKEND_URL) {
     return window.CINEWAVE_BACKEND_URL.replace(/\/+$/, '');
   }
-  if (import.meta.env.VITE_API_URL) {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
     return (import.meta.env.VITE_API_URL as string).replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined' && window.location) {
