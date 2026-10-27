@@ -80,6 +80,11 @@ export interface SubtitleTrack {
   isDefault?: boolean;
 }
 
+export interface EmbedServer {
+  name: string;
+  url: string;
+}
+
 export interface PlaybackResolution {
   success: boolean;
   contentId: string;
@@ -90,6 +95,7 @@ export interface PlaybackResolution {
   sources: StreamSource[];
   subtitles: SubtitleTrack[];
   embedUrl: string;
+  embedServers?: EmbedServer[];
   alternates: string[];
   error?: string;
 }

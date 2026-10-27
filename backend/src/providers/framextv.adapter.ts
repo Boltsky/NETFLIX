@@ -20,7 +20,7 @@ export class FrameXTVAdapter implements IContentProvider {
     'https://api.framextv.pro'
   ];
   private activeBackendIndex = 0;
-  private embedOrigin = 'https://framextv.xyz';
+  private embedOrigin = 'https://framextv.cc';
 
   private get activeBackend(): string {
     return this.backends[this.activeBackendIndex];
@@ -33,14 +33,16 @@ export class FrameXTVAdapter implements IContentProvider {
   }
 
   private async fetchWithFailover(path: string, options: RequestInit = {}): Promise<Response> {
-    const attempts = this.backends.length;
+    const isStream = path.startsWith('/api/stream');
+    const timeoutMs = isStream ? 16000 : 7000;
+    const attempts = isStream ? 2 : this.backends.length;
     let lastError: Error | null = null;
 
     for (let i = 0; i < attempts; i++) {
       const url = `${this.activeBackend}${path}`;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         const res = await fetch(url, {
           ...options,
           signal: controller.signal,
@@ -260,6 +262,28 @@ export class FrameXTVAdapter implements IContentProvider {
       ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1`
       : `${this.embedOrigin}/embed/${id}?autoplay=1`;
 
+    const isEpisodic = type === 'tv';
+    const embedServers = [
+      {
+        name: 'Server 1 (FrameX)',
+        url: isEpisodic
+          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${id}?autoplay=1`
+      },
+      {
+        name: 'Server 2 (VidSrc)',
+        url: isEpisodic
+          ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${id}`
+      },
+      {
+        name: 'Server 3 (AutoEmbed)',
+        url: isEpisodic
+          ? `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`
+          : `https://player.autoembed.cc/embed/movie/${id}`
+      }
+    ];
+
     try {
       let streamPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}`;
       if (type === 'tv') {
@@ -299,6 +323,7 @@ export class FrameXTVAdapter implements IContentProvider {
           sources,
           subtitles,
           embedUrl,
+          embedServers,
           alternates: Array.isArray(data.alternates) ? data.alternates : []
         };
       }
@@ -306,46 +331,19 @@ export class FrameXTVAdapter implements IContentProvider {
       console.warn(`[FrameXTV] Direct stream resolution error for ${id}:`, err.message);
     }
 
-    // Fallback: If external direct extraction failed or is blocked, provide open-source verified stream
+    // Fallback: If external direct extraction failed or has no direct stream, provide FrameXTV Embed.
+    // sources is left empty so VideoPlayer activates the verified multi-source FrameXTV player for this exact title!
     return {
       success: true,
       contentId: id,
       mediaType: type,
       season: type === 'tv' ? s : undefined,
       episode: type === 'tv' ? e : undefined,
-      provider: 'CineWave Stream Core (Direct HLS)',
-      sources: [
-        {
-          url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-          quality: '1080p Ultra HD',
-          type: 'hls',
-          server: 'CineWave Edge Direct (HLS Adaptive)',
-          skipProxy: true
-        },
-        {
-          url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-          quality: '1080p',
-          type: 'mp4',
-          server: 'CineWave Backup CDN (MP4)',
-          skipProxy: true
-        }
-      ],
-      subtitles: [
-        {
-          url: 'https://bitdash-a.akamaihd.net/content/sintel/subtitles/subtitles_en.vtt',
-          label: 'English [Original]',
-          lang: 'en',
-          format: 'vtt',
-          isDefault: true
-        },
-        {
-          url: 'https://bitdash-a.akamaihd.net/content/sintel/subtitles/subtitles_es.vtt',
-          label: 'Español',
-          lang: 'es',
-          format: 'vtt'
-        }
-      ],
+      provider: 'FrameXTV Embed',
+      sources: [],
+      subtitles: [],
       embedUrl,
+      embedServers,
       alternates: ['cinejoy', 'titan', 'bowler']
     };
   }

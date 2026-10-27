@@ -119,13 +119,34 @@ export const api = {
     try {
       return await apiFetch<PlaybackResolution>(`/playback/resolve?${params.toString()}`);
     } catch (err: any) {
-      console.warn('[Netflix API] resolvePlayback failed, generating direct stream & embed fallback:', err?.message);
+      console.warn('[Netflix API] resolvePlayback failed, generating embed fallback:', err?.message);
       const isEpisodic = type === 'tv' || type === 'anime';
       const s = season || 1;
       const e = episode || 1;
       const embedUrl = isEpisodic
-        ? `https://framextv.xyz/embed/${contentId}/${s}/${e}?autoplay=1`
-        : `https://framextv.xyz/embed/${contentId}?autoplay=1`;
+        ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
+        : `https://framextv.cc/embed/${contentId}?autoplay=1`;
+
+      const embedServers = [
+        {
+          name: 'Server 1 (FrameX)',
+          url: isEpisodic
+            ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
+            : `https://framextv.cc/embed/${contentId}?autoplay=1`
+        },
+        {
+          name: 'Server 2 (VidSrc)',
+          url: isEpisodic
+            ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
+            : `https://vidsrc.to/embed/movie/${contentId}`
+        },
+        {
+          name: 'Server 3 (AutoEmbed)',
+          url: isEpisodic
+            ? `https://player.autoembed.cc/embed/tv/${contentId}/${s}/${e}`
+            : `https://player.autoembed.cc/embed/movie/${contentId}`
+        }
+      ];
 
       return {
         success: true,
@@ -133,39 +154,11 @@ export const api = {
         mediaType: type,
         season: isEpisodic ? s : undefined,
         episode: isEpisodic ? e : undefined,
-        provider: 'CineWave Stream Core (Fallback)',
-        sources: [
-          {
-            url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-            quality: '1080p Ultra HD',
-            type: 'hls',
-            server: 'CineWave Edge Direct (HLS Adaptive)',
-            skipProxy: true
-          },
-          {
-            url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-            quality: '1080p',
-            type: 'mp4',
-            server: 'CineWave Backup CDN (MP4)',
-            skipProxy: true
-          }
-        ],
-        subtitles: [
-          {
-            url: 'https://bitdash-a.akamaihd.net/content/sintel/subtitles/subtitles_en.vtt',
-            label: 'English [Original]',
-            lang: 'en',
-            format: 'vtt',
-            isDefault: true
-          },
-          {
-            url: 'https://bitdash-a.akamaihd.net/content/sintel/subtitles/subtitles_es.vtt',
-            label: 'Español',
-            lang: 'es',
-            format: 'vtt'
-          }
-        ],
+        provider: 'FrameXTV Embed Fallback',
+        sources: [],
+        subtitles: [],
         embedUrl,
+        embedServers,
         alternates: ['cinejoy', 'titan', 'bowler']
       };
     }

@@ -11,12 +11,21 @@
   "progress": [
     {
       "profileId": "default-profile",
+      "contentId": "1225607",
+      "mediaType": "movie",
+      "positionMs": 0,
+      "durationMs": 0,
+      "title": "Untitled",
+      "updatedAt": "2026-10-27T10:17:52.209Z"
+    },
+    {
+      "profileId": "default-profile",
       "contentId": "60574",
       "mediaType": "movie",
       "positionMs": 0,
       "durationMs": 0,
       "title": "Untitled",
-      "updatedAt": "2026-10-27T09:16:41.719Z"
+      "updatedAt": "2026-10-27T10:18:07.702Z"
     },
     {
       "profileId": "default-profile",
@@ -61,7 +70,7 @@
       "positionMs": 0,
       "durationMs": 0,
       "title": "Untitled",
-      "updatedAt": "2026-10-27T08:50:37.829Z"
+      "updatedAt": "2026-10-27T10:40:34.846Z"
     },
     {
       "profileId": "test-profile",
@@ -70,7 +79,7 @@
       "positionMs": 65000,
       "durationMs": 7200000,
       "title": "Progress Test Title",
-      "updatedAt": "2026-10-27T09:55:21.998Z"
+      "updatedAt": "2026-10-27T13:33:29.689Z"
     }
   ],
   "settings": {

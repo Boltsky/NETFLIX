@@ -13,8 +13,9 @@ export function createApp() {
   }));
   app.use(express.json());
 
-  // Mount API
+  // Mount API (support both /api/v1 and /api)
   app.use('/api/v1', apiRoutes);
+  app.use('/api', apiRoutes);
 
   // Fallback root health check
   app.get('/', (req, res) => {

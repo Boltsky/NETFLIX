@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Hls from 'hls.js';
 import { PlaybackResolution, MediaItem, StreamSource, SubtitleTrack } from '../../types';
 import { api } from '../../services/api';
@@ -12,7 +12,8 @@ import {
   Check,
   X,
   AlertTriangle,
-  SkipForward
+  SkipForward,
+  Server
 } from 'lucide-react';
 
 interface VideoPlayerProps {
@@ -40,8 +41,42 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
+  const [selectedServerIndex, setSelectedServerIndex] = useState(0);
   const [activeSubtitle, setActiveSubtitle] = useState<number>(-1);
   const [showAudioSubtitleModal, setShowAudioSubtitleModal] = useState(false);
+  const [modalCol, setModalCol] = useState(2); // default focus on Servers column (0=audio, 1=subs, 2=server)
+  const [modalRow, setModalRow] = useState(0);
+
+  const servers = useMemo(() => {
+    if (resolution?.embedServers && resolution.embedServers.length > 0) {
+      return resolution.embedServers;
+    }
+    const isEpisodic = item.type === 'tv' || item.type === 'anime';
+    const s = season || 1;
+    const e = episode || 1;
+    return [
+      {
+        name: 'Server 1 (FrameX)',
+        url: isEpisodic
+          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${item.id}?autoplay=1`
+      },
+      {
+        name: 'Server 2 (VidSrc)',
+        url: isEpisodic
+          ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${item.id}`
+      },
+      {
+        name: 'Server 3 (AutoEmbed)',
+        url: isEpisodic
+          ? `https://player.autoembed.cc/embed/tv/${item.id}/${s}/${e}`
+          : `https://player.autoembed.cc/embed/movie/${item.id}`
+      }
+    ];
+  }, [resolution, item, season, episode]);
+
+  const currentEmbedUrl = servers[selectedServerIndex]?.url || resolution?.embedUrl;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -96,15 +131,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setLoading(false);
 
         const hasDirectSource = res.sources && res.sources.length > 0;
-        if (!hasDirectSource && res.embedUrl) {
-          setUseIframeFallback(true);
+        if (!hasDirectSource) {
+          if (res.embedUrl || (res.embedServers && res.embedServers.length > 0)) {
+            setUseIframeFallback(true);
+          } else {
+            setError('This title is currently unavailable for streaming.');
+          }
         }
       })
       .catch((err) => {
-        console.error('Playback resolve failed:', err);
+        console.warn('[Netflix Player] Failed to resolve playback, falling back to embed:', err);
         if (isMounted) {
-          setError(err.message || 'Unable to resolve playback source');
           setLoading(false);
+          setUseIframeFallback(true);
         }
       });
 
@@ -117,7 +156,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const source: StreamSource | undefined = resolution.sources?.[0];
     if (!source || !source.url) {
-      setUseIframeFallback(true);
+      if (resolution.embedUrl) {
+        setUseIframeFallback(true);
+      } else {
+        setError('This title is currently unavailable for streaming.');
+      }
       return;
     }
 
@@ -145,14 +188,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
             console.warn('[Netflix Player] HLS Fatal Error, falling back to embed:', data);
-            setUseIframeFallback(true);
+            if (resolution.embedUrl) {
+              setUseIframeFallback(true);
+            } else {
+              setError('Unable to load stream for this title.');
+            }
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = source.url;
         video.play().catch(() => setIsPlaying(false));
       } else {
-        setUseIframeFallback(true);
+        if (resolution.embedUrl) {
+          setUseIframeFallback(true);
+        } else {
+          setError('HLS playback is not supported on this device.');
+        }
       }
     } else {
       video.src = source.url;
@@ -168,7 +219,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const onPause = () => setIsPlaying(false);
     const onError = () => {
       console.warn('[Netflix Player] Native video error, falling back to embed');
-      setUseIframeFallback(true);
+      if (resolution.embedUrl) {
+        setUseIframeFallback(true);
+      } else {
+        setError('Unable to load stream for this title.');
+      }
     };
 
     video.addEventListener('timeupdate', onTimeUpdate);
@@ -225,6 +280,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (e.key === 'Back' || e.key === 'Escape') {
           e.preventDefault();
           setShowAudioSubtitleModal(false);
+          return;
+        }
+        if (e.key === 'ArrowLeft' || e.key === 'Left') {
+          e.preventDefault();
+          setModalCol((prev) => Math.max(0, prev - 1));
+          setModalRow(0);
+          return;
+        }
+        if (e.key === 'ArrowRight' || e.key === 'Right') {
+          e.preventDefault();
+          setModalCol((prev) => Math.min(2, prev + 1));
+          setModalRow(0);
+          return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'Up') {
+          e.preventDefault();
+          setModalRow((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        if (e.key === 'ArrowDown' || e.key === 'Down') {
+          e.preventDefault();
+          const maxRows = modalCol === 0 ? 3 : modalCol === 1 ? (resolution?.subtitles?.length || 0) + 1 : servers.length;
+          setModalRow((prev) => Math.min(maxRows - 1, prev + 1));
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Select') {
+          e.preventDefault();
+          if (modalCol === 0) {
+            // Audio selection
+          } else if (modalCol === 1) {
+            selectSubtitle(modalRow === 0 ? -1 : modalRow - 1);
+          } else if (modalCol === 2) {
+            if (servers[modalRow]) {
+              setSelectedServerIndex(modalRow);
+              setUseIframeFallback(true);
+              setError(null);
+            }
+          }
+          return;
         }
         return;
       }
@@ -242,10 +336,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           break;
         case 'ArrowUp':
         case 'Up':
+          e.preventDefault();
+          setShowAudioSubtitleModal(true);
+          setModalCol(2); // focus on servers column
+          setModalRow(selectedServerIndex);
+          break;
         case 'ArrowDown':
         case 'Down':
           e.preventDefault();
           setShowControls((prev) => !prev);
+          break;
+        case 's':
+        case 'S':
+          e.preventDefault();
+          setSelectedServerIndex((prev) => (prev + 1) % servers.length);
+          setUseIframeFallback(true);
+          setError(null);
           break;
         case 'Enter':
         case 'Select':
@@ -262,7 +368,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     window.addEventListener('keydown', handleRemoteKey);
     return () => window.removeEventListener('keydown', handleRemoteKey);
-  }, [resetControlsTimeout, handleExit, showAudioSubtitleModal]);
+  }, [resetControlsTimeout, handleExit, showAudioSubtitleModal, modalCol, modalRow, servers, resolution, selectedServerIndex]);
 
   // Play / Pause Toggle
   const togglePlayPause = () => {
@@ -331,11 +437,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {error && (
         <div className="absolute inset-0 z-40 bg-black/95 flex flex-col items-center justify-center space-y-4 p-8 text-center max-w-md">
           <AlertTriangle className="w-16 h-16 text-[#E50914]" />
-          <h2 className="text-xl font-bold text-white">Playback Error</h2>
+          <h2 className="text-xl font-bold text-white">Playback Unavailable</h2>
           <p className="text-xs text-zinc-400">{error}</p>
+          {servers.length > 1 && (
+            <div className="flex flex-wrap gap-2 justify-center pt-2">
+              {servers.map((s, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setError(null);
+                    setSelectedServerIndex(idx);
+                    setUseIframeFallback(true);
+                  }}
+                  className={`px-4 py-1.5 rounded text-xs font-bold transition-colors ${
+                    selectedServerIndex === idx
+                      ? 'bg-[#E50914] text-white'
+                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={handleExit}
-            className="px-6 py-2.5 rounded-[4px] bg-[#E50914] hover:bg-red-700 text-white font-bold text-sm"
+            className="px-6 py-2.5 rounded-[4px] bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm"
           >
             Return
           </button>
@@ -349,6 +476,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="w-full h-full object-contain bg-black"
           playsInline
           crossOrigin="anonymous"
+          onError={() => {
+            console.warn('[Netflix Player] Video tag error event, falling back to embed');
+            if (resolution?.embedUrl) {
+              setUseIframeFallback(true);
+            } else {
+              setError('Unable to load stream for this title.');
+            }
+          }}
         >
           {resolution?.subtitles?.map((sub, idx) => (
             <track
@@ -363,13 +498,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </video>
       )}
 
-      {/* Engine 2: FrameXTV PostMessage Embedded Iframe */}
-      {useIframeFallback && resolution && (
+      {/* Engine 2: Multi-Server Embedded Iframe */}
+      {useIframeFallback && currentEmbedUrl && (
         <iframe
+          key={currentEmbedUrl}
           ref={iframeRef}
-          src={resolution.embedUrl}
+          src={currentEmbedUrl}
           className="w-full h-full border-0"
-          allow="autoplay; fullscreen; encrypted-media"
+          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           title="Netflix Player"
         />
       )}
@@ -480,22 +616,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               )}
             </div>
 
-            {/* Audio & Subtitles Menu Trigger */}
-            <button
-              onClick={() => setShowAudioSubtitleModal(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-[4px] hover:bg-white/10 text-white text-xs font-bold transition-colors"
-            >
-              <Subtitles className="w-5 h-5 text-zinc-300" />
-              <span>Audio & Subtitles</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              {/* Server Switcher Button */}
+              {useIframeFallback && servers.length > 1 && (
+                <button
+                  onClick={() => setSelectedServerIndex((prev) => (prev + 1) % servers.length)}
+                  className="flex items-center space-x-2 px-3 py-1.5 rounded-[4px] bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors"
+                  title="Switch streaming server"
+                >
+                  <Server className="w-4 h-4 text-[#E50914]" />
+                  <span>{servers[selectedServerIndex]?.name || 'Server 1'}</span>
+                </button>
+              )}
+
+              {/* Audio & Subtitles Menu Trigger */}
+              <button
+                onClick={() => setShowAudioSubtitleModal(true)}
+                className="flex items-center space-x-2 px-3 py-1.5 rounded-[4px] hover:bg-white/10 text-white text-xs font-bold transition-colors"
+              >
+                <Subtitles className="w-5 h-5 text-zinc-300" />
+                <span>Audio & Subtitles</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Netflix Dual-Column Audio & Subtitles Dialog */}
+      {/* Netflix Multi-Column Audio, Subtitles & Server Dialog */}
       {showAudioSubtitleModal && (
         <div className="absolute inset-0 z-40 bg-black/85 backdrop-blur-md flex items-center justify-center p-8">
-          <div className="bg-[#181818] border border-zinc-700/80 rounded-[4px] max-w-2xl w-full p-8 shadow-2xl relative">
+          <div className="bg-[#181818] border border-zinc-700/80 rounded-[4px] max-w-3xl w-full p-8 shadow-2xl relative">
             <button
               onClick={() => setShowAudioSubtitleModal(false)}
               className="absolute top-6 right-6 text-zinc-400 hover:text-white"
@@ -503,32 +653,42 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <X className="w-6 h-6" />
             </button>
 
-            <h3 className="text-xl font-bold text-white mb-6">Audio & Subtitles</h3>
+            <h3 className="text-xl font-bold text-white mb-6">Audio, Subtitles & Servers</h3>
 
-            <div className="grid grid-cols-2 gap-8 text-sm">
-              {/* Left Column: Audio */}
+            <div className="grid grid-cols-3 gap-6 text-sm">
+              {/* Column 1: Audio */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Audio</h4>
-                <div className="flex items-center space-x-2 text-white font-bold cursor-pointer">
+                <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 0 ? 'text-white' : 'text-zinc-400'}`}>
+                  Audio {modalCol === 0 && '◄'}
+                </h4>
+                <div className={`flex items-center space-x-2 text-white font-bold cursor-pointer p-1.5 rounded ${
+                  modalCol === 0 && modalRow === 0 ? 'ring-2 ring-white bg-zinc-800' : ''
+                }`}>
                   <Check className="w-4 h-4 text-white" />
                   <span>English [Original] (5.1)</span>
                 </div>
-                <div className="flex items-center space-x-2 text-zinc-400 cursor-pointer pl-6">
+                <div className={`flex items-center space-x-2 text-zinc-400 cursor-pointer pl-6 p-1.5 rounded ${
+                  modalCol === 0 && modalRow === 1 ? 'ring-2 ring-white bg-zinc-800 text-white' : ''
+                }`}>
                   <span>English - Audio Description</span>
                 </div>
-                <div className="flex items-center space-x-2 text-zinc-400 cursor-pointer pl-6">
+                <div className={`flex items-center space-x-2 text-zinc-400 cursor-pointer pl-6 p-1.5 rounded ${
+                  modalCol === 0 && modalRow === 2 ? 'ring-2 ring-white bg-zinc-800 text-white' : ''
+                }`}>
                   <span>Español (5.1)</span>
                 </div>
               </div>
 
-              {/* Right Column: Subtitles */}
+              {/* Column 2: Subtitles */}
               <div className="space-y-3 max-h-64 overflow-y-auto no-scrollbar">
-                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Subtitles</h4>
+                <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 1 ? 'text-white' : 'text-zinc-400'}`}>
+                  Subtitles {modalCol === 1 && '◄'}
+                </h4>
                 <div
                   onClick={() => selectSubtitle(-1)}
-                  className={`flex items-center space-x-2 cursor-pointer ${
+                  className={`flex items-center space-x-2 cursor-pointer p-1.5 rounded ${
                     activeSubtitle === -1 ? 'text-white font-bold' : 'text-zinc-400 pl-6'
-                  }`}
+                  } ${modalCol === 1 && modalRow === 0 ? 'ring-2 ring-white bg-zinc-800 text-white' : ''}`}
                 >
                   {activeSubtitle === -1 && <Check className="w-4 h-4 text-white" />}
                   <span>Off</span>
@@ -538,18 +698,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <div
                     key={`sub-select-${i}`}
                     onClick={() => selectSubtitle(i)}
-                    className={`flex items-center space-x-2 cursor-pointer ${
+                    className={`flex items-center space-x-2 cursor-pointer p-1.5 rounded ${
                       activeSubtitle === i ? 'text-white font-bold' : 'text-zinc-400 pl-6'
-                    }`}
+                    } ${modalCol === 1 && modalRow === i + 1 ? 'ring-2 ring-white bg-zinc-800 text-white' : ''}`}
                   >
                     {activeSubtitle === i && <Check className="w-4 h-4 text-white" />}
                     <span>{sub.label}</span>
                   </div>
                 ))}
               </div>
+
+              {/* Column 3: Servers */}
+              <div className="space-y-3">
+                <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 2 ? 'text-white' : 'text-zinc-400'}`}>
+                  Stream Server {modalCol === 2 && '◄'}
+                </h4>
+                {servers.map((srv, idx) => (
+                  <div
+                    key={`server-select-${idx}`}
+                    onClick={() => {
+                      setSelectedServerIndex(idx);
+                      setUseIframeFallback(true);
+                      setError(null);
+                    }}
+                    className={`flex items-center space-x-2 cursor-pointer p-1.5 rounded transition-all ${
+                      selectedServerIndex === idx ? 'text-white font-bold' : 'text-zinc-400 pl-6'
+                    } ${modalCol === 2 && modalRow === idx ? 'ring-2 ring-white bg-zinc-800 text-white font-bold scale-[1.02]' : ''}`}
+                  >
+                    {selectedServerIndex === idx && <Check className="w-4 h-4 text-[#E50914]" />}
+                    <span>{srv.name}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="mt-8 pt-4 border-t border-zinc-700/80 flex justify-end">
+            <div className="mt-8 pt-4 border-t border-zinc-700/80 flex items-center justify-between">
+              <span className="text-[11px] font-mono text-zinc-400">
+                Remote: ◀ / ▶ column • ▲ / ▼ item • Enter select • Back close
+              </span>
               <button
                 onClick={() => setShowAudioSubtitleModal(false)}
                 className="px-6 py-2 rounded-[4px] bg-white text-black font-bold text-xs"

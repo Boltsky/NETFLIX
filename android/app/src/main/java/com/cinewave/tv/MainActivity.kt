@@ -68,6 +68,11 @@ class MainActivity : AppCompatActivity() {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
+        android.webkit.CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -100,10 +105,14 @@ class MainActivity : AppCompatActivity() {
         val url = request.url
         val pathAndQuery = url.path + if (url.query != null) "?${url.query}" else ""
 
-        // Try host backend IPs with low timeout, fallback to offline fixtures
+        val isPlayback = url.path?.contains("/playback") == true
+        val readTimeoutMs = if (isPlayback) 18000 else 6000
+        val connectTimeoutMs = 1500
+
+        // Try host backend IPs (10.0.2.2 is default Android emulator gateway)
         val candidateTargets = listOf(
-            "http://192.168.88.129:8080$pathAndQuery",
             "http://10.0.2.2:8080$pathAndQuery",
+            "http://192.168.88.129:8080$pathAndQuery",
             "http://192.168.56.1:8080$pathAndQuery",
             "http://172.25.208.1:8080$pathAndQuery"
         )
@@ -112,8 +121,8 @@ class MainActivity : AppCompatActivity() {
             try {
                 val conn = URL(targetUrl).openConnection() as HttpURLConnection
                 conn.requestMethod = request.method
-                conn.connectTimeout = 1200
-                conn.readTimeout = 3000
+                conn.connectTimeout = connectTimeoutMs
+                conn.readTimeout = readTimeoutMs
 
                 // Forward request headers
                 request.requestHeaders?.forEach { (k, v) ->

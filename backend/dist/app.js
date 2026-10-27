@@ -16,8 +16,9 @@ function createApp() {
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
     }));
     app.use(express_1.default.json());
-    // Mount API
+    // Mount API (support both /api/v1 and /api)
     app.use('/api/v1', api_routes_js_1.default);
+    app.use('/api', api_routes_js_1.default);
     // Fallback root health check
     app.get('/', (req, res) => {
         res.json({
