@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MediaItem } from '../../types';
 import { api } from '../../services/api';
-import { useFocusable } from '../focus/FocusContext';
+import { useFocusable, useFocus } from '../focus/FocusContext';
 import {
   Search as SearchIcon,
   Delete,
@@ -11,7 +11,11 @@ import {
   Clock,
   Trash2,
   TrendingUp,
-  History
+  History,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 export interface SearchScreenProps {
@@ -46,11 +50,19 @@ export const QWERTY_ROWS: Array<Array<{ key: string; label?: string; spanClass?:
     { key: 'Z' }, { key: 'X' }, { key: 'C' }, { key: 'V' }, { key: 'B' },
     { key: 'N' }, { key: 'M' }
   ],
-  // Row 5: Actions
+  // Row 5: Actions & Search
   [
     { key: 'SPACE', label: 'SPACE', spanClass: 'flex-[3]' },
     { key: 'BACKSPACE', label: '⌫', spanClass: 'flex-[1.5]' },
-    { key: 'CLEAR', label: 'CLEAR', spanClass: 'flex-[1.5]' }
+    { key: 'CLEAR', label: 'CLEAR', spanClass: 'flex-[1.5]' },
+    { key: 'SEARCH', label: 'SEARCH', spanClass: 'flex-[2.5]' }
+  ],
+  // Row 6: Direction Keys
+  [
+    { key: 'ARROW_LEFT', label: '◄ LEFT', spanClass: 'flex-1' },
+    { key: 'ARROW_UP', label: '▲ UP', spanClass: 'flex-1' },
+    { key: 'ARROW_DOWN', label: '▼ DOWN', spanClass: 'flex-1' },
+    { key: 'ARROW_RIGHT', label: '► RIGHT', spanClass: 'flex-1' }
   ]
 ];
 
@@ -131,6 +143,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<string[]>(() => getSearchHistory(profileId));
+  const { moveFocus, setFocusedKey } = useFocus();
 
   // Reload history when profile changes
   useEffect(() => {
@@ -156,7 +169,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           console.error('Search error:', err);
           setLoading(false);
         });
-    }, 300);
+    }, 200);
 
     return () => clearTimeout(handler);
   }, [query, onResultsChange]);
@@ -168,10 +181,39 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
       onQueryChange(query.slice(0, -1));
     } else if (key === 'CLEAR') {
       onQueryChange('');
+      onResultsChange([]);
+    } else if (key === 'SEARCH') {
+      const trimmed = query.trim();
+      if (trimmed) {
+        saveSearchHistoryWord(trimmed, profileId);
+        setHistory(getSearchHistory(profileId));
+        setLoading(true);
+        api.search(trimmed)
+          .then((res) => {
+            onResultsChange(res);
+            setLoading(false);
+            if (res.length > 0) {
+              setFocusedKey(`search-card-${res[0].id}`);
+            }
+          })
+          .catch(() => setLoading(false));
+      }
+    } else if (key === 'ARROW_LEFT') {
+      moveFocus('LEFT');
+    } else if (key === 'ARROW_RIGHT') {
+      if (results && results.length > 0) {
+        setFocusedKey(`search-card-${results[0].id}`);
+      } else {
+        moveFocus('RIGHT');
+      }
+    } else if (key === 'ARROW_UP') {
+      moveFocus('UP');
+    } else if (key === 'ARROW_DOWN') {
+      moveFocus('DOWN');
     } else {
       onQueryChange(query + key);
     }
-  }, [query, onQueryChange]);
+  }, [query, results, onQueryChange, onResultsChange, profileId, moveFocus, setFocusedKey]);
 
   const handleSelectHistory = useCallback((term: string) => {
     onQueryChange(term);
@@ -381,7 +423,9 @@ const KeyButton: React.FC<{
   spanClass?: string;
   onPress: () => void;
 }> = ({ char, label, spanClass, onPress }) => {
-  const isSpecial = char === 'SPACE' || char === 'BACKSPACE' || char === 'CLEAR';
+  const isSpecial = char === 'SPACE' || char === 'BACKSPACE' || char === 'CLEAR' || char === 'SEARCH' || char.startsWith('ARROW_');
+  const isSearch = char === 'SEARCH';
+  const isDirection = char.startsWith('ARROW_');
   const { ref, isFocused } = useFocusable({
     focusKey: `kb-${char}`,
     groupId: 'tv-keyboard',
@@ -392,13 +436,17 @@ const KeyButton: React.FC<{
     <button
       ref={ref}
       onClick={onPress}
-      className={`h-10 rounded font-bold text-xs flex items-center justify-center transition-all tv-focusable ${
+      className={`h-10 rounded font-bold text-xs flex items-center justify-center gap-1 transition-all tv-focusable ${
         spanClass || 'flex-1 min-w-[28px] max-w-[44px]'
       } ${
-        isSpecial
+        isSearch
+          ? 'bg-[#E50914] text-white hover:bg-red-700 font-black border border-red-600 shadow-md'
+          : isDirection
+          ? 'bg-zinc-800/90 text-zinc-200 border border-zinc-700/80 hover:bg-zinc-700'
+          : isSpecial
           ? 'bg-zinc-800 text-zinc-200 border border-zinc-700/80 px-2'
           : 'bg-zinc-900 text-white border border-zinc-800'
-      } ${isFocused ? 'tv-button-focused ring-2 ring-white scale-105' : 'hover:bg-zinc-700'}`}
+      } ${isFocused ? 'tv-button-focused ring-2 ring-white scale-105 z-10' : 'hover:bg-zinc-700'}`}
     >
       {char === 'SPACE' ? (
         'SPACE'
@@ -408,6 +456,31 @@ const KeyButton: React.FC<{
         </span>
       ) : char === 'CLEAR' ? (
         'CLEAR'
+      ) : char === 'SEARCH' ? (
+        <span className="flex items-center gap-1.5 font-black tracking-wide">
+          <SearchIcon className="w-3.5 h-3.5 stroke-[2.5]" />
+          SEARCH
+        </span>
+      ) : char === 'ARROW_LEFT' ? (
+        <span className="flex items-center gap-1">
+          <ChevronLeft className="w-3.5 h-3.5" />
+          LEFT
+        </span>
+      ) : char === 'ARROW_UP' ? (
+        <span className="flex items-center gap-1">
+          <ChevronUp className="w-3.5 h-3.5" />
+          UP
+        </span>
+      ) : char === 'ARROW_DOWN' ? (
+        <span className="flex items-center gap-1">
+          <ChevronDown className="w-3.5 h-3.5" />
+          DOWN
+        </span>
+      ) : char === 'ARROW_RIGHT' ? (
+        <span className="flex items-center gap-1">
+          RIGHT
+          <ChevronRight className="w-3.5 h-3.5" />
+        </span>
       ) : (
         label || char
       )}

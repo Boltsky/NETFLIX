@@ -15,6 +15,7 @@ interface FocusContextType {
   setFocusedKey: (key: string) => void;
   registerNode: (node: FocusNode) => void;
   unregisterNode: (key: string) => void;
+  moveFocus: (direction: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => void;
 }
 
 const FocusContext = createContext<FocusContextType | null>(null);
@@ -201,7 +202,7 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [moveFocus]);
 
   return (
-    <FocusContext.Provider value={{ focusedKey, setFocusedKey, registerNode, unregisterNode }}>
+    <FocusContext.Provider value={{ focusedKey, setFocusedKey, registerNode, unregisterNode, moveFocus }}>
       {children}
     </FocusContext.Provider>
   );

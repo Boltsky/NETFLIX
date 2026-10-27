@@ -9,9 +9,11 @@ const path_1 = __importDefault(require("path"));
 const DEFAULT_DB = {
     profiles: [
         {
-            id: 'default-profile',
-            name: 'Primary Viewer',
+            id: 'bolt',
+            name: 'BOLT',
             avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&q=80',
+            isVip: true,
+            isDefault: true,
             createdAt: new Date().toISOString()
         }
     ],

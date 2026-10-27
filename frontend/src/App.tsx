@@ -3,7 +3,7 @@ import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem } from './types
 import { api } from './services/api';
 import { FocusProvider, useFocus } from './components/focus/FocusContext';
 import { NetflixSidebar, NetflixNavTab } from './components/common/NetflixSidebar';
-import { ProfileSelector, NetflixProfile } from './components/profile/ProfileSelector';
+import { ProfileSelector, NetflixProfile, BOLT_PROFILE } from './components/profile/ProfileSelector';
 import { HeroBanner } from './components/home/HeroBanner';
 import { ContentRail } from './components/home/ContentRail';
 import { ContentDetails } from './components/details/ContentDetails';
@@ -11,11 +11,7 @@ import { VideoPlayer } from './components/player/VideoPlayer';
 import { SearchScreen } from './components/search/SearchScreen';
 import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
 
-const DEFAULT_PROFILE: NetflixProfile = {
-  id: 'p1',
-  name: 'Alex',
-  avatarBg: 'bg-[#E50914]'
-};
+const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
 type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player';
 
@@ -28,7 +24,7 @@ const ScreenFocusController: React.FC<{
   useEffect(() => {
     const timer = setTimeout(() => {
       if (screen === 'profiles') {
-        setFocusedKey('profile-p1');
+        setFocusedKey('profile-bolt');
       } else if (screen === 'home') {
         setFocusedKey('hero-play');
       } else if (screen === 'details') {
@@ -69,14 +65,14 @@ export const App: React.FC = () => {
     episode?: number;
   } | null>(null);
 
-  // Load home catalog & progress
-  const loadData = useCallback(() => {
+  // Load home catalog & progress for active profile
+  const loadData = useCallback((profileId: string = activeProfile.id) => {
     setLoading(true);
 
     Promise.allSettled([
       api.getHomeCatalog(),
-      api.getProgress(),
-      api.getWatchlist()
+      api.getProgress(profileId),
+      api.getWatchlist(profileId)
     ]).then(([catRes, progRes, watchRes]) => {
       if (catRes.status === 'fulfilled') {
         setCatalog(catRes.value);
@@ -89,11 +85,17 @@ export const App: React.FC = () => {
       }
       setLoading(false);
     });
-  }, []);
+  }, [activeProfile.id]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Synchronize progress and watchlist whenever active profile changes
+  useEffect(() => {
+    api.getProgress(activeProfile.id).then(setProgressList).catch(() => {});
+    api.getWatchlist(activeProfile.id).then(setWatchlist).catch(() => {});
+  }, [activeProfile.id]);
 
   // Global Back key handler
   useEffect(() => {
@@ -139,17 +141,18 @@ export const App: React.FC = () => {
   const handleExitPlayer = () => {
     setPlayerTarget(null);
     setCurrentScreen(selectedTitle ? 'details' : previousScreen);
-    api.getProgress().then(setProgressList).catch(() => {});
+    api.getProgress(activeProfile.id).then(setProgressList).catch(() => {});
   };
 
   // Watchlist Toggle
   const handleToggleWatchlist = async (item: MediaItem) => {
     const isSaved = watchlist.some((w) => w.contentId === item.id);
     if (isSaved) {
-      await api.removeFromWatchlist(item.id);
+      await api.removeFromWatchlist(item.id, activeProfile.id);
       setWatchlist((prev) => prev.filter((w) => w.contentId !== item.id));
     } else {
       const added = await api.addToWatchlist({
+        profileId: activeProfile.id,
         contentId: item.id,
         mediaType: item.type,
         title: item.title,
@@ -179,13 +182,30 @@ export const App: React.FC = () => {
     return true; // 'home'
   });
 
-  // Continue Watching Rail
-  const continueWatchingItems: MediaItem[] = progressList.map((p) => ({
-    id: p.contentId,
-    title: p.title,
-    type: p.mediaType,
-    poster: p.poster
-  }));
+  // Continue Watching Rail with catalog poster & title enrichment
+  const continueWatchingItems: MediaItem[] = progressList
+    .filter((p) => {
+      // Exclude invalid placeholder items with no duration, position, or poster
+      if (p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')) {
+        return false;
+      }
+      return true;
+    })
+    .map((p) => {
+      // Lookup from loaded catalog rails if poster or real title is missing
+      const allCatalogItems = catalog?.rails?.flatMap((r) => r.items) || [];
+      const matchedCatalogItem = allCatalogItems.find((item) => String(item.id) === String(p.contentId));
+      const resolvedPoster = p.poster || matchedCatalogItem?.poster || matchedCatalogItem?.backdrop;
+      const resolvedTitle = (p.title && p.title !== 'Untitled') ? p.title : (matchedCatalogItem?.title || p.title);
+
+      return {
+        id: p.contentId,
+        title: resolvedTitle,
+        type: p.mediaType,
+        poster: resolvedPoster,
+        backdrop: matchedCatalogItem?.backdrop
+      };
+    });
 
   // Top 10 Rail items
   const top10Items = catalog?.rails?.find((r) => r.category === 'trending' || r.category === 'popular')?.items.slice(0, 10) || [];
@@ -228,6 +248,7 @@ export const App: React.FC = () => {
             item={playerTarget.item}
             season={playerTarget.season}
             episode={playerTarget.episode}
+            profileId={activeProfile.id}
             onExit={handleExitPlayer}
           />
         )}
@@ -264,7 +285,10 @@ export const App: React.FC = () => {
         {/* SCREEN 4: My List */}
         {currentScreen === 'watchlist' && (
           <div className="pl-18">
-            <WatchlistScreen onSelectTitle={handleOpenDetails} />
+            <WatchlistScreen
+              profileId={activeProfile.id}
+              onSelectTitle={handleOpenDetails}
+            />
           </div>
         )}
 
@@ -292,21 +316,6 @@ export const App: React.FC = () => {
 
                 {/* Content Rows */}
                 <div className="relative z-20 -mt-10 space-y-3">
-                  {/* Top 10 in TV & Movies Today (Iconic numbered row) */}
-                  {top10Items.length > 0 && currentScreen === 'home' && (
-                    <ContentRail
-                      rail={{
-                        id: 'rail-top-10',
-                        title: 'Top 10 in Movies & TV Today',
-                        type: 'movie',
-                        category: 'top-10',
-                        items: top10Items
-                      }}
-                      isTop10={true}
-                      onSelectItem={handleOpenDetails}
-                    />
-                  )}
-
                   {/* Continue Watching Row (if any progress) */}
                   {continueWatchingItems.length > 0 && currentScreen === 'home' && (
                     <ContentRail
@@ -319,6 +328,21 @@ export const App: React.FC = () => {
                       }}
                       onSelectItem={handleOpenDetails}
                       progressMap={progressMap}
+                    />
+                  )}
+
+                  {/* Top 10 in TV & Movies Today (Iconic numbered row) */}
+                  {top10Items.length > 0 && currentScreen === 'home' && (
+                    <ContentRail
+                      rail={{
+                        id: 'rail-top-10',
+                        title: 'Top 10 in Movies & TV Today',
+                        type: 'movie',
+                        category: 'top-10',
+                        items: top10Items
+                      }}
+                      isTop10={true}
+                      onSelectItem={handleOpenDetails}
                     />
                   )}
 

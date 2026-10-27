@@ -151,15 +151,22 @@ class CatalogController {
     }
     static saveProgress(req, res) {
         const { contentId } = req.params;
-        const { profileId = 'default-profile', mediaType = 'movie', season, episode, positionMs = 0, durationMs = 0, title = 'Untitled', poster } = req.body;
+        const profileId = String(req.body?.profileId || req.query.profileId || 'bolt');
+        const mediaType = (req.body?.mediaType || req.query.mediaType || 'movie');
+        const season = req.body?.season !== undefined ? Number(req.body.season) : (req.query.season ? Number(req.query.season) : undefined);
+        const episode = req.body?.episode !== undefined ? Number(req.body.episode) : (req.query.episode ? Number(req.query.episode) : undefined);
+        const positionMs = Number(req.body?.positionMs ?? req.query.pos ?? req.query.positionMs ?? 0);
+        const durationMs = Number(req.body?.durationMs ?? req.query.dur ?? req.query.durationMs ?? 0);
+        const title = String(req.body?.title || req.query.title || 'Untitled');
+        const poster = (req.body?.poster || req.query.poster);
         const saved = database_js_1.db.saveProgress({
             profileId,
             contentId: String(contentId),
             mediaType,
-            season: season !== undefined ? Number(season) : undefined,
-            episode: episode !== undefined ? Number(episode) : undefined,
-            positionMs: Number(positionMs),
-            durationMs: Number(durationMs),
+            season,
+            episode,
+            positionMs,
+            durationMs,
             title,
             poster
         });

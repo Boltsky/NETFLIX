@@ -6,15 +6,16 @@ import { Bookmark, Film, Star } from 'lucide-react';
 
 interface WatchlistScreenProps {
   onSelectTitle: (item: MediaItem) => void;
+  profileId?: string;
 }
 
-export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle }) => {
+export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle, profileId = 'bolt' }) => {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    api.getWatchlist()
+    api.getWatchlist(profileId)
       .then((data) => {
         if (isMounted) {
           setItems(data);
@@ -27,7 +28,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle 
       });
 
     return () => { isMounted = false; };
-  }, []);
+  }, [profileId]);
 
   return (
     <div className="pt-24 pb-20 tv-safe-container min-h-screen text-white select-none space-y-6">

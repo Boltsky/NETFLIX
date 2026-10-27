@@ -100,13 +100,19 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
           <SidebarActionButton
             id="sidebar-profile"
             label={activeProfile.name}
+            badge={activeProfile.isVip ? 'VIP' : undefined}
             isExpanded={isExpanded}
             onAction={onSwitchProfile}
             avatar={
               <div
-                className={`w-6 h-6 rounded-sm flex items-center justify-center ${activeProfile.avatarBg}`}
+                className={`w-6 h-6 rounded-sm flex items-center justify-center relative ${activeProfile.avatarBg}`}
               >
                 <div className="w-2.5 h-1 border-b-2 border-white rounded-b-full" />
+                {activeProfile.isVip && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border border-black flex items-center justify-center text-[7px] text-black font-black leading-none">
+                    ★
+                  </span>
+                )}
               </div>
             }
           />
@@ -187,11 +193,12 @@ const SidebarItem: React.FC<{
 const SidebarActionButton: React.FC<{
   id: string;
   label: string;
+  badge?: string;
   icon?: any;
   avatar?: React.ReactNode;
   isExpanded: boolean;
   onAction: () => void;
-}> = ({ id, label, icon: Icon, avatar, isExpanded, onAction }) => {
+}> = ({ id, label, badge, icon: Icon, avatar, isExpanded, onAction }) => {
   const { ref, isFocused } = useFocusable({
     focusKey: id,
     groupId: 'netflix-sidebar',
@@ -213,13 +220,18 @@ const SidebarActionButton: React.FC<{
       ) : (
         Icon && <Icon className={`w-5 h-5 flex-shrink-0 ${isFocused ? 'text-black' : 'text-zinc-400'}`} />
       )}
-      <span
-        className={`ml-4 text-xs font-medium whitespace-nowrap transition-opacity duration-200 ${
+      <div
+        className={`ml-4 flex items-center space-x-1.5 whitespace-nowrap transition-opacity duration-200 ${
           isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        {label}
-      </span>
+        <span className="text-xs font-medium">{label}</span>
+        {badge && (
+          <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 bg-gradient-to-r from-amber-400 to-yellow-500 text-black rounded shadow-sm">
+            {badge}
+          </span>
+        )}
+      </div>
     </button>
   );
 };

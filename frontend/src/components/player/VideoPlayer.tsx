@@ -20,6 +20,7 @@ interface VideoPlayerProps {
   item: MediaItem;
   season?: number;
   episode?: number;
+  profileId?: string;
   onExit: () => void;
   onNextEpisode?: () => void;
 }
@@ -28,6 +29,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   item,
   season,
   episode,
+  profileId,
   onExit,
   onNextEpisode
 }) => {
@@ -87,6 +89,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const saveCurrentProgress = useCallback((posSec: number, durSec: number) => {
     if (durSec > 0) {
       api.saveProgress(item.id, {
+        profileId: profileId || 'bolt',
         mediaType: item.type,
         season,
         episode,
@@ -96,7 +99,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         poster: item.poster || item.backdrop
       }).catch((e) => console.warn('Failed to save progress:', e));
     }
-  }, [item, season, episode]);
+  }, [item, season, episode, profileId]);
+
+  // Record initial watch progress entry so Continue Watching always has valid title & poster
+  useEffect(() => {
+    if (item?.id) {
+      api.saveProgress(item.id, {
+        profileId: profileId || 'bolt',
+        mediaType: item.type,
+        season,
+        episode,
+        positionMs: 15000,
+        durationMs: 7200000,
+        title: item.title,
+        poster: item.poster || item.backdrop
+      }).catch(() => {});
+    }
+  }, [item, season, episode, profileId]);
 
   // Clean exit: stops all media and audio
   const handleExit = useCallback(() => {

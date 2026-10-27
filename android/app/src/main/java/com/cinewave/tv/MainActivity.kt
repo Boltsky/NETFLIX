@@ -110,12 +110,30 @@ class MainActivity : AppCompatActivity() {
         val connectTimeoutMs = 1500
 
         // Try host backend IPs (10.0.2.2 is default Android emulator gateway)
-        val candidateTargets = listOf(
+        val candidateTargets = mutableListOf(
             "http://10.0.2.2:8080$pathAndQuery",
             "http://192.168.88.129:8080$pathAndQuery",
             "http://192.168.56.1:8080$pathAndQuery",
             "http://172.25.208.1:8080$pathAndQuery"
         )
+
+        // Direct upstream failover targets for standalone APK execution
+        val upstreamPath = when {
+            pathAndQuery.startsWith("/api/v1/catalog/search") -> pathAndQuery.replace("/api/v1/catalog/search", "/api/search")
+            pathAndQuery.startsWith("/api/catalog/search") -> pathAndQuery.replace("/api/catalog/search", "/api/search")
+            pathAndQuery.startsWith("/api/v1/catalog/home") -> pathAndQuery.replace("/api/v1/catalog/home", "/api/home")
+            pathAndQuery.startsWith("/api/catalog/home") -> pathAndQuery.replace("/api/catalog/home", "/api/home")
+            pathAndQuery.startsWith("/api/v1/titles/") -> pathAndQuery.replace("/api/v1/titles/", "/api/titles/")
+            pathAndQuery.startsWith("/api/titles/") -> pathAndQuery
+            pathAndQuery.startsWith("/api/v1/playback/resolve") -> pathAndQuery.replace("/api/v1/playback/resolve", "/api/stream").replace("contentId=", "id=")
+            pathAndQuery.startsWith("/api/playback/resolve") -> pathAndQuery.replace("/api/playback/resolve", "/api/stream").replace("contentId=", "id=")
+            else -> null
+        }
+        if (upstreamPath != null) {
+            candidateTargets.add("https://api.framextv.tech$upstreamPath")
+            candidateTargets.add("https://api.framextv.cc$upstreamPath")
+            candidateTargets.add("https://api.framextv.pro$upstreamPath")
+        }
 
         for (targetUrl in candidateTargets) {
             try {

@@ -123,3 +123,13 @@ export interface PlaybackProgress {
   poster?: string;
   updatedAt: string;
 }
+
+export interface NetflixProfile {
+  id: string;
+  name: string;
+  avatarBg: string;
+  isKids?: boolean;
+  isVip?: boolean;
+  isDefault?: boolean;
+  createdAt?: string;
+}

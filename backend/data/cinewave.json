@@ -1,85 +1,25 @@
 {
   "profiles": [
     {
-      "id": "default-profile",
-      "name": "Primary Viewer",
+      "id": "bolt",
+      "name": "BOLT",
       "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&q=80",
+      "isVip": true,
+      "isDefault": true,
       "createdAt": "2026-10-27T06:25:39.973Z"
     }
   ],
   "watchlist": [],
   "progress": [
     {
-      "profileId": "default-profile",
-      "contentId": "1225607",
+      "profileId": "bolt",
+      "contentId": "550",
       "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T10:17:52.209Z"
-    },
-    {
-      "profileId": "default-profile",
-      "contentId": "60574",
-      "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T10:18:07.702Z"
-    },
-    {
-      "profileId": "default-profile",
-      "contentId": "1396",
-      "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T09:15:33.920Z"
-    },
-    {
-      "profileId": "default-profile",
-      "contentId": "969681",
-      "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T09:09:25.743Z"
-    },
-    {
-      "profileId": "default-profile",
-      "contentId": "1416",
-      "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T09:07:22.564Z"
-    },
-    {
-      "profileId": "default-profile",
-      "contentId": "1283515",
-      "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T09:08:03.656Z"
-    },
-    {
-      "profileId": "default-profile",
-      "contentId": "1384216",
-      "mediaType": "movie",
-      "positionMs": 0,
-      "durationMs": 0,
-      "title": "Untitled",
-      "updatedAt": "2026-10-27T10:40:34.846Z"
-    },
-    {
-      "profileId": "test-profile",
-      "contentId": "prog-101",
-      "mediaType": "movie",
-      "positionMs": 65000,
-      "durationMs": 7200000,
-      "title": "Progress Test Title",
-      "updatedAt": "2026-10-27T13:33:29.689Z"
+      "positionMs": 144039,
+      "durationMs": 8348349,
+      "title": "Fight Club",
+      "poster": "https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg",
+      "updatedAt": "2026-10-27T17:27:20.401Z"
     }
   ],
   "settings": {
