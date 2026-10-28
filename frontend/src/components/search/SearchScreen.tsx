@@ -245,22 +245,24 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
   }, [query, profileId, onSelectCardFocus, onSelectTitle]);
 
   return (
-    <div className="pt-24 pb-20 tv-safe-container min-h-screen text-white select-none">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: TV Keyboard & Search Input */}
-        <div className="lg:col-span-5 space-y-4">
+    <div className="pt-20 pb-16 min-h-screen text-white select-none px-6">
+      <div className="flex flex-row items-start gap-8 w-full">
+        {/* Left Column: TV Keyboard & Search Input Aside */}
+        <div className="w-[360px] flex-shrink-0 space-y-4">
           {/* Search Input Box */}
           <div className="flex items-center space-x-3 bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-3 shadow-inner">
             <SearchIcon className="w-5 h-5 text-[#E50914] shrink-0" />
-            <input
-              type="text"
-              readOnly
-              value={query}
-              placeholder="Search movies, series, genres..."
-              className="w-full bg-transparent text-white font-medium placeholder-zinc-500 focus:outline-none text-base"
-            />
+            <div className="w-full bg-transparent text-white font-medium text-sm flex items-center overflow-hidden h-5 select-none">
+              {query ? (
+                <span className="truncate">{query}</span>
+              ) : (
+                <span className="text-zinc-500 truncate">Search movies, series, genres...</span>
+              )}
+              <span className="w-0.5 h-4 bg-[#E50914] ml-0.5 shrink-0 animate-pulse" />
+            </div>
             {query && (
               <button
+                tabIndex={-1}
                 onClick={() => onQueryChange('')}
                 className="text-zinc-400 hover:text-white p-1"
                 title="Clear Search"
@@ -279,6 +281,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
                   Recent Searches
                 </span>
                 <button
+                  tabIndex={-1}
                   onClick={handleClearHistory}
                   className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
                 >
@@ -298,9 +301,9 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           )}
 
           {/* Android TV QWERTY Keyboard */}
-          <div className="bg-[#141414] border border-zinc-800 rounded-2xl p-3 shadow-2xl space-y-1.5">
+          <div className="bg-[#141414] border border-zinc-800 rounded-2xl p-2.5 shadow-2xl space-y-1.5">
             {QWERTY_ROWS.map((row, rowIndex) => (
-              <div key={`qwerty-row-${rowIndex}`} className="flex space-x-1.5 justify-center">
+              <div key={`qwerty-row-${rowIndex}`} className="flex space-x-1 justify-center">
                 {row.map((item) => (
                   <KeyButton
                     key={`kb-${item.key}`}
@@ -315,8 +318,8 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           </div>
         </div>
 
-        {/* Right Column: Search Results / Recent Searches / Recommendations */}
-        <div className="lg:col-span-7 space-y-5">
+        {/* Right Column: Search Results / Recent Searches / Recommendations (Always visible aside) */}
+        <div className="flex-1 min-w-0 space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <h3 className="text-base font-bold text-zinc-200">
               {query ? `Results for "${query}"` : 'Browse Catalog & Recent Searches'}
@@ -332,8 +335,8 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
               <p className="text-xs font-mono text-zinc-400">Searching catalog...</p>
             </div>
           ) : results.length > 0 ? (
-            /* Active Results Grid */
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[75vh] overflow-y-auto no-scrollbar p-1">
+            /* Active Results Grid: Side-by-side multi-column poster cards */
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[calc(100vh-10rem)] overflow-y-auto no-scrollbar p-1">
               {results.map((item, idx) => (
                 <SearchResultCard
                   key={`search-card-${item.id}`}
@@ -435,16 +438,17 @@ const KeyButton: React.FC<{
   return (
     <button
       ref={ref}
+      tabIndex={-1}
       onClick={onPress}
-      className={`h-10 rounded font-bold text-xs flex items-center justify-center gap-1 transition-all tv-focusable ${
-        spanClass || 'flex-1 min-w-[28px] max-w-[44px]'
+      className={`h-9 rounded font-bold text-xs flex items-center justify-center gap-1 transition-all tv-focusable ${
+        spanClass || 'flex-1 min-w-[26px] max-w-[34px]'
       } ${
         isSearch
           ? 'bg-[#E50914] text-white hover:bg-red-700 font-black border border-red-600 shadow-md'
           : isDirection
-          ? 'bg-zinc-800/90 text-zinc-200 border border-zinc-700/80 hover:bg-zinc-700'
+          ? 'bg-zinc-800/90 text-zinc-200 border border-zinc-700/80 hover:bg-zinc-700 text-[10px]'
           : isSpecial
-          ? 'bg-zinc-800 text-zinc-200 border border-zinc-700/80 px-2'
+          ? 'bg-zinc-800 text-zinc-200 border border-zinc-700/80 px-1 text-[11px]'
           : 'bg-zinc-900 text-white border border-zinc-800'
       } ${isFocused ? 'tv-button-focused ring-2 ring-white scale-105 z-10' : 'hover:bg-zinc-700'}`}
     >

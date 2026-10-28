@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import { CatalogRail, MediaItem } from '../../types';
 import { MediaCard } from './MediaCard';
 import { Top10Card } from './Top10Card';
@@ -8,14 +8,27 @@ interface ContentRailProps {
   isTop10?: boolean;
   onSelectItem: (item: MediaItem) => void;
   progressMap?: Record<string, number>;
+  onNearEnd?: (railId: string) => void;
 }
 
 export const ContentRail: React.FC<ContentRailProps> = ({
   rail,
   isTop10 = false,
   onSelectItem,
-  progressMap = {}
+  progressMap = {},
+  onNearEnd
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Trigger continuous loading on horizontal scroll near the right end
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !onNearEnd) return;
+    if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 600) {
+      onNearEnd(rail.id);
+    }
+  }, [onNearEnd, rail.id]);
+
   if (!rail.items || rail.items.length === 0) return null;
 
   return (
@@ -33,7 +46,11 @@ export const ContentRail: React.FC<ContentRailProps> = ({
       </div>
 
       {/* Horizontal Carousel */}
-      <div className="flex items-center space-x-3 md:space-x-4 overflow-x-auto overflow-y-visible py-4 pl-24 pr-8 no-scrollbar scroll-smooth">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex items-center space-x-3 md:space-x-4 overflow-x-auto overflow-y-visible py-4 pl-24 pr-8 no-scrollbar scroll-smooth"
+      >
         {rail.items.map((item, index) => {
           if (isTop10 && index < 10) {
             return (
@@ -47,6 +64,9 @@ export const ContentRail: React.FC<ContentRailProps> = ({
           }
 
           const progress = progressMap[item.id];
+          // Pre-fetch 8 cards early for seamless continuous horizontal scrolling
+          const isNearEnd = index >= Math.max(0, rail.items.length - 8);
+
           return (
             <MediaCard
               key={`${rail.id}-${item.id}-${index}`}
@@ -55,9 +75,22 @@ export const ContentRail: React.FC<ContentRailProps> = ({
               index={index}
               progressPercent={progress}
               onSelect={onSelectItem}
+              onNearEnd={isNearEnd && onNearEnd ? () => onNearEnd(rail.id) : undefined}
             />
           );
         })}
+
+        {/* End of list loading/action card */}
+        {onNearEnd && !isTop10 && rail.items.length >= 8 && (
+          <div
+            onClick={() => onNearEnd(rail.id)}
+            className="flex-shrink-0 w-36 md:w-44 aspect-[2/3] rounded-[4px] border border-dashed border-zinc-700/60 bg-zinc-900/40 flex flex-col items-center justify-center p-4 text-center cursor-pointer hover:border-[#E50914]/60 transition-colors"
+          >
+            <div className="w-6 h-6 rounded-full border-2 border-[#E50914] border-t-transparent animate-spin mb-2" />
+            <span className="text-xs font-bold text-zinc-300">Loading More</span>
+            <span className="text-[10px] text-zinc-500 font-mono mt-1">Scroll to browse</span>
+          </div>
+        )}
       </div>
     </div>
   );

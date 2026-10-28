@@ -24,9 +24,10 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [focusedKey, setFocusedKeyState] = useState<string | null>(null);
   const nodesRef = useRef<Map<string, FocusNode>>(new Map());
   const focusedKeyRef = useRef<string | null>(null);
+  const lastContentKeyRef = useRef<string>('hero-play');
+  const lastKeyboardKeyRef = useRef<string>('kb-Q');
 
   const setFocusedKey = useCallback((key: string) => {
-    console.log('[Focus Changed] =>', key);
     const prevKey = focusedKeyRef.current;
     if (prevKey && prevKey !== key) {
       nodesRef.current.get(prevKey)?.onBlur?.();
@@ -34,15 +35,29 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     focusedKeyRef.current = key;
     setFocusedKeyState(key);
 
+    if (!key.startsWith('sidebar-')) {
+      lastContentKeyRef.current = key;
+    }
+    if (key.startsWith('kb-')) {
+      lastKeyboardKeyRef.current = key;
+    }
+
     const node = nodesRef.current.get(key);
     if (node?.ref) {
       node.onFocus?.();
-      // Ensure smooth visibility
-      node.ref.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest'
-      });
+      try {
+        if (key.startsWith('hero-')) {
+          window.scrollTo({ top: 0, behavior: 'auto' });
+        } else if (key.startsWith('sidebar-')) {
+          // Keep sidebar focus clean without altering window scroll
+        } else {
+          node.ref.scrollIntoView({
+            behavior: 'auto',
+            block: 'nearest',
+            inline: 'center'
+          });
+        }
+      } catch {}
     }
   }, []);
 
@@ -61,7 +76,7 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // Spatial direction calculation
+  // Spatial direction calculation with TV-optimized shortcuts
   const moveFocus = useCallback((direction: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => {
     const currentKey = focusedKeyRef.current;
     if (!currentKey) {
@@ -73,6 +88,96 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentNode = nodesRef.current.get(currentKey);
     if (!currentNode?.ref) return;
 
+    const currentIsSidebar = currentKey.startsWith('sidebar-');
+
+    // 1. Sidebar to Content (RIGHT)
+    if (currentIsSidebar && direction === 'RIGHT') {
+      const target = lastContentKeyRef.current;
+      if (target && nodesRef.current.has(target) && !target.startsWith('sidebar-')) {
+        setFocusedKey(target);
+        return;
+      }
+      if (nodesRef.current.has('hero-play')) {
+        setFocusedKey('hero-play');
+        return;
+      }
+      if (nodesRef.current.has('kb-Q')) {
+        setFocusedKey(lastKeyboardKeyRef.current || 'kb-Q');
+        return;
+      }
+    }
+
+    // 2. Content to Sidebar (LEFT) from leftmost elements
+    if (!currentIsSidebar && direction === 'LEFT') {
+      const isHeroPlay = currentKey === 'hero-play';
+      const isLeftKeyOnKeyboard = ['kb-1', 'kb-Q', 'kb-A', 'kb-Z', 'kb-SPACE', 'kb-ARROW_LEFT'].includes(currentKey);
+
+      let hasSiblingToLeft = false;
+      if (currentNode.groupId && !isHeroPlay && !isLeftKeyOnKeyboard) {
+        const currentRect = currentNode.ref.getBoundingClientRect();
+        for (const [k, n] of nodesRef.current.entries()) {
+          if (k !== currentKey && n.groupId === currentNode.groupId && n.ref) {
+            const r = n.ref.getBoundingClientRect();
+            if (r.left < currentRect.left - 6) {
+              hasSiblingToLeft = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (isHeroPlay || (!hasSiblingToLeft && !currentKey.startsWith('search-card-') && !currentKey.startsWith('hist-card-')) || isLeftKeyOnKeyboard) {
+        if (isLeftKeyOnKeyboard && nodesRef.current.has('sidebar-nav-search')) {
+          setFocusedKey('sidebar-nav-search');
+          return;
+        }
+        if (nodesRef.current.has('sidebar-nav-home')) {
+          setFocusedKey('sidebar-nav-home');
+          return;
+        }
+        if (nodesRef.current.has('sidebar-nav-search')) {
+          setFocusedKey('sidebar-nav-search');
+          return;
+        }
+      }
+    }
+
+    // 3. Search Screen: Keyboard to Results (RIGHT)
+    if (currentKey.startsWith('kb-') && direction === 'RIGHT') {
+      const isRightKey = ['kb-0', 'kb-P', 'kb-L', 'kb-M', 'kb-SEARCH', 'kb-ARROW_RIGHT'].includes(currentKey);
+      if (isRightKey) {
+        // Jump to first available result or history card on the right
+        for (const [k] of nodesRef.current.entries()) {
+          if (k.startsWith('search-card-') || k.startsWith('hist-card-') || k.startsWith('search-rec-')) {
+            setFocusedKey(k);
+            return;
+          }
+        }
+      }
+    }
+
+    // 4. Search Screen: Results to Keyboard (LEFT)
+    if ((currentKey.startsWith('search-card-') || currentKey.startsWith('hist-card-') || currentKey.startsWith('search-rec-')) && direction === 'LEFT') {
+      // Find if there is a card to the left with dx < -8 in the same group
+      const currentRect = currentNode.ref.getBoundingClientRect();
+      let hasCardToLeft = false;
+      nodesRef.current.forEach((node, key) => {
+        if (key === currentKey || !node.ref) return;
+        if (key.startsWith('search-card-') || key.startsWith('hist-card-') || key.startsWith('search-rec-')) {
+          const r = node.ref.getBoundingClientRect();
+          if (r.right < currentRect.left && Math.abs((r.top + r.height / 2) - (currentRect.top + currentRect.height / 2)) < 80) {
+            hasCardToLeft = true;
+          }
+        }
+      });
+      if (!hasCardToLeft) {
+        // Return to keyboard
+        setFocusedKey(lastKeyboardKeyRef.current || 'kb-SEARCH');
+        return;
+      }
+    }
+
+    // 5. General Spatial Calculation
     const currentRect = currentNode.ref.getBoundingClientRect();
     const currentCenter = {
       x: currentRect.left + currentRect.width / 2,
@@ -96,8 +201,7 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const dx = targetCenter.x - currentCenter.x;
       const dy = targetCenter.y - currentCenter.y;
 
-      const currentIsSidebar = currentNode.groupId === 'netflix-sidebar';
-      const targetIsSidebar = targetNode.groupId === 'netflix-sidebar';
+      const targetIsSidebar = targetKey.startsWith('sidebar-');
 
       // UP and DOWN must NEVER cross between the sidebar and content
       if ((direction === 'UP' || direction === 'DOWN') && currentIsSidebar !== targetIsSidebar) {
@@ -110,28 +214,28 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       switch (direction) {
         case 'UP':
-          if (dy < -8) { // Target is above
+          if (dy < -6) {
             isCandidate = true;
             primaryDiff = Math.abs(dy);
             secondaryDiff = Math.abs(dx);
           }
           break;
         case 'DOWN':
-          if (dy > 8) { // Target is below
+          if (dy > 6) {
             isCandidate = true;
             primaryDiff = Math.abs(dy);
             secondaryDiff = Math.abs(dx);
           }
           break;
         case 'LEFT':
-          if (dx < -8) { // Target is to the left
+          if (dx < -6) {
             isCandidate = true;
             primaryDiff = Math.abs(dx);
             secondaryDiff = Math.abs(dy);
           }
           break;
         case 'RIGHT':
-          if (dx > 8) { // Target is to the right
+          if (dx > 6) {
             isCandidate = true;
             primaryDiff = Math.abs(dx);
             secondaryDiff = Math.abs(dy);
@@ -140,10 +244,9 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (isCandidate) {
-        // Favor targets in the same group or straight in line
-        const sameGroupBonus = currentNode.groupId && currentNode.groupId === targetNode.groupId ? 0.6 : 1.0;
-        // Weighted distance penalizes lateral offset
-        const distance = (primaryDiff + secondaryDiff * 2.2) * sameGroupBonus;
+        // Favor elements in the same rail/group
+        const sameGroupBonus = currentNode.groupId && currentNode.groupId === targetNode.groupId ? 0.45 : 1.0;
+        const distance = (primaryDiff + secondaryDiff * 1.8) * sameGroupBonus;
         if (distance < minDistance) {
           minDistance = distance;
           bestTargetKey = targetKey;
@@ -156,30 +259,88 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [setFocusedKey]);
 
-  // Global Remote Control Key Listener
+  // Global Remote Control Key Handler
+  const handleKeyAction = useCallback((key: string) => {
+    switch (key) {
+      case 'ArrowUp':
+      case 'Up':
+        moveFocus('UP');
+        break;
+      case 'ArrowDown':
+      case 'Down':
+        moveFocus('DOWN');
+        break;
+      case 'ArrowLeft':
+      case 'Left':
+        moveFocus('LEFT');
+        break;
+      case 'ArrowRight':
+      case 'Right':
+        moveFocus('RIGHT');
+        break;
+      case 'Enter':
+      case 'Select':
+      case 'Ok':
+        if (focusedKeyRef.current) {
+          const node = nodesRef.current.get(focusedKeyRef.current);
+          if (node?.onEnter) {
+            node.onEnter();
+          }
+        }
+        break;
+      default:
+        break;
+    }
+  }, [moveFocus]);
+
+  // Direct Native Bridge for Android TV (Instant Key Execution)
   useEffect(() => {
+    (window as any).handleTvKeyEvent = (key: string) => {
+      const event = new KeyboardEvent('keydown', {
+        key: key,
+        code: key,
+        bubbles: true,
+        cancelable: true
+      });
+      window.dispatchEvent(event);
+    };
+    return () => {
+      delete (window as any).handleTvKeyEvent;
+    };
+  }, []);
+
+  // Global Keyboard Listener with D-pad debounce/throttle
+  useEffect(() => {
+    let lastKeyTime = 0;
     const handleKeyDown = (e: KeyboardEvent) => {
-      console.log('[Remote Key] =>', e.key, 'focusedKey =>', focusedKeyRef.current);
+      const now = performance.now();
+      const isArrow = e.key.startsWith('Arrow') || ['Up', 'Down', 'Left', 'Right'].includes(e.key);
+      if (isArrow && now - lastKeyTime < 45) {
+        e.preventDefault();
+        return;
+      }
+      lastKeyTime = now;
+
       switch (e.key) {
         case 'ArrowUp':
         case 'Up':
           e.preventDefault();
-          moveFocus('UP');
+          handleKeyAction('ArrowUp');
           break;
         case 'ArrowDown':
         case 'Down':
           e.preventDefault();
-          moveFocus('DOWN');
+          handleKeyAction('ArrowDown');
           break;
         case 'ArrowLeft':
         case 'Left':
           e.preventDefault();
-          moveFocus('LEFT');
+          handleKeyAction('ArrowLeft');
           break;
         case 'ArrowRight':
         case 'Right':
           e.preventDefault();
-          moveFocus('RIGHT');
+          handleKeyAction('ArrowRight');
           break;
         case 'Enter':
         case 'Select':
@@ -199,7 +360,7 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveFocus]);
+  }, [handleKeyAction]);
 
   return (
     <FocusContext.Provider value={{ focusedKey, setFocusedKey, registerNode, unregisterNode, moveFocus }}>

@@ -137,6 +137,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onExit();
   }, [saveCurrentProgress, onExit]);
 
+  // Ensure media resources are fully released on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+          videoRef.current.src = '';
+          videoRef.current.load();
+        } catch {}
+      }
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        } catch {}
+      }
+      if (iframeRef.current) {
+        try {
+          iframeRef.current.contentWindow?.postMessage({ action: 'pause' }, '*');
+          iframeRef.current.src = 'about:blank';
+        } catch {}
+      }
+    };
+  }, []);
+
   // Resolve playback source
   useEffect(() => {
     let isMounted = true;
@@ -193,7 +218,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
-          backBufferLength: 90
+          backBufferLength: 15,
+          maxBufferLength: 25,
+          maxBufferSize: 30 * 1024 * 1024,
+          maxMaxBufferLength: 45
         });
         hlsRef.current = hls;
 

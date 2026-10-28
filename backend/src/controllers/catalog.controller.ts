@@ -34,6 +34,29 @@ export class CatalogController {
     }
   }
 
+  static async getCategory(req: Request, res: Response) {
+    try {
+      const category = req.query.category
+        ? String(req.query.category)
+        : req.query.c
+        ? String(req.query.c)
+        : req.query.genreId
+        ? ''
+        : 'popular';
+      const genreId = req.query.genreId ? Number(req.query.genreId) : undefined;
+      const type = (req.query.type as any) || undefined;
+      const page = req.query.page ? Number(req.query.page) : 1;
+
+      const data = await provider.getCategory({ category, genreId, type, page });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Failed to retrieve category items'
+      });
+    }
+  }
+
   static async search(req: Request, res: Response) {
     try {
       const q = String(req.query.q || '');

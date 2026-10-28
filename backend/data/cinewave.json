@@ -12,6 +12,15 @@
   "watchlist": [],
   "progress": [
     {
+      "profileId": "test-profile",
+      "contentId": "prog-101",
+      "mediaType": "movie",
+      "positionMs": 65000,
+      "durationMs": 7200000,
+      "title": "Progress Test Title",
+      "updatedAt": "2026-10-28T13:31:13.496Z"
+    },
+    {
       "profileId": "bolt",
       "contentId": "550",
       "mediaType": "movie",

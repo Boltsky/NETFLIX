@@ -8,6 +8,7 @@ router.get('/health', CatalogController.getHealth);
 
 // Catalog
 router.get('/catalog/home', CatalogController.getHome);
+router.get('/catalog/category', CatalogController.getCategory);
 router.get('/catalog/search', CatalogController.search);
 
 // Titles & Seasons

@@ -7,9 +7,11 @@ import {
   Episode,
   PlaybackResolution,
   StreamSource,
-  SubtitleTrack
+  SubtitleTrack,
+  CategoryQueryParams,
+  CategoryResponse
 } from '../types/index.js';
-import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS } from './mock.data.js';
+import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data.js';
 
 export class FrameXTVAdapter implements IContentProvider {
   public name = 'FrameXTV';
@@ -132,6 +134,96 @@ export class FrameXTVAdapter implements IContentProvider {
       console.warn('[FrameXTV] getHomeCatalog failed, falling back to cached mock catalog:', err.message);
       return MOCK_HOME_CATALOG;
     }
+  }
+
+  async getCategory(options: CategoryQueryParams): Promise<CategoryResponse> {
+    const page = Math.max(1, Number(options.page || 1));
+    const category = (options.category || 'popular').toLowerCase();
+    const type = options.type || (category === 'tv' || category === 'popular_tv' ? 'tv' : 'movie');
+
+    const GENRE_MAP: Record<string, number> = {
+      action: 28,
+      adventure: 12,
+      animation: 16,
+      comedy: 35,
+      crime: 80,
+      documentary: 99,
+      drama: 18,
+      family: 10751,
+      fantasy: 14,
+      history: 36,
+      horror: 27,
+      music: 10402,
+      mystery: 9648,
+      romance: 10749,
+      scifi: 878,
+      'sci-fi': 878,
+      thriller: 53,
+      war: 10752,
+      western: 37
+    };
+
+    let genreId = options.genreId;
+    if (!genreId && GENRE_MAP[category]) {
+      genreId = GENRE_MAP[category];
+    }
+
+    let upstreamPath: string;
+    if (genreId) {
+      upstreamPath = `/api/discover?genre=${genreId}&page=${page}`;
+    } else if (category === 'trending') {
+      upstreamPath = `/api/trending?page=${page}`;
+    } else if (category === 'popular_tv' || category === 'tv' || type === 'tv') {
+      upstreamPath = `/api/tv?page=${page}`;
+    } else if (category === 'popular' || category === 'popular_movies' || category === 'movies') {
+      upstreamPath = `/api/movies?page=${page}`;
+    } else {
+      upstreamPath = `/api/movies?page=${page}`;
+    }
+
+    try {
+      const res = await this.fetchWithFailover(upstreamPath);
+      const data: any = await res.json();
+
+      if (data && Array.isArray(data.results)) {
+        return {
+          success: true,
+          category,
+          genreId,
+          page: Number(data.page || page),
+          totalPages: Number(data.totalPages || 100),
+          totalResults: Number(data.totalResults || (data.results.length * 10)),
+          results: data.results.map((r: any) => this.mapMediaItem(r, type))
+        };
+      }
+    } catch (err: any) {
+      console.warn(`[FrameXTV] getCategory failed for ${category} (page ${page}):`, err.message);
+    }
+
+    // Fallback: paginate MOCK_ITEMS
+    const allMock = Object.values(MOCK_ITEMS);
+    let filtered = allMock;
+    if (category === 'tv' || category === 'popular_tv') {
+      filtered = allMock.filter((m) => m.type === 'tv');
+    } else if (genreId) {
+      const genreName = Object.keys(GENRE_MAP).find((k) => GENRE_MAP[k] === genreId) || '';
+      filtered = allMock.filter((m) => m.genres?.some((g) => g.toLowerCase().includes(genreName)));
+      if (filtered.length === 0) filtered = allMock;
+    }
+
+    const pageSize = 12;
+    const startIndex = ((page - 1) * pageSize) % Math.max(1, filtered.length);
+    const paged = filtered.slice(startIndex, startIndex + pageSize);
+
+    return {
+      success: true,
+      category,
+      genreId,
+      page,
+      totalPages: Math.ceil(filtered.length / pageSize) || 1,
+      totalResults: filtered.length,
+      results: paged
+    };
   }
 
   async search(query: string): Promise<MediaItem[]> {

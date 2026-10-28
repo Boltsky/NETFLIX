@@ -8,6 +8,7 @@ interface MediaCardProps {
   index: number;
   progressPercent?: number;
   onSelect: (item: MediaItem) => void;
+  onNearEnd?: () => void;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({
@@ -15,7 +16,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   railId,
   index,
   progressPercent,
-  onSelect
+  onSelect,
+  onNearEnd
 }) => {
   const [imageError, setImageError] = useState(false);
   const focusKey = `card-${railId}-${item.id}-${index}`;
@@ -26,16 +28,27 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     onEnter: () => onSelect(item)
   });
 
+  React.useEffect(() => {
+    if (isFocused && onNearEnd) {
+      onNearEnd();
+    }
+  }, [isFocused, onNearEnd]);
+
   const posterUrl = item.poster || item.backdrop;
 
   return (
     <div
       ref={ref}
       onClick={() => onSelect(item)}
-      className={`relative flex-shrink-0 w-40 md:w-48 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 cursor-pointer tv-focusable transition-all duration-200 ${
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowRight' && onNearEnd) {
+          onNearEnd();
+        }
+      }}
+      className={`relative flex-shrink-0 w-40 md:w-48 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 cursor-pointer tv-focusable transition-transform duration-150 will-change-transform ${
         isFocused
           ? 'scale-110 z-30 shadow-2xl border-2 border-white ring-2 ring-[#E50914]'
-          : 'hover:scale-104 border border-zinc-800/80'
+          : 'border border-zinc-800/80'
       }`}
     >
       {/* Poster Image */}

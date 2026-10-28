@@ -7,6 +7,7 @@ const router = (0, express_1.Router)();
 router.get('/health', catalog_controller_js_1.CatalogController.getHealth);
 // Catalog
 router.get('/catalog/home', catalog_controller_js_1.CatalogController.getHome);
+router.get('/catalog/category', catalog_controller_js_1.CatalogController.getCategory);
 router.get('/catalog/search', catalog_controller_js_1.CatalogController.search);
 // Titles & Seasons
 router.get('/titles/:id', catalog_controller_js_1.CatalogController.getTitleDetails);

@@ -18,6 +18,31 @@ export interface CatalogRail {
   items: MediaItem[];
 }
 
+export interface GenreCategory {
+  id: string;
+  label: string;
+  category?: string;
+  genreId?: number;
+  type?: 'movie' | 'tv' | 'anime';
+}
+
+export interface CategoryQueryParams {
+  category?: string;
+  genreId?: number;
+  type?: 'movie' | 'tv' | 'anime';
+  page?: number;
+}
+
+export interface CategoryResponse {
+  success: boolean;
+  category: string;
+  genreId?: number;
+  page: number;
+  totalPages: number;
+  totalResults: number;
+  results: MediaItem[];
+}
+
 export interface HomeCatalog {
   hero: MediaItem | null;
   rails: CatalogRail[];

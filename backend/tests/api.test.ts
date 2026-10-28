@@ -27,6 +27,23 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.results).toBeInstanceOf(Array);
   }, 10000);
 
+  it('GET /api/v1/catalog/category should return paginated category movies', async () => {
+    const res = await request(app).get('/api/v1/catalog/category?category=trending&page=1');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.page).toBe(1);
+    expect(res.body.results).toBeInstanceOf(Array);
+    expect(res.body.results.length).toBeGreaterThan(0);
+  }, 10000);
+
+  it('GET /api/v1/catalog/category should return genre movies by genreId', async () => {
+    const res = await request(app).get('/api/v1/catalog/category?genreId=28&page=1');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.results).toBeInstanceOf(Array);
+    expect(res.body.results.length).toBeGreaterThan(0);
+  }, 10000);
+
   it('GET /api/v1/titles/:id should return details', async () => {
     const res = await request(app).get('/api/v1/titles/550?type=movie');
     expect(res.status).toBe(200);

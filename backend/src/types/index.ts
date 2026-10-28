@@ -133,9 +133,27 @@ export interface PlaybackProgress {
   updatedAt: string;
 }
 
+export interface CategoryQueryParams {
+  category?: string;
+  genreId?: number;
+  type?: 'movie' | 'tv' | 'anime';
+  page?: number;
+}
+
+export interface CategoryResponse {
+  success: boolean;
+  category: string;
+  genreId?: number;
+  page: number;
+  totalPages: number;
+  totalResults: number;
+  results: MediaItem[];
+}
+
 export interface IContentProvider {
   name: string;
   getHomeCatalog(): Promise<HomeCatalog>;
+  getCategory(options: CategoryQueryParams): Promise<CategoryResponse>;
   search(query: string): Promise<MediaItem[]>;
   getTitleDetails(id: string, type: 'movie' | 'tv' | 'anime'): Promise<TitleDetails>;
   getSeasonEpisodes(id: string, seasonNumber: number): Promise<Episode[]>;

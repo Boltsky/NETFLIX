@@ -111,6 +111,94 @@ class FrameXTVAdapter {
             return mock_data_js_1.MOCK_HOME_CATALOG;
         }
     }
+    async getCategory(options) {
+        const page = Math.max(1, Number(options.page || 1));
+        const category = (options.category || 'popular').toLowerCase();
+        const type = options.type || (category === 'tv' || category === 'popular_tv' ? 'tv' : 'movie');
+        const GENRE_MAP = {
+            action: 28,
+            adventure: 12,
+            animation: 16,
+            comedy: 35,
+            crime: 80,
+            documentary: 99,
+            drama: 18,
+            family: 10751,
+            fantasy: 14,
+            history: 36,
+            horror: 27,
+            music: 10402,
+            mystery: 9648,
+            romance: 10749,
+            scifi: 878,
+            'sci-fi': 878,
+            thriller: 53,
+            war: 10752,
+            western: 37
+        };
+        let genreId = options.genreId;
+        if (!genreId && GENRE_MAP[category]) {
+            genreId = GENRE_MAP[category];
+        }
+        let upstreamPath;
+        if (genreId) {
+            upstreamPath = `/api/discover?genre=${genreId}&page=${page}`;
+        }
+        else if (category === 'trending') {
+            upstreamPath = `/api/trending?page=${page}`;
+        }
+        else if (category === 'popular_tv' || category === 'tv' || type === 'tv') {
+            upstreamPath = `/api/tv?page=${page}`;
+        }
+        else if (category === 'popular' || category === 'popular_movies' || category === 'movies') {
+            upstreamPath = `/api/movies?page=${page}`;
+        }
+        else {
+            upstreamPath = `/api/movies?page=${page}`;
+        }
+        try {
+            const res = await this.fetchWithFailover(upstreamPath);
+            const data = await res.json();
+            if (data && Array.isArray(data.results)) {
+                return {
+                    success: true,
+                    category,
+                    genreId,
+                    page: Number(data.page || page),
+                    totalPages: Number(data.totalPages || 100),
+                    totalResults: Number(data.totalResults || (data.results.length * 10)),
+                    results: data.results.map((r) => this.mapMediaItem(r, type))
+                };
+            }
+        }
+        catch (err) {
+            console.warn(`[FrameXTV] getCategory failed for ${category} (page ${page}):`, err.message);
+        }
+        // Fallback: paginate MOCK_ITEMS
+        const allMock = Object.values(mock_data_js_1.MOCK_ITEMS);
+        let filtered = allMock;
+        if (category === 'tv' || category === 'popular_tv') {
+            filtered = allMock.filter((m) => m.type === 'tv');
+        }
+        else if (genreId) {
+            const genreName = Object.keys(GENRE_MAP).find((k) => GENRE_MAP[k] === genreId) || '';
+            filtered = allMock.filter((m) => m.genres?.some((g) => g.toLowerCase().includes(genreName)));
+            if (filtered.length === 0)
+                filtered = allMock;
+        }
+        const pageSize = 12;
+        const startIndex = ((page - 1) * pageSize) % Math.max(1, filtered.length);
+        const paged = filtered.slice(startIndex, startIndex + pageSize);
+        return {
+            success: true,
+            category,
+            genreId,
+            page,
+            totalPages: Math.ceil(filtered.length / pageSize) || 1,
+            totalResults: filtered.length,
+            results: paged
+        };
+    }
     async search(query) {
         const q = query.trim();
         if (!q)

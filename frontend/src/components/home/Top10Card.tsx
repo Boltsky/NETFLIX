@@ -40,10 +40,10 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
 
       {/* Poster Card */}
       <div
-        className={`relative z-10 w-36 md:w-44 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-200 ${
+        className={`relative z-10 w-36 md:w-44 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 transition-transform duration-150 will-change-transform ${
           isFocused
             ? 'scale-110 border-white shadow-2xl ring-2 ring-[#E50914]'
-            : 'group-hover:scale-105'
+            : ''
         }`}
       >
         {posterUrl ? (

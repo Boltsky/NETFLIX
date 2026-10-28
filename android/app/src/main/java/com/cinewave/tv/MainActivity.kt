@@ -5,7 +5,10 @@ import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.ConsoleMessage
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -18,6 +21,7 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.GZIPInputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -67,6 +71,9 @@ class MainActivity : AppCompatActivity() {
         settings.useWideViewPort = true
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        settings.setSupportZoom(false)
+        settings.builtInZoomControls = false
+        settings.displayZoomControls = false
 
         android.webkit.CookieManager.getInstance().apply {
             setAcceptCookie(true)
@@ -74,6 +81,28 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                Log.w("NetflixTV", "WebView render process gone! Crashed: ${detail?.didCrash()}")
+                try {
+                    (view?.parent as? ViewGroup)?.removeView(view)
+                    view?.destroy()
+                } catch (e: Exception) {
+                    Log.e("NetflixTV", "Error cleaning up webview on render process gone", e)
+                }
+                recreate()
+                return true
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                errorCode: Int,
+                description: String?,
+                failingUrl: String?
+            ) {
+                super.onReceivedError(view, errorCode, description, failingUrl)
+                Log.w("NetflixTV", "WebView client error: $errorCode - $description for $failingUrl")
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
@@ -93,7 +122,15 @@ class MainActivity : AppCompatActivity() {
                 return super.shouldInterceptRequest(view, request)
             }
         }
-        webView.webChromeClient = WebChromeClient()
+
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                if (consoleMessage != null) {
+                    Log.d("NetflixWeb", "[${consoleMessage.messageLevel()}] ${consoleMessage.message()} -- line ${consoleMessage.lineNumber()}")
+                }
+                return true
+            }
+        }
 
         // Focus management
         webView.isFocusable = true
@@ -106,34 +143,94 @@ class MainActivity : AppCompatActivity() {
         val pathAndQuery = url.path + if (url.query != null) "?${url.query}" else ""
 
         val isPlayback = url.path?.contains("/playback") == true
-        val readTimeoutMs = if (isPlayback) 18000 else 6000
-        val connectTimeoutMs = 1500
+        val readTimeoutMs = if (isPlayback) 15000 else 5000
+        val connectTimeoutMs = 2500
 
-        // Try host backend IPs (10.0.2.2 is default Android emulator gateway)
-        val candidateTargets = mutableListOf(
-            "http://10.0.2.2:8080$pathAndQuery",
-            "http://192.168.88.129:8080$pathAndQuery",
-            "http://192.168.56.1:8080$pathAndQuery",
-            "http://172.25.208.1:8080$pathAndQuery"
-        )
+        // For local storage operations (watchlist / progress) when standalone, return immediate 200 OK
+        if (pathAndQuery.contains("/users/me/") || pathAndQuery.contains("/settings")) {
+            val emptyJson = "{\"success\":true,\"synced\":true}".toByteArray(Charsets.UTF_8)
+            val headers = mutableMapOf<String, String>()
+            headers["Access-Control-Allow-Origin"] = "*"
+            headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            headers["Access-Control-Allow-Headers"] = "*"
+            return WebResourceResponse(
+                "application/json",
+                "UTF-8",
+                200,
+                "OK",
+                headers,
+                ByteArrayInputStream(emptyJson)
+            )
+        }
 
         // Direct upstream failover targets for standalone APK execution
-        val upstreamPath = when {
+        val upstreamPath: String? = when {
+            pathAndQuery.startsWith("/api/v1/catalog/category") || pathAndQuery.startsWith("/api/catalog/category") -> {
+                val category = url.getQueryParameter("category")?.lowercase()
+                    ?: url.getQueryParameter("c")?.lowercase()
+                    ?: ""
+                val genreId = url.getQueryParameter("genreId")
+                    ?: url.getQueryParameter("genre")
+                val page = url.getQueryParameter("page") ?: "1"
+
+                when {
+                    genreId != null && genreId.isNotEmpty() -> "/api/discover?genre=$genreId&page=$page"
+                    category == "trending" -> "/api/trending?page=$page"
+                    category == "popular_tv" || category == "tv" -> "/api/tv?page=$page"
+                    category == "action" -> "/api/discover?genre=28&page=$page"
+                    category == "comedy" -> "/api/discover?genre=35&page=$page"
+                    category == "scifi" || category == "sci-fi" -> "/api/discover?genre=878&page=$page"
+                    category == "thriller" -> "/api/discover?genre=53&page=$page"
+                    category == "horror" -> "/api/discover?genre=27&page=$page"
+                    category == "drama" -> "/api/discover?genre=18&page=$page"
+                    category == "animation" -> "/api/discover?genre=16&page=$page"
+                    category == "romance" -> "/api/discover?genre=10749&page=$page"
+                    category == "crime" -> "/api/discover?genre=80&page=$page"
+                    category == "adventure" -> "/api/discover?genre=12&page=$page"
+                    category == "mystery" -> "/api/discover?genre=9648&page=$page"
+                    category == "documentary" -> "/api/discover?genre=99&page=$page"
+                    category == "family" -> "/api/discover?genre=10751&page=$page"
+                    category == "fantasy" -> "/api/discover?genre=14&page=$page"
+                    category == "history" -> "/api/discover?genre=36&page=$page"
+                    category == "war" -> "/api/discover?genre=10752&page=$page"
+                    category == "popular" || category == "popular_movies" || category == "movies" -> "/api/movies?page=$page"
+                    else -> "/api/movies?page=$page"
+                }
+            }
             pathAndQuery.startsWith("/api/v1/catalog/search") -> pathAndQuery.replace("/api/v1/catalog/search", "/api/search")
             pathAndQuery.startsWith("/api/catalog/search") -> pathAndQuery.replace("/api/catalog/search", "/api/search")
             pathAndQuery.startsWith("/api/v1/catalog/home") -> pathAndQuery.replace("/api/v1/catalog/home", "/api/home")
             pathAndQuery.startsWith("/api/catalog/home") -> pathAndQuery.replace("/api/catalog/home", "/api/home")
-            pathAndQuery.startsWith("/api/v1/titles/") -> pathAndQuery.replace("/api/v1/titles/", "/api/titles/")
-            pathAndQuery.startsWith("/api/titles/") -> pathAndQuery
+            // Episode listing: /api/v1/titles/{id}/episodes?season={s} -> /api/season?id={id}&season={s}
+            pathAndQuery.contains("/episodes") -> {
+                val idMatch = Regex(".*/titles/([^/?]+)/episodes.*").find(pathAndQuery)
+                val id = idMatch?.groupValues?.get(1) ?: ""
+                val season = url.getQueryParameter("season") ?: "1"
+                "/api/season?id=$id&season=$season"
+            }
+            // Title details: /api/v1/titles/{id}?type={type} -> /api/details?id={id}&type={type}
+            pathAndQuery.matches(Regex(".*/titles/([^/?]+).*")) -> {
+                val idMatch = Regex(".*/titles/([^/?]+).*").find(pathAndQuery)
+                val id = idMatch?.groupValues?.get(1) ?: ""
+                val type = url.getQueryParameter("type") ?: "movie"
+                "/api/details?id=$id&type=$type"
+            }
             pathAndQuery.startsWith("/api/v1/playback/resolve") -> pathAndQuery.replace("/api/v1/playback/resolve", "/api/stream").replace("contentId=", "id=")
             pathAndQuery.startsWith("/api/playback/resolve") -> pathAndQuery.replace("/api/playback/resolve", "/api/stream").replace("contentId=", "id=")
             else -> null
         }
+
+        val candidateTargets = mutableListOf<String>()
+        // 1. Prioritize reliable live upstream endpoints to ensure zero latency on physical TV
         if (upstreamPath != null) {
             candidateTargets.add("https://api.framextv.tech$upstreamPath")
             candidateTargets.add("https://api.framextv.cc$upstreamPath")
             candidateTargets.add("https://api.framextv.pro$upstreamPath")
+            candidateTargets.add("https://api.framextv.xyz$upstreamPath")
         }
+
+        // 2. Emulator fallback gateway
+        candidateTargets.add("http://10.0.2.2:8080$pathAndQuery")
 
         for (targetUrl in candidateTargets) {
             try {
@@ -142,33 +239,44 @@ class MainActivity : AppCompatActivity() {
                 conn.connectTimeout = connectTimeoutMs
                 conn.readTimeout = readTimeoutMs
 
-                // Forward request headers
+                // Forward request headers except Host and Accept-Encoding so HttpURLConnection manages decompression
                 request.requestHeaders?.forEach { (k, v) ->
-                    if (!k.equals("Host", ignoreCase = true)) {
+                    if (!k.equals("Host", ignoreCase = true) && !k.equals("Accept-Encoding", ignoreCase = true)) {
                         conn.setRequestProperty(k, v)
                     }
                 }
 
                 val status = conn.responseCode
                 if (status in 200..499) {
-                    val stream: InputStream = if (status in 200..299) {
+                    val rawStream: InputStream = if (status in 200..299) {
                         conn.inputStream
                     } else {
                         conn.errorStream ?: ByteArrayInputStream(ByteArray(0))
                     }
 
+                    val encoding = conn.contentEncoding
+                    val decompressedStream: InputStream = if ("gzip".equals(encoding, ignoreCase = true)) {
+                        GZIPInputStream(rawStream)
+                    } else {
+                        rawStream
+                    }
+
+                    val rawContentType = conn.contentType ?: "application/json"
+                    val mimeType = rawContentType.split(";")[0].trim()
+
                     val headers = mutableMapOf<String, String>()
                     headers["Access-Control-Allow-Origin"] = "*"
                     headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
                     headers["Access-Control-Allow-Headers"] = "*"
+                    headers["Content-Type"] = "application/json; charset=utf-8"
 
                     return WebResourceResponse(
-                        conn.contentType ?: "application/json",
-                        conn.contentEncoding ?: "UTF-8",
+                        mimeType,
+                        "UTF-8",
                         status,
                         conn.responseMessage ?: "OK",
                         headers,
-                        stream
+                        decompressedStream
                     )
                 }
             } catch (e: Exception) {
@@ -179,46 +287,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            val keyString = when (event.keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP -> "ArrowUp"
-                KeyEvent.KEYCODE_DPAD_DOWN -> "ArrowDown"
-                KeyEvent.KEYCODE_DPAD_LEFT -> "ArrowLeft"
-                KeyEvent.KEYCODE_DPAD_RIGHT -> "ArrowRight"
-                KeyEvent.KEYCODE_DPAD_CENTER,
-                KeyEvent.KEYCODE_ENTER,
-                KeyEvent.KEYCODE_NUMPAD_ENTER,
-                KeyEvent.KEYCODE_BUTTON_A -> "Enter"
-                KeyEvent.KEYCODE_BACK,
-                KeyEvent.KEYCODE_ESCAPE,
-                KeyEvent.KEYCODE_BUTTON_B -> "Escape"
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "Enter"
-                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> "ArrowRight"
-                KeyEvent.KEYCODE_MEDIA_REWIND -> "ArrowLeft"
-                else -> null
-            }
+        val keyString = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> "ArrowUp"
+            KeyEvent.KEYCODE_DPAD_DOWN -> "ArrowDown"
+            KeyEvent.KEYCODE_DPAD_LEFT -> "ArrowLeft"
+            KeyEvent.KEYCODE_DPAD_RIGHT -> "ArrowRight"
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+            KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> "Enter"
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_ESCAPE,
+            KeyEvent.KEYCODE_BUTTON_B -> "Escape"
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> "ArrowRight"
+            KeyEvent.KEYCODE_MEDIA_REWIND -> "ArrowLeft"
+            else -> null
+        }
 
-            if (keyString != null) {
-                Log.d("NetflixKey", "Forwarding key $keyString to WebView")
-                val js = """
-                    (function() {
-                        try {
-                            window.dispatchEvent(new KeyboardEvent('keydown', {
-                                key: '$keyString',
-                                code: '$keyString',
-                                bubbles: true,
-                                cancelable: true
-                            }));
-                        } catch (e) {
-                            console.error('Key dispatch failed', e);
-                        }
-                    })();
-                """.trimIndent()
+        if (keyString != null) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val js = "try { if (window.handleTvKeyEvent) { window.handleTvKeyEvent('$keyString'); } else { window.dispatchEvent(new KeyboardEvent('keydown', { key: '$keyString', code: '$keyString', bubbles: true, cancelable: true })); } } catch(e){}"
                 webView.post {
-                    webView.evaluateJavascript(js, null)
+                    try {
+                        webView.evaluateJavascript(js, null)
+                    } catch (e: Exception) {
+                        Log.w("NetflixKey", "Key dispatch failed: ${e.message}")
+                    }
                 }
-                return true
             }
+            return true
         }
         return super.dispatchKeyEvent(event)
     }
@@ -236,7 +336,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        webView.destroy()
+        try {
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.stopLoading()
+            webView.loadUrl("about:blank")
+            webView.clearHistory()
+            webView.removeAllViews()
+            webView.destroy()
+        } catch (e: Exception) {
+            Log.e("NetflixTV", "Error destroying webview", e)
+        }
         super.onDestroy()
     }
 }

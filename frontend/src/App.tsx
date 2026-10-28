@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem } from './types';
 import { api } from './services/api';
 import { FocusProvider, useFocus } from './components/focus/FocusContext';
@@ -10,6 +10,7 @@ import { ContentDetails } from './components/details/ContentDetails';
 import { VideoPlayer } from './components/player/VideoPlayer';
 import { SearchScreen } from './components/search/SearchScreen';
 import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
+import { CategoriesScreen } from './components/categories/CategoriesScreen';
 
 const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
@@ -35,6 +36,8 @@ const ScreenFocusController: React.FC<{
         } else {
           setFocusedKey('kb-Q');
         }
+      } else if (screen === 'categories') {
+        setFocusedKey('cat-pill-cat-trending');
       }
     }, 60);
     return () => clearTimeout(timer);
@@ -144,6 +147,73 @@ export const App: React.FC = () => {
     api.getProgress(activeProfile.id).then(setProgressList).catch(() => {});
   };
 
+  // Continuous horizontal rail pagination
+  const [railPages, setRailPages] = useState<Record<string, number>>({});
+  const railLoadingRef = useRef<Record<string, boolean>>({});
+
+  const handleRailNearEnd = useCallback(async (railId: string) => {
+    if (railLoadingRef.current[railId]) return;
+
+    const currentPage = railPages[railId] || 1;
+    if (currentPage >= 25) return; // Cap at 25 pages (~500 items per rail) for deep catalog with TV memory safety
+
+    railLoadingRef.current[railId] = true;
+    const nextPage = currentPage + 1;
+
+    const RAIL_CONFIG_MAP: Record<string, { category?: string; genreId?: number; type?: 'movie' | 'tv' | 'anime' }> = {
+      'rail-trending_movies': { category: 'trending', type: 'movie' },
+      'rail-popular_movies': { category: 'popular', type: 'movie' },
+      'rail-popular_tv': { category: 'tv', type: 'tv' },
+      'rail-popular_anime': { category: 'anime', type: 'anime' },
+      'rail-new_releases': { category: 'new_releases', type: 'movie' },
+      'rail-action_movies': { genreId: 28, type: 'movie' },
+      'rail-scifi_movies': { genreId: 878, type: 'movie' },
+      'rail-thriller_movies': { genreId: 53, type: 'movie' },
+      'rail-comedy_movies': { genreId: 35, type: 'movie' },
+      'rail-drama_movies': { genreId: 18, type: 'movie' },
+      'rail-horror_movies': { genreId: 27, type: 'movie' },
+      'rail-animation_movies': { genreId: 16, type: 'movie' },
+      'rail-crime_movies': { genreId: 80, type: 'movie' },
+      'rail-trending_tv': { category: 'tv', type: 'tv' }
+    };
+
+    const config = RAIL_CONFIG_MAP[railId] || { category: railId.replace('rail-', ''), type: 'movie' };
+
+    try {
+      const res = await api.getCategoryMovies({
+        category: config.genreId ? undefined : config.category,
+        genreId: config.genreId,
+        type: config.type,
+        page: nextPage
+      });
+
+      if (res && Array.isArray(res.results) && res.results.length > 0) {
+        setCatalog((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            rails: prev.rails.map((r) => {
+              if (r.id === railId) {
+                const existingIds = new Set(r.items.map((i) => i.id));
+                const uniqueNew = res.results.filter((i) => !existingIds.has(i.id));
+                return {
+                  ...r,
+                  items: [...r.items, ...uniqueNew]
+                };
+              }
+              return r;
+            })
+          };
+        });
+        setRailPages((prev) => ({ ...prev, [railId]: nextPage }));
+      }
+    } catch (err) {
+      console.warn(`[App] Failed to load more items for rail ${railId}:`, err);
+    } finally {
+      railLoadingRef.current[railId] = false;
+    }
+  }, [railPages]);
+
   // Watchlist Toggle
   const handleToggleWatchlist = async (item: MediaItem) => {
     const isSaved = watchlist.some((w) => w.contentId === item.id);
@@ -176,6 +246,7 @@ export const App: React.FC = () => {
 
   // Filter rails for tab views
   const filteredRails = (catalog?.rails || []).filter((r) => {
+    if (r.id === 'rail-top-10' || r.category === 'top-10') return false;
     if (currentScreen === 'series') return r.type === 'tv' || r.type === 'anime';
     if (currentScreen === 'movies') return r.type === 'movie';
     if (currentScreen === 'popular') return r.category === 'trending' || r.category === 'popular';
@@ -208,7 +279,7 @@ export const App: React.FC = () => {
     });
 
   // Top 10 Rail items
-  const top10Items = catalog?.rails?.find((r) => r.category === 'trending' || r.category === 'popular')?.items.slice(0, 10) || [];
+  const top10Items = catalog?.rails?.find((r) => r.category === 'top-10' || r.category === 'trending' || r.category === 'popular')?.items.slice(0, 10) || [];
 
   // When profile is chosen
   const handleSelectProfile = (profile: NetflixProfile) => {
@@ -292,12 +363,16 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* SCREEN 5: Main TV Browsing (Home, Series, Movies, New & Popular, Categories) */}
+        {/* SCREEN 5: Categories & Genres Explorer */}
+        {currentScreen === 'categories' && (
+          <CategoriesScreen onSelectTitle={handleOpenDetails} />
+        )}
+
+        {/* SCREEN 6: Main TV Browsing (Home, Series, Movies, New & Popular) */}
         {(currentScreen === 'home' ||
           currentScreen === 'series' ||
           currentScreen === 'movies' ||
-          currentScreen === 'popular' ||
-          currentScreen === 'categories') && (
+          currentScreen === 'popular') && (
           <main className="pb-24">
             {loading ? (
               <div className="h-[75vh] flex flex-col items-center justify-center space-y-4">
@@ -353,6 +428,7 @@ export const App: React.FC = () => {
                       rail={rail}
                       onSelectItem={handleOpenDetails}
                       progressMap={progressMap}
+                      onNearEnd={handleRailNearEnd}
                     />
                   ))}
                 </div>
