@@ -45,7 +45,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           onNearEnd();
         }
       }}
-      className={`relative flex-shrink-0 w-40 md:w-48 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 cursor-pointer tv-focusable transition-transform duration-150 will-change-transform ${
+      className={`relative flex-shrink-0 w-32 md:w-36 lg:w-40 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 cursor-pointer tv-focusable transition-transform duration-150 will-change-transform scroll-mx-6 md:scroll-mx-8 ${
         isFocused
           ? 'scale-110 z-30 shadow-2xl border-2 border-white ring-2 ring-[#E50914]'
           : 'border border-zinc-800/80'

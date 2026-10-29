@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusable, useFocus } from '../focus/FocusContext';
 import { Plus, Edit2, Lock, Check, Trash2, X, Star, ShieldCheck } from 'lucide-react';
 import { NetflixProfile } from '../../types';
@@ -403,9 +403,23 @@ const EditProfileModal: React.FC<{
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const { setFocusedKey } = useFocus();
 
+  // Set initial focus to the name input node
   useEffect(() => {
-    setFocusedKey('edit-input-name');
+    setFocusedKey('edit-name-input');
   }, [setFocusedKey]);
+
+  // Back / Escape remote button handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Back' || e.key === 'GoBack') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -427,12 +441,32 @@ const EditProfileModal: React.FC<{
             <Edit2 className="w-6 h-6 text-[#E50914]" />
             <h2 className="text-2xl font-bold text-white">Edit Profile</h2>
           </div>
-          <button
-            onClick={onCancel}
-            className="text-zinc-400 hover:text-white p-1"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <ModalCloseButton id="edit-modal-close" onClose={onCancel} />
+        </div>
+
+        {/* Profile Name Input */}
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            Profile Name
+          </label>
+          <div className="flex items-center space-x-2">
+            <ModalTextInput
+              id="edit-name-input"
+              value={name}
+              onChange={setName}
+              placeholder="Profile Name"
+              maxLength={20}
+            />
+            {name && (
+              <ModalClearButton
+                id="edit-name-clear"
+                onClear={() => {
+                  setName('');
+                  setFocusedKey('edit-name-input');
+                }}
+              />
+            )}
+          </div>
         </div>
 
         {/* Avatar Preview & Color Selector */}
@@ -464,32 +498,6 @@ const EditProfileModal: React.FC<{
                 />
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* Profile Name Input */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-            Profile Name
-          </label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={20}
-              placeholder="Profile Name"
-              className="flex-1 bg-zinc-800 border border-zinc-600 rounded-md px-4 py-2.5 text-white font-medium focus:outline-none focus:border-white focus:ring-2 focus:ring-white/20 text-base"
-            />
-            {name && (
-              <button
-                type="button"
-                onClick={() => setName('')}
-                className="text-zinc-400 hover:text-white px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-xs font-semibold"
-              >
-                Clear
-              </button>
-            )}
           </div>
         </div>
 
@@ -565,9 +573,23 @@ const AddProfileModal: React.FC<{
   const [isKids, setIsKids] = useState(false);
   const { setFocusedKey } = useFocus();
 
+  // Set initial focus to the name input node
   useEffect(() => {
-    setFocusedKey('add-save-btn');
+    setFocusedKey('add-name-input');
   }, [setFocusedKey]);
+
+  // Back / Escape remote button handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Back' || e.key === 'GoBack') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
 
   const handleCreate = () => {
     const trimmed = name.trim() || 'New User';
@@ -588,12 +610,32 @@ const AddProfileModal: React.FC<{
             <Plus className="w-6 h-6 text-[#E50914]" />
             <h2 className="text-2xl font-bold text-white">Add Profile</h2>
           </div>
-          <button
-            onClick={onCancel}
-            className="text-zinc-400 hover:text-white p-1"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <ModalCloseButton id="add-modal-close" onClose={onCancel} />
+        </div>
+
+        {/* Profile Name Input */}
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            Profile Name
+          </label>
+          <div className="flex items-center space-x-2">
+            <ModalTextInput
+              id="add-name-input"
+              value={name}
+              onChange={setName}
+              placeholder="e.g. Alex, Family, Guest"
+              maxLength={20}
+            />
+            {name && (
+              <ModalClearButton
+                id="add-name-clear"
+                onClear={() => {
+                  setName('');
+                  setFocusedKey('add-name-input');
+                }}
+              />
+            )}
+          </div>
         </div>
 
         {/* Avatar Preview & Color Selector */}
@@ -628,21 +670,6 @@ const AddProfileModal: React.FC<{
           </div>
         </div>
 
-        {/* Profile Name Input */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-            Profile Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={20}
-            placeholder="e.g. Alex, Family, Guest"
-            className="w-full bg-zinc-800 border border-zinc-600 rounded-md px-4 py-2.5 text-white font-medium focus:outline-none focus:border-white focus:ring-2 focus:ring-white/20 text-base"
-          />
-        </div>
-
         {/* Kids Profile Toggle */}
         <KidsProfileToggle
           isKids={isKids}
@@ -672,6 +699,111 @@ const AddProfileModal: React.FC<{
 // -------------------------------------------------------------
 // Small Reusable TV Modal Components
 // -------------------------------------------------------------
+const ModalCloseButton: React.FC<{
+  id: string;
+  onClose: () => void;
+}> = ({ id, onClose }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey: id,
+    groupId: 'modal-header',
+    onEnter: onClose
+  });
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClose}
+      className={`p-1.5 rounded-full transition-all tv-focusable ${
+        isFocused
+          ? 'bg-white text-black ring-2 ring-white scale-110 shadow-lg'
+          : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+      }`}
+    >
+      <X className="w-5 h-5" />
+    </button>
+  );
+};
+
+const ModalTextInput: React.FC<{
+  id: string;
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+}> = ({ id, value, onChange, placeholder, maxLength = 20 }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { moveFocus } = useFocus();
+  const { ref, isFocused } = useFocusable({
+    focusKey: id,
+    groupId: 'modal-form',
+    onEnter: () => {
+      inputRef.current?.focus();
+    }
+  });
+
+  return (
+    <div
+      ref={ref}
+      onClick={() => inputRef.current?.focus()}
+      className={`flex-1 flex items-center rounded-md border transition-all tv-focusable ${
+        isFocused
+          ? 'bg-zinc-800 border-white ring-2 ring-white/60 shadow-xl'
+          : 'bg-zinc-800/90 border-zinc-600 hover:border-zinc-500'
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            inputRef.current?.blur();
+            moveFocus('DOWN');
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            inputRef.current?.blur();
+            moveFocus('UP');
+          } else if (e.key === 'Enter') {
+            inputRef.current?.blur();
+          }
+        }}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        className="w-full bg-transparent px-4 py-2.5 text-white font-medium focus:outline-none text-base placeholder-zinc-500"
+      />
+    </div>
+  );
+};
+
+const ModalClearButton: React.FC<{
+  id: string;
+  onClear: () => void;
+}> = ({ id, onClear }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey: id,
+    groupId: 'modal-form',
+    onEnter: onClear
+  });
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClear}
+      className={`text-zinc-400 hover:text-white px-3 py-2.5 bg-zinc-800 border rounded-md text-xs font-semibold transition-all tv-focusable ${
+        isFocused
+          ? 'bg-white text-black border-white ring-2 ring-white/60 scale-105 shadow-md'
+          : 'border-zinc-700'
+      }`}
+    >
+      Clear
+    </button>
+  );
+};
+
 const ColorSwatch: React.FC<{
   colorClass: string;
   isSelected: boolean;
@@ -691,7 +823,7 @@ const ColorSwatch: React.FC<{
       onClick={onSelect}
       className={`w-7 h-7 rounded-full transition-transform ${colorClass} ${
         isSelected ? 'ring-2 ring-white scale-110 shadow-lg' : 'opacity-70 hover:opacity-100'
-      } ${isFocused ? 'scale-125 ring-3 ring-white shadow-xl' : ''}`}
+      } ${isFocused ? 'scale-125 ring-4 ring-yellow-400 shadow-xl z-20' : ''}`}
     />
   );
 };

@@ -86,7 +86,25 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const currentNode = nodesRef.current.get(currentKey);
-    if (!currentNode?.ref) return;
+    if (!currentNode?.ref) {
+      // Safe fallback: if current focused node was unmounted or unregistered,
+      // recover to another node in the SAME modal if inside a modal
+      let fallbackKey: string | null = null;
+      if (currentKey.startsWith('edit-')) {
+        for (const k of nodesRef.current.keys()) {
+          if (k.startsWith('edit-')) { fallbackKey = k; break; }
+        }
+      } else if (currentKey.startsWith('add-')) {
+        for (const k of nodesRef.current.keys()) {
+          if (k.startsWith('add-')) { fallbackKey = k; break; }
+        }
+      }
+      if (!fallbackKey) {
+        fallbackKey = nodesRef.current.keys().next().value || null;
+      }
+      if (fallbackKey) setFocusedKey(fallbackKey);
+      return;
+    }
 
     const currentIsSidebar = currentKey.startsWith('sidebar-');
 
@@ -202,6 +220,15 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const dy = targetCenter.y - currentCenter.y;
 
       const targetIsSidebar = targetKey.startsWith('sidebar-');
+
+      // Modal Focus Trap: Keep focus completely inside modal dialogues (edit-*, add-*)
+      const currentIsEditModal = currentKey.startsWith('edit-');
+      const targetIsEditModal = targetKey.startsWith('edit-');
+      if (currentIsEditModal !== targetIsEditModal) return;
+
+      const currentIsAddModal = currentKey.startsWith('add-');
+      const targetIsAddModal = targetKey.startsWith('add-');
+      if (currentIsAddModal !== targetIsAddModal) return;
 
       // UP and DOWN must NEVER cross between the sidebar and content
       if ((direction === 'UP' || direction === 'DOWN') && currentIsSidebar !== targetIsSidebar) {

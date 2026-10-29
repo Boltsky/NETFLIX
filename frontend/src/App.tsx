@@ -390,7 +390,7 @@ export const App: React.FC = () => {
                 />
 
                 {/* Content Rows */}
-                <div className="relative z-20 -mt-10 space-y-3">
+                <div className="relative z-20 mt-2 md:mt-4 space-y-5 md:space-y-7">
                   {/* Continue Watching Row (if any progress) */}
                   {continueWatchingItems.length > 0 && currentScreen === 'home' && (
                     <ContentRail

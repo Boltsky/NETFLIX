@@ -23,7 +23,7 @@ const GENRE_CATEGORIES: Array<GenreCategory & { icon: any }> = [
   { id: 'cat-family', label: 'Family & Kids', category: 'family', genreId: 10751, icon: Laugh }
 ];
 
-const COLS = 5;
+const COLS = 6;
 const MAX_LOADED_ITEMS = 500; // Protection against OOM on Android TV while providing deep continuous catalog
 
 interface CategoriesScreenProps {
@@ -154,7 +154,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitl
   }, [loadNextPage]);
 
   return (
-    <div className="relative min-h-screen bg-[#141414] text-white pl-24 pr-8 pt-8 pb-28 select-none">
+    <div className="relative min-h-screen bg-[#141414] text-white pl-20 pr-8 pt-4 pb-28 select-none">
       {/* Category Header */}
       <div className="mb-6 space-y-2">
         <div className="flex items-center space-x-3">
@@ -201,7 +201,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitl
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-6 gap-3 md:gap-4">
             {items.map((item, index) => {
               // Trigger pre-fetch 10 items early (2 full rows before end)
               const isNearEnd = index >= Math.max(0, items.length - 10);
@@ -312,13 +312,13 @@ const CategoryMovieCard: React.FC<CategoryMovieCardProps> = ({
     }
   }, [isFocused, onNearEnd]);
 
-  // Keep focused card centered comfortably
+  // Keep focused card centered comfortably so rows don't clip at top or bottom bezel
   useEffect(() => {
     if (isFocused && ref.current) {
       ref.current.scrollIntoView({
         behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center'
+        block: 'center',
+        inline: 'nearest'
       });
     }
   }, [isFocused]);
@@ -334,7 +334,7 @@ const CategoryMovieCard: React.FC<CategoryMovieCardProps> = ({
           onBottomDown();
         }
       }}
-      className={`group relative aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border transition-all duration-200 cursor-pointer tv-focusable ${
+      className={`group relative aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border transition-all duration-200 cursor-pointer scroll-mt-32 tv-focusable ${
         isFocused
           ? 'scale-105 border-[#E50914] ring-2 ring-[#E50914] z-20 shadow-xl shadow-black/80'
           : 'border-zinc-800/80 hover:border-zinc-700'

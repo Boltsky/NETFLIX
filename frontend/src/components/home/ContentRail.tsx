@@ -32,9 +32,9 @@ export const ContentRail: React.FC<ContentRailProps> = ({
   if (!rail.items || rail.items.length === 0) return null;
 
   return (
-    <div className="space-y-2 py-3 select-none">
+    <div className="space-y-1.5 py-2 select-none">
       {/* Rail Title */}
-      <div className="pl-24 pr-8 flex items-baseline justify-between">
+      <div className="pl-20 pr-8 flex items-baseline justify-between">
         <h2 className="text-base md:text-lg font-bold tracking-tight text-white flex items-center space-x-2">
           <span>{rail.title}</span>
           {isTop10 && (
@@ -49,7 +49,7 @@ export const ContentRail: React.FC<ContentRailProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex items-center space-x-3 md:space-x-4 overflow-x-auto overflow-y-visible py-4 pl-24 pr-8 no-scrollbar scroll-smooth"
+        className="flex items-center space-x-3 overflow-x-auto overflow-y-visible py-3 pl-20 pr-8 no-scrollbar scroll-smooth scroll-px-20"
       >
         {rail.items.map((item, index) => {
           if (isTop10 && index < 10) {
@@ -84,7 +84,7 @@ export const ContentRail: React.FC<ContentRailProps> = ({
         {onNearEnd && !isTop10 && rail.items.length >= 8 && (
           <div
             onClick={() => onNearEnd(rail.id)}
-            className="flex-shrink-0 w-36 md:w-44 aspect-[2/3] rounded-[4px] border border-dashed border-zinc-700/60 bg-zinc-900/40 flex flex-col items-center justify-center p-4 text-center cursor-pointer hover:border-[#E50914]/60 transition-colors"
+            className="flex-shrink-0 w-28 sm:w-32 md:w-36 lg:w-40 aspect-[2/3] rounded-[4px] border border-dashed border-zinc-700/60 bg-zinc-900/40 flex flex-col items-center justify-center p-3 text-center cursor-pointer hover:border-[#E50914]/60 transition-colors"
           >
             <div className="w-6 h-6 rounded-full border-2 border-[#E50914] border-t-transparent animate-spin mb-2" />
             <span className="text-xs font-bold text-zinc-300">Loading More</span>

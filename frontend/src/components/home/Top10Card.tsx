@@ -25,9 +25,9 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
       className="relative flex items-center flex-shrink-0 cursor-pointer group tv-focusable select-none"
     >
       {/* Massive Netflix Stylized Rank Number */}
-      <div className="relative -mr-6 md:-mr-8 z-0">
+      <div className="relative -mr-4 md:-mr-6 z-0">
         <span
-          className="text-8xl md:text-9xl font-black italic tracking-tighter select-none font-sans"
+          className="text-7xl md:text-8xl font-black italic tracking-tighter select-none font-sans"
           style={{
             color: '#141414',
             WebkitTextStroke: '3.5px #595959',
@@ -40,7 +40,7 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
 
       {/* Poster Card */}
       <div
-        className={`relative z-10 w-36 md:w-44 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 transition-transform duration-150 will-change-transform ${
+        className={`relative z-10 w-32 md:w-36 lg:w-40 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 transition-transform duration-150 will-change-transform ${
           isFocused
             ? 'scale-110 border-white shadow-2xl ring-2 ring-[#E50914]'
             : ''
