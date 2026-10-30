@@ -26,7 +26,8 @@ const ScreenFocusController: React.FC<{
     const timer = setTimeout(() => {
       if (screen === 'profiles') {
         setFocusedKey('profile-bolt');
-      } else if (screen === 'home') {
+      } else if (screen === 'home' || screen === 'series' || screen === 'movies' || screen === 'popular') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
         setFocusedKey('hero-play');
       } else if (screen === 'details') {
         setFocusedKey('detail-play');
@@ -37,7 +38,10 @@ const ScreenFocusController: React.FC<{
           setFocusedKey('kb-Q');
         }
       } else if (screen === 'categories') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
         setFocusedKey('cat-pill-cat-trending');
+      } else if (screen === 'watchlist') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
       }
     }, 60);
     return () => clearTimeout(timer);

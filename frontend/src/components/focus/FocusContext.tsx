@@ -46,7 +46,7 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (node?.ref) {
       node.onFocus?.();
       try {
-        if (key.startsWith('hero-')) {
+        if (key.startsWith('hero-') || key.startsWith('cat-pill-')) {
           window.scrollTo({ top: 0, behavior: 'auto' });
         } else if (key.startsWith('sidebar-')) {
           // Keep sidebar focus clean without altering window scroll
@@ -122,6 +122,20 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (nodesRef.current.has('kb-Q')) {
         setFocusedKey(lastKeyboardKeyRef.current || 'kb-Q');
         return;
+      }
+      // If on Categories / Browse screen, jump to the active pill or first category card
+      for (const [k] of nodesRef.current.entries()) {
+        if (k.startsWith('cat-pill-') || k.startsWith('cat-card-') || k.startsWith('watch-card-')) {
+          setFocusedKey(k);
+          return;
+        }
+      }
+      // General fallback to any content node
+      for (const [k] of nodesRef.current.entries()) {
+        if (!k.startsWith('sidebar-')) {
+          setFocusedKey(k);
+          return;
+        }
       }
     }
 
