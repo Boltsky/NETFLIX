@@ -221,20 +221,20 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
         {/* More Like This (Related Titles) */}
         {details.recommendations && details.recommendations.length > 0 && (
           <div className="space-y-4 pt-6 border-t border-white/10">
-            <h2 className="text-xl font-bold tracking-tight text-white">More Like This</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
-              {details.recommendations.slice(0, 10).map((rec, idx) => (
-                <div
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold tracking-tight text-white">More Like This</h2>
+              <span className="text-xs text-zinc-400 font-mono">
+                {details.recommendations.length} Recommendations
+              </span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+              {details.recommendations.slice(0, 12).map((rec, idx) => (
+                <MoreLikeThisCard
                   key={`rec-${rec.id}-${idx}`}
-                  onClick={() => onSelectRelated(rec)}
-                  className="aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 cursor-pointer hover:scale-105 transition-transform"
-                >
-                  <img
-                    src={rec.poster || rec.backdrop}
-                    alt={rec.title}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                  rec={rec}
+                  index={idx}
+                  onSelect={() => onSelectRelated(rec)}
+                />
               ))}
             </div>
           </div>
@@ -387,6 +387,44 @@ const EpisodeCard: React.FC<{
         <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
           {episode.overview || 'Select to stream this episode in HD.'}
         </p>
+      </div>
+    </div>
+  );
+};
+
+const MoreLikeThisCard: React.FC<{
+  rec: MediaItem;
+  index: number;
+  onSelect: () => void;
+}> = ({ rec, index, onSelect }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey: `detail-rec-${index}`,
+    groupId: 'detail-recommendations',
+    onEnter: onSelect
+  });
+
+  return (
+    <div
+      ref={ref}
+      onClick={onSelect}
+      className={`group relative aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 border cursor-pointer tv-focusable transition-all duration-200 ${
+        isFocused
+          ? 'scale-105 border-white ring-4 ring-[#E50914] shadow-2xl z-20 brightness-110'
+          : 'border-zinc-800 hover:scale-102 hover:border-zinc-600'
+      }`}
+    >
+      <img
+        src={rec.poster || rec.backdrop}
+        alt={rec.title}
+        className="w-full h-full object-cover"
+        loading="lazy"
+      />
+      <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/95 via-black/60 to-transparent">
+        <p className="text-[11px] font-bold text-white truncate drop-shadow">{rec.title}</p>
+        <div className="flex items-center space-x-1.5 text-[9px] text-zinc-300 font-mono">
+          {rec.year && <span>{rec.year}</span>}
+          {rec.rating && <span className="text-amber-400 font-bold">★ {rec.rating}</span>}
+        </div>
       </div>
     </div>
   );

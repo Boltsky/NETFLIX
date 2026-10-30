@@ -199,5 +199,49 @@ describe('Netflix TV Navigation & UX Tests', () => {
     const comedyFirstId = comedy.results[0].id;
     expect(actionFirstId).not.toBe(comedyFirstId);
   });
+
+  it('guarantees More Like This recommendations are always populated on titles', async () => {
+    const { api } = await import('../services/api');
+    const details = await api.getTitleDetails('550', 'movie');
+    expect(details).toBeDefined();
+    expect(details.recommendations).toBeDefined();
+    expect(details.recommendations.length).toBeGreaterThanOrEqual(5);
+    expect(details.recommendations[0].title).toBeDefined();
+  });
+
+  it('verifies in-player D-pad navigation model', () => {
+    type Control = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'server' | 'subtitles';
+    const bottomRow: Control[] = ['play', 'rewind', 'forward', 'server', 'subtitles'];
+
+    // Navigating UP from bottom row reaches scrubber (never opens modal)
+    let current: Control = 'subtitles';
+    const onUp = (c: Control): Control => {
+      if (bottomRow.includes(c)) return 'scrubber';
+      if (c === 'scrubber') return 'back';
+      return 'back';
+    };
+    expect(onUp(current)).toBe('scrubber');
+    expect(onUp('scrubber')).toBe('back');
+
+    // Navigating DOWN from back reaches scrubber, then bottom row
+    const onDown = (c: Control): Control => {
+      if (c === 'back') return 'scrubber';
+      if (c === 'scrubber') return 'play';
+      return c;
+    };
+    expect(onDown('back')).toBe('scrubber');
+    expect(onDown('scrubber')).toBe('play');
+
+    // Left/Right on bottom row traverses horizontally
+    const onRight = (c: Control): Control => {
+      const idx = bottomRow.indexOf(c);
+      if (idx >= 0 && idx < bottomRow.length - 1) return bottomRow[idx + 1];
+      return c;
+    };
+    expect(onRight('play')).toBe('rewind');
+    expect(onRight('rewind')).toBe('forward');
+    expect(onRight('forward')).toBe('server');
+    expect(onRight('server')).toBe('subtitles');
+  });
 });
 

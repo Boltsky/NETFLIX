@@ -6,10 +6,11 @@ import { Bookmark, Film, Star } from 'lucide-react';
 
 interface WatchlistScreenProps {
   onSelectTitle: (item: MediaItem) => void;
+  onExplore?: () => void;
   profileId?: string;
 }
 
-export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle, profileId = 'bolt' }) => {
+export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle, onExplore, profileId = 'bolt' }) => {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,9 +72,32 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle,
           <p className="text-xs text-zinc-500 leading-relaxed">
             Explore trending movies and popular TV series on the Home screen and select "Add to My List" to bookmark your favorites here.
           </p>
+          <div className="pt-2">
+            <ExploreButton onExplore={onExplore} />
+          </div>
         </div>
       )}
     </div>
+  );
+};
+
+const ExploreButton: React.FC<{ onExplore?: () => void }> = ({ onExplore }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey: 'watch-explore-btn',
+    groupId: 'watchlist-empty',
+    onEnter: onExplore
+  });
+
+  return (
+    <button
+      ref={ref}
+      onClick={onExplore}
+      className={`px-5 py-2 rounded font-bold text-xs transition-all tv-focusable ${
+        isFocused ? 'bg-white text-black shadow-lg scale-105 ring-2 ring-white' : 'bg-zinc-800 text-zinc-300 hover:text-white'
+      }`}
+    >
+      Browse Popular Titles
+    </button>
   );
 };
 

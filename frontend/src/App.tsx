@@ -220,10 +220,11 @@ export const App: React.FC = () => {
 
   // Watchlist Toggle
   const handleToggleWatchlist = async (item: MediaItem) => {
-    const isSaved = watchlist.some((w) => w.contentId === item.id);
+    if (!item || !item.id) return;
+    const isSaved = (watchlist || []).some((w) => w && w.contentId === item.id);
     if (isSaved) {
       await api.removeFromWatchlist(item.id, activeProfile.id);
-      setWatchlist((prev) => prev.filter((w) => w.contentId !== item.id));
+      setWatchlist((prev) => (prev || []).filter((w) => w && w.contentId !== item.id));
     } else {
       const added = await api.addToWatchlist({
         profileId: activeProfile.id,
@@ -234,16 +235,16 @@ export const App: React.FC = () => {
         year: item.year,
         rating: item.rating
       });
-      setWatchlist((prev) => [added, ...prev]);
+      setWatchlist((prev) => [added, ...(prev || []).filter(Boolean)]);
     }
   };
 
-  const isInWatchlist = (id: string) => watchlist.some((w) => w.contentId === id);
+  const isInWatchlist = (id: string) => (watchlist || []).some((w) => w && w.contentId === id);
 
   // Map progress into percentage
   const progressMap: Record<string, number> = {};
-  progressList.forEach((p) => {
-    if (p.durationMs > 0) {
+  (progressList || []).forEach((p) => {
+    if (p && p.contentId && p.durationMs > 0) {
       progressMap[p.contentId] = Math.round((p.positionMs / p.durationMs) * 100);
     }
   });
@@ -258,8 +259,9 @@ export const App: React.FC = () => {
   });
 
   // Continue Watching Rail with catalog poster & title enrichment
-  const continueWatchingItems: MediaItem[] = progressList
+  const continueWatchingItems: MediaItem[] = (progressList || [])
     .filter((p) => {
+      if (!p || !p.contentId) return false;
       // Exclude invalid placeholder items with no duration, position, or poster
       if (p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')) {
         return false;
@@ -269,7 +271,7 @@ export const App: React.FC = () => {
     .map((p) => {
       // Lookup from loaded catalog rails if poster or real title is missing
       const allCatalogItems = catalog?.rails?.flatMap((r) => r.items) || [];
-      const matchedCatalogItem = allCatalogItems.find((item) => String(item.id) === String(p.contentId));
+      const matchedCatalogItem = allCatalogItems.find((item) => item && String(item.id) === String(p.contentId));
       const resolvedPoster = p.poster || matchedCatalogItem?.poster || matchedCatalogItem?.backdrop;
       const resolvedTitle = (p.title && p.title !== 'Untitled') ? p.title : (matchedCatalogItem?.title || p.title);
 
@@ -363,6 +365,7 @@ export const App: React.FC = () => {
             <WatchlistScreen
               profileId={activeProfile.id}
               onSelectTitle={handleOpenDetails}
+              onExplore={() => setCurrentScreen('home')}
             />
           </div>
         )}

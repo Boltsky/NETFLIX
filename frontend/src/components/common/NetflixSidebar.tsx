@@ -30,10 +30,33 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
   onSwitchProfile,
   onExitApp
 }) => {
-  const { focusedKey } = useFocus();
+  const { focusedKey, setFocusedKey } = useFocus();
   const [isHovered, setIsHovered] = useState(false);
   const isSidebarFocused = Boolean(focusedKey && focusedKey.startsWith('sidebar-'));
   const isExpanded = isSidebarFocused || isHovered;
+
+  const handleSelectTab = (tab: NetflixNavTab) => {
+    onSelectTab(tab);
+    // Auto-fold sidebar immediately by transferring focus to the destination screen's primary interactive element
+    const transferFocus = () => {
+      if (tab === 'home' || tab === 'series' || tab === 'movies' || tab === 'popular') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        setFocusedKey('hero-play');
+      } else if (tab === 'categories') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        setFocusedKey('cat-pill-cat-trending');
+      } else if (tab === 'search') {
+        setFocusedKey('kb-Q');
+      } else if (tab === 'watchlist') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        setFocusedKey('watch-explore-btn');
+      }
+    };
+
+    transferFocus();
+    setTimeout(transferFocus, 50);
+    setTimeout(transferFocus, 150);
+  };
 
   const navItems: Array<{ id: NetflixNavTab; label: string; icon: any }> = [
     { id: 'search', label: 'Search', icon: Search },
@@ -89,7 +112,7 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
               icon={item.icon}
               isActive={currentTab === item.id}
               isExpanded={isExpanded}
-              onSelect={() => onSelectTab(item.id)}
+              onSelect={() => handleSelectTab(item.id)}
             />
           ))}
         </nav>

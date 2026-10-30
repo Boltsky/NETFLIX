@@ -46,10 +46,16 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (node?.ref) {
       node.onFocus?.();
       try {
-        if (key.startsWith('hero-') || key.startsWith('cat-pill-')) {
+        if (key.startsWith('hero-') || key.startsWith('cat-pill-') || key.startsWith('detail-play') || key.startsWith('detail-back')) {
           window.scrollTo({ top: 0, behavior: 'auto' });
         } else if (key.startsWith('sidebar-')) {
           // Keep sidebar focus clean without altering window scroll
+        } else if (key.startsWith('detail-rec-')) {
+          node.ref.scrollIntoView({
+            behavior: 'auto',
+            block: 'center',
+            inline: 'center'
+          });
         } else {
           node.ref.scrollIntoView({
             behavior: 'auto',
@@ -123,9 +129,15 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setFocusedKey(lastKeyboardKeyRef.current || 'kb-Q');
         return;
       }
-      // If on Categories / Browse screen, jump to the active pill or first category card
+      // If on Categories / Browse / Watchlist screen, jump to the active pill, card, or button
       for (const [k] of nodesRef.current.entries()) {
-        if (k.startsWith('cat-pill-') || k.startsWith('cat-card-') || k.startsWith('watch-card-')) {
+        if (
+          k.startsWith('cat-pill-') ||
+          k.startsWith('cat-card-') ||
+          k.startsWith('watch-card-') ||
+          k.startsWith('watchlist-card-') ||
+          k === 'watch-explore-btn'
+        ) {
           setFocusedKey(k);
           return;
         }

@@ -49,6 +49,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [modalCol, setModalCol] = useState(2); // default focus on Servers column (0=audio, 1=subs, 2=server)
   const [modalRow, setModalRow] = useState(0);
 
+  // TV D-pad focus state
+  const [focusedControl, setFocusedControlState] = useState<'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>('play');
+  const focusedControlRef = useRef<'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>('play');
+  const setFocusedControl = useCallback((ctrl: 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles') => {
+    focusedControlRef.current = ctrl;
+    setFocusedControlState(ctrl);
+  }, []);
+
+  const showControlsRef = useRef(true);
+  showControlsRef.current = showControls;
+
+  const showAudioSubtitleModalRef = useRef(false);
+  showAudioSubtitleModalRef.current = showAudioSubtitleModal;
+
   const servers = useMemo(() => {
     if (resolution?.embedServers && resolution.embedServers.length > 0) {
       return resolution.embedServers;
@@ -77,6 +91,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     ];
   }, [resolution, item, season, episode]);
+
+  const bottomControls = useMemo<Array<'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>>(() => {
+    const list: Array<'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'> = ['play', 'rewind', 'forward'];
+    if (season && episode && onNextEpisode) {
+      list.push('next-ep');
+    }
+    if (useIframeFallback && servers.length > 1) {
+      list.push('server');
+    }
+    list.push('subtitles');
+    return list;
+  }, [season, episode, onNextEpisode, useIframeFallback, servers.length]);
+
+  const bottomControlsRef = useRef(bottomControls);
+  bottomControlsRef.current = bottomControls;
 
   const currentEmbedUrl = servers[selectedServerIndex]?.url || resolution?.embedUrl;
 
@@ -310,20 +339,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // OSD Inactivity Auto-Hide
   const resetControlsTimeout = useCallback(() => {
     setShowControls(true);
+    showControlsRef.current = true;
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
-      if (!showAudioSubtitleModal) {
+      if (!showAudioSubtitleModalRef.current) {
         setShowControls(false);
+        showControlsRef.current = false;
       }
-    }, 4500);
-  }, [showAudioSubtitleModal]);
+    }, 6000);
+  }, []);
 
   // Remote key controller for TV
   useEffect(() => {
     const handleRemoteKey = (e: KeyboardEvent) => {
       resetControlsTimeout();
 
-      if (showAudioSubtitleModal) {
+      if (showAudioSubtitleModalRef.current) {
         if (e.key === 'Back' || e.key === 'Escape') {
           e.preventDefault();
           setShowAudioSubtitleModal(false);
@@ -370,29 +401,97 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
+      // If controls are hidden, wake up OSD on remote key press
+      if (!showControlsRef.current) {
+        if (e.key === 'Back' || e.key === 'Escape') {
+          e.preventDefault();
+          handleExit();
+          return;
+        }
+        e.preventDefault();
+        setShowControls(true);
+        showControlsRef.current = true;
+        return;
+      }
+
+      const curCtrl = focusedControlRef.current;
+      const curBottom = bottomControlsRef.current;
+
       switch (e.key) {
         case 'ArrowLeft':
         case 'Left':
           e.preventDefault();
-          seekBy(-10);
+          if (curCtrl === 'scrubber') {
+            seekBy(-10);
+          } else if (curBottom.includes(curCtrl as any)) {
+            const idx = curBottom.indexOf(curCtrl as any);
+            if (idx > 0) {
+              setFocusedControl(curBottom[idx - 1]);
+            }
+          }
           break;
+
         case 'ArrowRight':
         case 'Right':
           e.preventDefault();
-          seekBy(10);
+          if (curCtrl === 'scrubber') {
+            seekBy(10);
+          } else if (curBottom.includes(curCtrl as any)) {
+            const idx = curBottom.indexOf(curCtrl as any);
+            if (idx < curBottom.length - 1) {
+              setFocusedControl(curBottom[idx + 1]);
+            }
+          }
           break;
+
         case 'ArrowUp':
         case 'Up':
           e.preventDefault();
-          setShowAudioSubtitleModal(true);
-          setModalCol(2); // focus on servers column
-          setModalRow(selectedServerIndex);
+          if (curBottom.includes(curCtrl as any)) {
+            // Navigate UP to scrubber/timeline (NO longer opens dialog)
+            setFocusedControl('scrubber');
+          } else if (curCtrl === 'scrubber') {
+            // Navigate UP to header back button
+            setFocusedControl('back');
+          }
           break;
+
         case 'ArrowDown':
         case 'Down':
           e.preventDefault();
-          setShowControls((prev) => !prev);
+          if (curCtrl === 'back') {
+            // Navigate DOWN to scrubber
+            setFocusedControl('scrubber');
+          } else if (curCtrl === 'scrubber') {
+            // Navigate DOWN to play button on bottom controls row
+            setFocusedControl('play');
+          }
           break;
+
+        case 'Enter':
+        case 'Select':
+          e.preventDefault();
+          if (curCtrl === 'back') {
+            handleExit();
+          } else if (curCtrl === 'scrubber' || curCtrl === 'play') {
+            togglePlayPause();
+          } else if (curCtrl === 'rewind') {
+            seekBy(-10);
+          } else if (curCtrl === 'forward') {
+            seekBy(10);
+          } else if (curCtrl === 'next-ep') {
+            if (onNextEpisode) onNextEpisode();
+          } else if (curCtrl === 'server') {
+            setShowAudioSubtitleModal(true);
+            setModalCol(2);
+            setModalRow(selectedServerIndex);
+          } else if (curCtrl === 'subtitles') {
+            setShowAudioSubtitleModal(true);
+            setModalCol(1);
+            setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
+          }
+          break;
+
         case 's':
         case 'S':
           e.preventDefault();
@@ -400,11 +499,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setUseIframeFallback(true);
           setError(null);
           break;
-        case 'Enter':
-        case 'Select':
-          e.preventDefault();
-          togglePlayPause();
-          break;
+
         case 'Back':
         case 'Escape':
           e.preventDefault();
@@ -415,7 +510,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     window.addEventListener('keydown', handleRemoteKey);
     return () => window.removeEventListener('keydown', handleRemoteKey);
-  }, [resetControlsTimeout, handleExit, showAudioSubtitleModal, modalCol, modalRow, servers, resolution, selectedServerIndex]);
+  }, [
+    resetControlsTimeout,
+    handleExit,
+    servers,
+    resolution,
+    selectedServerIndex,
+    setFocusedControl,
+    onNextEpisode,
+    activeSubtitle,
+    modalCol,
+    modalRow
+  ]);
 
   // Play / Pause Toggle
   const togglePlayPause = () => {
@@ -568,10 +674,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="flex items-center space-x-4">
             <button
               onClick={handleExit}
-              className="p-2.5 rounded-full hover:bg-white/10 text-white transition-colors"
+              className={`p-2.5 rounded-full transition-all ${
+                focusedControl === 'back'
+                  ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                  : 'hover:bg-white/10 text-white'
+              }`}
               title="Exit (Back)"
             >
-              <ArrowLeft className="w-6 h-6" />
+              <ArrowLeft className={`w-6 h-6 ${focusedControl === 'back' ? 'text-black' : 'text-white'}`} />
             </button>
             <div>
               <h2 className="text-2xl font-black text-white drop-shadow tracking-tight">{item.title}</h2>
@@ -602,21 +712,63 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* Bottom Timeline & Netflix TV Controls */}
         <div className="space-y-4 pointer-events-auto max-w-5xl mx-auto w-full">
           {/* Netflix Scrubber Line */}
-          <div className="flex items-center space-x-4">
-            <div className="relative h-1.5 flex-1 bg-zinc-700/80 rounded-full overflow-visible">
-              {/* Buffer / progress */}
+          <div
+            onClick={() => {
+              setFocusedControl('scrubber');
+              togglePlayPause();
+            }}
+            className={`cursor-pointer transition-all duration-150 py-2 ${
+              focusedControl === 'scrubber' ? 'scale-y-105' : ''
+            }`}
+          >
+            <div className="flex items-center space-x-4">
               <div
-                className="h-full bg-[#E50914] rounded-full transition-all duration-150 relative"
-                style={{ width: `${progressPercent}%` }}
+                className={`relative flex-1 rounded-full overflow-visible transition-all ${
+                  focusedControl === 'scrubber'
+                    ? 'h-3 bg-zinc-600 ring-2 ring-[#E50914] shadow-lg'
+                    : 'h-1.5 bg-zinc-700/80'
+                }`}
               >
-                {/* White scrub head handle */}
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-md transform translate-x-1/2" />
+                {/* Buffer / progress */}
+                <div
+                  className="h-full bg-[#E50914] rounded-full transition-all duration-150 relative"
+                  style={{ width: `${progressPercent}%` }}
+                >
+                  {/* White scrub head handle */}
+                  <div
+                    className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-white transform translate-x-1/2 transition-all ${
+                      focusedControl === 'scrubber'
+                        ? 'w-5 h-5 ring-2 ring-[#E50914] shadow-2xl scale-125'
+                        : 'w-4 h-4 shadow-md'
+                    }`}
+                  />
+                </div>
               </div>
+              {/* Netflix Time Remaining */}
+              <span
+                className={`text-xs font-mono font-bold w-16 text-right transition-colors ${
+                  focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
+                }`}
+              >
+                {formatRemainingTime(currentTime, duration)}
+              </span>
             </div>
-            {/* Netflix Time Remaining */}
-            <span className="text-xs font-mono font-bold text-zinc-300 w-16 text-right">
-              {formatRemainingTime(currentTime, duration)}
-            </span>
+
+            {/* TV remote prompt when scrubber is active */}
+            {focusedControl === 'scrubber' && (
+              <div className="flex items-center justify-between pt-1 px-1 text-[11px] font-bold">
+                <span className="text-[#E50914] flex items-center space-x-1 animate-pulse">
+                  <span>◄</span>
+                  <span>Rewind 10s</span>
+                  <span className="mx-1 text-zinc-500">|</span>
+                  <span>Fast-Forward 10s</span>
+                  <span>►</span>
+                </span>
+                <span className="text-zinc-400 font-mono text-[10px]">
+                  Press ENTER to {isPlaying ? 'Pause' : 'Play'} • Press DOWN for Controls
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons Row */}
@@ -624,41 +776,73 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="flex items-center space-x-6">
               {/* Play / Pause */}
               <button
-                onClick={togglePlayPause}
-                className="p-2 text-white hover:text-zinc-200 transition-colors"
+                onClick={() => {
+                  setFocusedControl('play');
+                  togglePlayPause();
+                }}
+                className={`p-2.5 rounded-full transition-all ${
+                  focusedControl === 'play'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
+                    : 'text-white hover:text-zinc-200'
+                }`}
                 title="Play/Pause (Enter)"
               >
-                {isPlaying ? <Pause className="w-7 h-7 fill-white" /> : <Play className="w-7 h-7 fill-white" />}
+                {isPlaying ? (
+                  <Pause className={`w-7 h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                ) : (
+                  <Play className={`w-7 h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                )}
               </button>
 
               {/* Rewind 10s */}
               <button
-                onClick={() => seekBy(-10)}
-                className="p-2 text-white hover:text-zinc-200 transition-colors relative flex items-center justify-center"
+                onClick={() => {
+                  setFocusedControl('rewind');
+                  seekBy(-10);
+                }}
+                className={`p-2.5 rounded-full transition-all relative flex items-center justify-center ${
+                  focusedControl === 'rewind'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl'
+                    : 'text-white hover:text-zinc-200'
+                }`}
                 title="Rewind 10s"
               >
-                <RotateCcw className="w-6 h-6" />
-                <span className="absolute text-[8px] font-bold">10</span>
+                <RotateCcw className={`w-6 h-6 ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`} />
+                <span className={`absolute text-[8px] font-bold ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`}>10</span>
               </button>
 
               {/* Fast Forward 10s */}
               <button
-                onClick={() => seekBy(10)}
-                className="p-2 text-white hover:text-zinc-200 transition-colors relative flex items-center justify-center"
+                onClick={() => {
+                  setFocusedControl('forward');
+                  seekBy(10);
+                }}
+                className={`p-2.5 rounded-full transition-all relative flex items-center justify-center ${
+                  focusedControl === 'forward'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl'
+                    : 'text-white hover:text-zinc-200'
+                }`}
                 title="Fast Forward 10s"
               >
-                <RotateCw className="w-6 h-6" />
-                <span className="absolute text-[8px] font-bold">10</span>
+                <RotateCw className={`w-6 h-6 ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`} />
+                <span className={`absolute text-[8px] font-bold ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`}>10</span>
               </button>
 
               {/* Next Episode (if series) */}
               {season && episode && onNextEpisode && (
                 <button
-                  onClick={onNextEpisode}
-                  className="p-2 text-white hover:text-zinc-200 transition-colors"
+                  onClick={() => {
+                    setFocusedControl('next-ep');
+                    onNextEpisode();
+                  }}
+                  className={`p-2.5 rounded-full transition-all ${
+                    focusedControl === 'next-ep'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl'
+                      : 'text-white hover:text-zinc-200'
+                  }`}
                   title="Next Episode"
                 >
-                  <SkipForward className="w-6 h-6" />
+                  <SkipForward className={`w-6 h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
                 </button>
               )}
             </div>
@@ -667,8 +851,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Server Switcher Button */}
               {useIframeFallback && servers.length > 1 && (
                 <button
-                  onClick={() => setSelectedServerIndex((prev) => (prev + 1) % servers.length)}
-                  className="flex items-center space-x-2 px-3 py-1.5 rounded-[4px] bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors"
+                  onClick={() => {
+                    setFocusedControl('server');
+                    setShowAudioSubtitleModal(true);
+                    setModalCol(2);
+                    setModalRow(selectedServerIndex);
+                  }}
+                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-[4px] text-xs font-bold transition-all ${
+                    focusedControl === 'server'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-105 shadow-2xl'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
                   title="Switch streaming server"
                 >
                   <Server className="w-4 h-4 text-[#E50914]" />
@@ -678,10 +871,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
               {/* Audio & Subtitles Menu Trigger */}
               <button
-                onClick={() => setShowAudioSubtitleModal(true)}
-                className="flex items-center space-x-2 px-3 py-1.5 rounded-[4px] hover:bg-white/10 text-white text-xs font-bold transition-colors"
+                onClick={() => {
+                  setFocusedControl('subtitles');
+                  setShowAudioSubtitleModal(true);
+                  setModalCol(1);
+                  setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
+                }}
+                className={`flex items-center space-x-2 px-3.5 py-2 rounded-[4px] text-xs font-bold transition-all ${
+                  focusedControl === 'subtitles'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-105 shadow-2xl'
+                    : 'hover:bg-white/10 text-white'
+                }`}
+                title="Audio & Subtitles"
               >
-                <Subtitles className="w-5 h-5 text-zinc-300" />
+                <Subtitles className={`w-5 h-5 ${focusedControl === 'subtitles' ? 'text-black' : 'text-zinc-300'}`} />
                 <span>Audio & Subtitles</span>
               </button>
             </div>

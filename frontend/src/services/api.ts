@@ -195,9 +195,17 @@ function normalizeTitleDetails(raw: any, fallbackId: string, type: 'movie' | 'tv
       }))
     : [];
 
-  const recommendations = Array.isArray(d.recommendations || d.similar)
+  let recommendations = Array.isArray(d.recommendations || d.similar)
     ? (d.recommendations || d.similar).slice(0, 12).map((r: any) => mapMediaItem(r, type))
     : [];
+
+  // Guarantee high-quality "More Like This" recommendations for all titles
+  if (recommendations.length === 0) {
+    const fallbackPool = (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items);
+    recommendations = fallbackPool
+      .filter((item) => String(item.id) !== String(d.id || fallbackId))
+      .slice(0, 10);
+  }
 
   return {
     id: String(d.id || fallbackId),
