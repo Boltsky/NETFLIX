@@ -243,5 +243,62 @@ describe('Netflix TV Navigation & UX Tests', () => {
     expect(onRight('forward')).toBe('server');
     expect(onRight('server')).toBe('subtitles');
   });
+
+  it('verifies stream source title accuracy validation rejects mismatched titles', async () => {
+    const { isStreamUrlAccurate } = await import('../services/api');
+
+    // Mismatched fuzzy scraper URLs MUST be rejected
+    expect(isStreamUrlAccurate(
+      'https://xstreamx.films365.org/movie/61851060-0292-4c4b-9542-17a7dc2a46d0/Apocalypse+Now',
+      'Apocalypse Z: New World'
+    )).toBe(false);
+
+    expect(isStreamUrlAccurate(
+      'https://xstreamx.films365.org/movie/f06d9d1f-749c-47a9-9dd7-40726cb36c1d/Monsters+University',
+      'Verity'
+    )).toBe(false);
+
+    expect(isStreamUrlAccurate(
+      'https://cdn2.fastcloud.live/movie/4UFTERCT1unmcLVVKXVtmhY_7bQ-1kcsrN9meDpZ3DQ.eAHCxlbL/bigtits.m3u8',
+      'Fall 2: Deadpoint'
+    )).toBe(false);
+
+    // Matching URLs MUST be accepted
+    expect(isStreamUrlAccurate(
+      'https://xstreamx.films365.org/movie/a616bcaa-40eb-478e-8080-526ea87e16fa/The+Dark+Knight',
+      'The Dark Knight'
+    )).toBe(true);
+
+    expect(isStreamUrlAccurate(
+      'https://xstreamx.films365.org/movie/68725d9c-51b0-442c-a25e-399ea48f93a9/Deadpool+%26+Wolverine',
+      'Deadpool & Wolverine'
+    )).toBe(true);
+
+    expect(isStreamUrlAccurate(
+      'https://xstreamx.films365.org/movie/4bd0beb7-c0d5-452f-a3b0-ff8aeaf83dd2/Inception',
+      'Inception'
+    )).toBe(true);
+  });
+
+  it('verifies getTitleDetails never replaces an unknown ID with Stranger Things or Fight Club', async () => {
+    const { api } = await import('../services/api');
+    const unknownId = '999999999';
+    const details = await api.getTitleDetails(unknownId, 'movie');
+
+    expect(details.id).toBe(unknownId);
+    expect(details.title).not.toBe('Stranger Things');
+    expect(details.title).not.toBe('Fight Club');
+  });
+
+  it('verifies resolvePlayback embed servers prioritize verified TMDB providers', async () => {
+    const { api } = await import('../services/api');
+    const res = await api.resolvePlayback('155', 'movie');
+
+    expect(res.embedServers).toBeDefined();
+    expect(res.embedServers!.length).toBeGreaterThanOrEqual(4);
+    expect(res.embedServers![0].name).toContain('VidSrc');
+    expect(res.embedServers![1].name).toContain('MultiEmbed');
+    expect(res.embedServers![0].url).toContain('155');
+  });
 });
 

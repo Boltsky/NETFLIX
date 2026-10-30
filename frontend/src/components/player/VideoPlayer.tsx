@@ -72,22 +72,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const e = episode || 1;
     return [
       {
-        name: 'Server 1 (FrameX)',
-        url: isEpisodic
-          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${item.id}?autoplay=1`
-      },
-      {
-        name: 'Server 2 (VidSrc)',
+        name: 'Server 1 (VidSrc)',
         url: isEpisodic
           ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
           : `https://vidsrc.to/embed/movie/${item.id}`
       },
       {
-        name: 'Server 3 (AutoEmbed)',
+        name: 'Server 2 (MultiEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.cc/embed/tv/${item.id}/${s}/${e}`
-          : `https://player.autoembed.cc/embed/movie/${item.id}`
+          ? `https://multiembed.mov/?video_id=${item.id}&tmdb=1&s=${s}&e=${e}`
+          : `https://multiembed.mov/?video_id=${item.id}&tmdb=1`
+      },
+      {
+        name: 'Server 3 (2Embed)',
+        url: isEpisodic
+          ? `https://www.2embed.cc/embedtv/${item.id}&s=${s}&e=${e}`
+          : `https://www.2embed.cc/embed/${item.id}`
+      },
+      {
+        name: 'Server 4 (VidSrc.xyz)',
+        url: isEpisodic
+          ? `https://vidsrc.xyz/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.xyz/embed/movie/${item.id}`
+      },
+      {
+        name: 'Server 5 (FrameX)',
+        url: isEpisodic
+          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${item.id}?autoplay=1`
       }
     ];
   }, [resolution, item, season, episode]);
@@ -197,7 +209,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setLoading(true);
     setError(null);
 
-    api.resolvePlayback(item.id, item.type, season, episode)
+    api.resolvePlayback(item.id, item.type, season, episode, item.title)
       .then((res) => {
         if (!isMounted) return;
         setResolution(res);

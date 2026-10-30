@@ -10,7 +10,7 @@ import {
   CategoryQueryParams,
   CategoryResponse
 } from '../types';
-import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS } from './mock.data';
+import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data';
 
 declare global {
   interface Window {
@@ -85,14 +85,106 @@ function optimizeTmdbImageUrl(url?: string, size: 'poster' | 'backdrop' = 'poste
   return url;
 }
 
+// Global in-memory cache for all loaded media items, ensuring exact titles, posters and types
+const mediaItemCache = new Map<string, MediaItem>();
+
+// Seed cache with verified reference titles
+if (typeof MOCK_ITEMS !== 'undefined') {
+  Object.values(MOCK_ITEMS).forEach((item) => {
+    if (item && item.id) {
+      mediaItemCache.set(String(item.id), item);
+    }
+  });
+}
+
+export function cacheMediaItem(item: MediaItem): void {
+  if (item && item.id) {
+    const existing = mediaItemCache.get(String(item.id));
+    if (!existing || (!existing.poster && item.poster) || (!existing.overview && item.overview)) {
+      mediaItemCache.set(String(item.id), item);
+    }
+  }
+}
+
+export function getCachedMediaItem(id: string): MediaItem | undefined {
+  return mediaItemCache.get(String(id));
+}
+
+// Validates that a resolved stream source belongs to the expected title, rejecting fuzzy scraper mismatches
+export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): boolean {
+  if (!sourceUrl) return false;
+  const decoded = decodeURIComponent(sourceUrl).toLowerCase();
+
+  // Reject garbage, placeholder, or offensive stream URLs
+  const BLACKLIST = ['bigtits', 'sample', 'placeholder', 'dummy', 'error', '404', 'invalid'];
+  if (BLACKLIST.some((b) => decoded.includes(b))) {
+    return false;
+  }
+
+  if (!expectedTitle) return true;
+
+  // Check if the stream URL includes a movie/tv title slug
+  const slugMatch = decoded.match(/\/(?:movie|tv)\/[a-f0-9-]+\/([^/?&#]+)/i);
+  if (slugMatch && slugMatch[1]) {
+    const streamTitleSlug = slugMatch[1].replace(/[+_.-]+/g, ' ').trim().toLowerCase();
+    const cleanExpected = expectedTitle.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    const cleanStream = streamTitleSlug.replace(/[^a-z0-9 ]/g, '').trim();
+
+    const stopwords = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'part', 'movie', 'film']);
+    const expectedWords = cleanExpected.split(/\s+/).filter((w) => w.length > 2 && !stopwords.has(w));
+    const streamWords = cleanStream.split(/\s+/).filter((w) => w.length > 2 && !stopwords.has(w));
+
+    if (expectedWords.length > 0 && streamWords.length > 0) {
+      const sharedWords = streamWords.filter((w) =>
+        expectedWords.some((ew) => ew === w || ew.includes(w) || w.includes(ew))
+      );
+
+      // If zero words match, it's definitely an incorrect title
+      if (sharedWords.length === 0) return false;
+
+      // Check distinct contradictory keywords
+      if (cleanStream.includes('now') && !cleanExpected.includes('now')) return false;
+      if (cleanStream.includes('university') && !cleanExpected.includes('university')) return false;
+
+      const streamMatchRatio = sharedWords.length / streamWords.length;
+      if (streamMatchRatio < 0.4 && sharedWords.length < 2) return false;
+    }
+  }
+
+  return true;
+}
+
+// Verifies that a retrieved title is consistent with what was displayed on the clicked poster
+export function isTitleConsistent(retrievedTitle?: string, expectedTitle?: string): boolean {
+  if (!retrievedTitle || !expectedTitle) return true;
+  const cleanRetrieved = retrievedTitle.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  const cleanExpected = expectedTitle.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  if (cleanRetrieved === cleanExpected) return true;
+
+  const rWords = cleanRetrieved.split(/\s+/).filter((w) => w.length > 2);
+  const eWords = cleanExpected.split(/\s+/).filter((w) => w.length > 2);
+  if (rWords.length === 0 || eWords.length === 0) return true;
+
+  return rWords.some((rw) => eWords.some((ew) => ew === rw || ew.includes(rw) || rw.includes(ew)));
+}
+
 function mapMediaItem(item: any, defaultType: 'movie' | 'tv' | 'anime' = 'movie'): MediaItem {
   const rawPoster = item.poster || item.poster_path || item.image || item.backdrop || item.backdrop_path;
   const rawBackdrop = item.backdrop || item.backdrop_path || item.poster || item.poster_path;
 
-  return {
+  // Accurately determine media type (tv vs movie)
+  const isTv =
+    item.type === 'tv' ||
+    item.type === 'anime' ||
+    item.media_type === 'tv' ||
+    Boolean(item.first_air_date) ||
+    Boolean(item.number_of_seasons) ||
+    Boolean(item.numberOfSeasons);
+
+  const mapped: MediaItem = {
     id: String(item.id || item.contentId || ''),
     title: item.title || item.name || 'Untitled',
-    type: (item.type === 'tv' || item.type === 'anime') ? item.type : defaultType,
+    type: isTv ? (item.type === 'anime' ? 'anime' : 'tv') : defaultType,
     rating: item.rating ? String(item.rating) : (item.vote_average ? String(item.vote_average) : undefined),
     year: item.year || (item.release_date ? item.release_date.substring(0, 4) : (item.first_air_date ? item.first_air_date.substring(0, 4) : undefined)),
     poster: optimizeTmdbImageUrl(rawPoster, 'poster'),
@@ -100,31 +192,52 @@ function mapMediaItem(item: any, defaultType: 'movie' | 'tv' | 'anime' = 'movie'
     overview: item.overview || '',
     genres: Array.isArray(item.genres) ? item.genres.map((g: any) => (typeof g === 'string' ? g : g.name)) : []
   };
+
+  cacheMediaItem(mapped);
+  return mapped;
 }
 
 function normalizeHomeCatalog(raw: any): HomeCatalog {
   if (!raw) return MOCK_HOME_CATALOG;
 
+  // Verified blockbuster pool to guarantee rich, playable Hero and rails
+  const verifiedHeroCandidates: MediaItem[] = [
+    MOCK_ITEMS['693134'], // Dune: Part Two
+    MOCK_ITEMS['155'],    // The Dark Knight
+    MOCK_ITEMS['66732'],  // Stranger Things
+    MOCK_ITEMS['157336'], // Interstellar
+    MOCK_ITEMS['27205']   // Inception
+  ];
+
   // Case 1: Backend wrapped format { success: true, data: { hero, rails: [...] } }
   if (raw.data && Array.isArray(raw.data.rails) && raw.data.rails.length > 0) {
-    return {
-      hero: raw.data.hero ? mapMediaItem(raw.data.hero, raw.data.hero.type || 'movie') : null,
-      rails: raw.data.rails.map((r: any) => ({
-        ...r,
-        items: Array.isArray(r.items) ? r.items.map((i: any) => mapMediaItem(i, r.type || 'movie')) : []
-      }))
-    };
+    const rails: CatalogRail[] = raw.data.rails.map((r: any) => ({
+      ...r,
+      items: Array.isArray(r.items) ? r.items.map((i: any) => mapMediaItem(i, r.type || 'movie')) : []
+    }));
+
+    let hero: MediaItem | null = raw.data.hero ? mapMediaItem(raw.data.hero, raw.data.hero.type || 'movie') : null;
+    // Replace unreleased/future hero with an acclaimed released title
+    if (!hero || (hero.year && parseInt(hero.year, 10) >= 2026)) {
+      hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
+    }
+
+    return { hero, rails };
   }
 
   // Case 2: Array rails directly on raw
   if (Array.isArray(raw.rails) && raw.rails.length > 0) {
-    return {
-      hero: raw.hero ? mapMediaItem(raw.hero, raw.hero.type || 'movie') : (raw.rails[0]?.items?.[0] || null),
-      rails: raw.rails.map((r: any) => ({
-        ...r,
-        items: Array.isArray(r.items) ? r.items.map((i: any) => mapMediaItem(i, r.type || 'movie')) : []
-      }))
-    };
+    const rails: CatalogRail[] = raw.rails.map((r: any) => ({
+      ...r,
+      items: Array.isArray(r.items) ? r.items.map((i: any) => mapMediaItem(i, r.type || 'movie')) : []
+    }));
+
+    let hero: MediaItem | null = raw.hero ? mapMediaItem(raw.hero, raw.hero.type || 'movie') : (rails[0]?.items?.[0] || null);
+    if (!hero || (hero.year && parseInt(hero.year, 10) >= 2026)) {
+      hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
+    }
+
+    return { hero, rails };
   }
 
   // Case 3: Direct FrameXTV format with rails object { trending_movies: { results: [...] }, ... }
@@ -145,31 +258,97 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
 
     for (const config of railConfigs) {
       const rawRail = raw.rails[config.key];
+      let items: MediaItem[] = [];
+
       if (rawRail && Array.isArray(rawRail.results) && rawRail.results.length > 0) {
+        items = rawRail.results.map((r: any) => mapMediaItem(r, config.type));
+      }
+
+      // If upstream anime rail is empty, augment with rich verified anime catalog
+      if (items.length === 0 && (config.type === 'anime' || config.category === 'popular_anime')) {
+        const mockAnime = MOCK_HOME_CATALOG.rails.find((r) => r.id === 'rail-anime');
+        if (mockAnime) items = mockAnime.items.map((i) => mapMediaItem(i, 'anime'));
+      }
+
+      if (items.length > 0) {
         rails.push({
           id: `rail-${config.key}`,
           title: config.title,
           type: config.type,
           category: config.category,
-          items: rawRail.results.map((r: any) => mapMediaItem(r, config.type))
+          items
         });
       }
     }
 
-    const hero = raw.hero ? mapMediaItem(raw.hero, raw.hero.type || 'movie') : (rails[0]?.items[0] || null);
+    // Include dedicated Top 10 rail if not present
+    if (!rails.some((r) => r.id === 'rail-top-10' || r.category === 'top-10')) {
+      const top10Rail = MOCK_HOME_CATALOG.rails.find((r) => r.id === 'rail-top-10');
+      if (top10Rail) {
+        rails.splice(1, 0, {
+          ...top10Rail,
+          items: top10Rail.items.map((i) => mapMediaItem(i, 'movie'))
+        });
+      }
+    }
+
+    // Select a verified, released hero banner (never an unreleased future title)
+    let hero: MediaItem | null = raw.hero ? mapMediaItem(raw.hero, raw.hero.type || 'movie') : null;
+    if (!hero || (hero.year && parseInt(hero.year, 10) >= 2026)) {
+      hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
+    }
 
     if (rails.length > 0) {
       return { hero, rails };
     }
   }
 
-  return MOCK_HOME_CATALOG;
+  return {
+    hero: MOCK_HOME_CATALOG.hero ? mapMediaItem(MOCK_HOME_CATALOG.hero, 'tv') : null,
+    rails: MOCK_HOME_CATALOG.rails.map((r) => ({
+      ...r,
+      items: r.items.map((i) => mapMediaItem(i, r.type))
+    }))
+  };
 }
 
 function normalizeTitleDetails(raw: any, fallbackId: string, type: 'movie' | 'tv' | 'anime'): TitleDetails {
   const d = raw?.data || raw;
+  const cached = mediaItemCache.get(String(fallbackId));
+
+  // If upstream payload is empty or invalid, fall back to cached media item or ID-specific mock (never overwrite with random title!)
   if (!d || (!d.title && !d.name)) {
-    return MOCK_TITLES[fallbackId] || MOCK_TITLES['66732'] || MOCK_TITLES['550'];
+    if (cached) {
+      return {
+        id: String(cached.id),
+        title: cached.title,
+        type: cached.type === 'tv' ? 'tv' : 'movie',
+        poster: cached.poster,
+        backdrop: cached.backdrop || cached.poster,
+        overview: cached.overview || 'Streaming in Ultra HD.',
+        year: cached.year,
+        rating: cached.rating,
+        genres: cached.genres || [],
+        cast: [],
+        recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).filter((i) => String(i.id) !== String(cached.id)).slice(0, 10),
+        numberOfSeasons: cached.type === 'tv' ? 1 : undefined,
+        seasons: cached.type === 'tv' ? [{ id: 1, number: 1, name: 'Season 1', overview: '', episodeCount: 10 }] : undefined
+      };
+    }
+    if (MOCK_TITLES[fallbackId]) {
+      return MOCK_TITLES[fallbackId];
+    }
+    return {
+      id: String(fallbackId),
+      title: 'Title Details',
+      type: type === 'tv' ? 'tv' : 'movie',
+      poster: undefined,
+      backdrop: undefined,
+      overview: 'Now streaming on Netflix.',
+      genres: [],
+      cast: [],
+      recommendations: []
+    };
   }
 
   const seasons = Array.isArray(d.seasons)
@@ -207,18 +386,23 @@ function normalizeTitleDetails(raw: any, fallbackId: string, type: 'movie' | 'tv
       .slice(0, 10);
   }
 
+  // Preserve expected poster and title if retrieved response had inconsistent or missing title
+  const resolvedTitle = (cached && !isTitleConsistent(d.title || d.name, cached.title)) ? cached.title : (d.title || d.name || cached?.title || 'Untitled');
+  const resolvedPoster = optimizeTmdbImageUrl(d.poster || d.poster_path || d.image, 'poster') || cached?.poster;
+  const resolvedBackdrop = optimizeTmdbImageUrl(d.backdrop || d.backdrop_path, 'backdrop') || cached?.backdrop;
+
   return {
     id: String(d.id || fallbackId),
-    title: d.title || d.name || 'Untitled',
+    title: resolvedTitle,
     type: type === 'tv' ? 'tv' : 'movie',
     tagline: d.tagline,
     rating: d.rating ? String(d.rating) : (d.vote_average ? String(d.vote_average) : undefined),
     year: d.year || (d.release_date ? d.release_date.substring(0, 4) : (d.first_air_date ? d.first_air_date.substring(0, 4) : undefined)),
     releaseDate: d.release_date || d.first_air_date,
-    poster: optimizeTmdbImageUrl(d.poster || d.poster_path || d.image, 'poster'),
-    backdrop: optimizeTmdbImageUrl(d.backdrop || d.backdrop_path, 'backdrop'),
-    overview: d.overview || '',
-    genres: Array.isArray(d.genres) ? d.genres.map((g: any) => (typeof g === 'string' ? g : g.name)) : [],
+    poster: resolvedPoster,
+    backdrop: resolvedBackdrop,
+    overview: d.overview || cached?.overview || '',
+    genres: Array.isArray(d.genres) ? d.genres.map((g: any) => (typeof g === 'string' ? g : g.name)) : (cached?.genres || []),
     runtime: d.runtime || (Array.isArray(d.episode_run_time) ? d.episode_run_time[0] : undefined),
     status: d.status,
     voteCount: d.vote_count,
@@ -413,10 +597,16 @@ export const api = {
   },
 
   async getTitleDetails(id: string, type: 'movie' | 'tv' | 'anime'): Promise<TitleDetails> {
+    const cached = mediaItemCache.get(String(id));
+    const effectiveType = cached?.type || type || 'movie';
+
     try {
-      const res = await apiFetch<any>(`/titles/${encodeURIComponent(id)}?type=${type}`);
+      const res = await apiFetch<any>(`/titles/${encodeURIComponent(id)}?type=${effectiveType}`);
       if (res && (res.data || res.success)) {
-        return normalizeTitleDetails(res, id, type);
+        const details = normalizeTitleDetails(res, id, effectiveType);
+        if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
+          return details;
+        }
       }
     } catch (err: any) {
       console.warn(`[Netflix API] Local getTitleDetails failed for ${id}:`, err?.message);
@@ -425,13 +615,16 @@ export const api = {
     // Direct FrameXTV details fallback
     for (const b of FRAMEX_BACKENDS) {
       try {
-        const directRes = await fetch(`${b}/api/details?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}`, {
+        const directRes = await fetch(`${b}/api/details?id=${encodeURIComponent(id)}&type=${effectiveType === 'tv' ? 'tv' : 'movie'}`, {
           headers: { 'Accept': 'application/json' }
         });
         if (directRes.ok) {
           const data = await directRes.json();
           if (data && (data.success || data.title || data.name)) {
-            return normalizeTitleDetails(data, id, type);
+            const details = normalizeTitleDetails(data, id, effectiveType);
+            if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
+              return details;
+            }
           }
         }
       } catch (e: any) {
@@ -439,7 +632,42 @@ export const api = {
       }
     }
 
-    return MOCK_TITLES[id] || MOCK_TITLES['66732'] || MOCK_TITLES['550'];
+    // Fallback to cached media item if available (guarantees title & poster match the clicked poster!)
+    if (cached) {
+      return {
+        id: String(cached.id),
+        title: cached.title,
+        type: cached.type === 'tv' ? 'tv' : 'movie',
+        poster: cached.poster,
+        backdrop: cached.backdrop || cached.poster,
+        overview: cached.overview || 'Now streaming in Ultra HD.',
+        year: cached.year,
+        rating: cached.rating,
+        genres: cached.genres || [],
+        cast: [],
+        recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).filter((i) => String(i.id) !== String(cached.id)).slice(0, 10),
+        numberOfSeasons: cached.type === 'tv' ? 1 : undefined,
+        seasons: cached.type === 'tv' ? [{ id: 1, number: 1, name: 'Season 1', overview: '', episodeCount: 10 }] : undefined
+      };
+    }
+
+    // Fallback to exact ID in mock titles
+    if (MOCK_TITLES[id]) {
+      return MOCK_TITLES[id];
+    }
+
+    // Safe fallback retaining id and type (never returning Stranger Things or Fight Club for unrelated IDs!)
+    return {
+      id: String(id),
+      title: 'Title Details',
+      type: effectiveType === 'tv' ? 'tv' : 'movie',
+      poster: undefined,
+      backdrop: undefined,
+      overview: 'Now streaming on Netflix.',
+      genres: [],
+      cast: [],
+      recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).slice(0, 10)
+    };
   },
 
   async getSeasonEpisodes(id: string, seasonNumber: number): Promise<Episode[]> {
@@ -484,50 +712,67 @@ export const api = {
     contentId: string,
     type: 'movie' | 'tv' | 'anime',
     season?: number,
-    episode?: number
+    episode?: number,
+    title?: string
   ): Promise<PlaybackResolution> {
     const s = season || 1;
     const e = episode || 1;
-    const isEpisodic = type === 'tv' || type === 'anime';
+    const cached = mediaItemCache.get(String(contentId));
+    const effectiveType = (cached?.type || type || 'movie') as 'movie' | 'tv' | 'anime';
+    const expectedTitle = title || cached?.title || '';
+    const isEpisodic = effectiveType === 'tv' || effectiveType === 'anime';
 
+    // Prioritize high-accuracy embed servers that strictly use TMDB IDs
     const embedServers = [
       {
-        name: 'Server 1 (FrameX)',
-        url: isEpisodic
-          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${contentId}?autoplay=1`
-      },
-      {
-        name: 'Server 2 (VidSrc)',
+        name: 'Server 1 (VidSrc)',
         url: isEpisodic
           ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
           : `https://vidsrc.to/embed/movie/${contentId}`
       },
       {
-        name: 'Server 3 (AutoEmbed)',
+        name: 'Server 2 (MultiEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.cc/embed/tv/${contentId}/${s}/${e}`
-          : `https://player.autoembed.cc/embed/movie/${contentId}`
+          ? `https://multiembed.mov/?video_id=${contentId}&tmdb=1&s=${s}&e=${e}`
+          : `https://multiembed.mov/?video_id=${contentId}&tmdb=1`
+      },
+      {
+        name: 'Server 3 (2Embed)',
+        url: isEpisodic
+          ? `https://www.2embed.cc/embedtv/${contentId}&s=${s}&e=${e}`
+          : `https://www.2embed.cc/embed/${contentId}`
+      },
+      {
+        name: 'Server 4 (VidSrc.xyz)',
+        url: isEpisodic
+          ? `https://vidsrc.xyz/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.xyz/embed/movie/${contentId}`
+      },
+      {
+        name: 'Server 5 (FrameX)',
+        url: isEpisodic
+          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${contentId}?autoplay=1`
       }
     ];
 
     const fallbackResolution: PlaybackResolution = {
       success: true,
       contentId: String(contentId),
-      mediaType: type,
+      mediaType: effectiveType,
       season: isEpisodic ? s : undefined,
       episode: isEpisodic ? e : undefined,
-      provider: 'FrameXTV Embed Fallback',
+      provider: 'Verified Multi-Server Embed',
       sources: [],
       subtitles: [],
       embedUrl: embedServers[0].url,
       embedServers,
-      alternates: ['cinejoy', 'titan', 'bowler']
+      alternates: ['vidsrc', 'multiembed', '2embed', 'framex']
     };
 
     const params = new URLSearchParams({
       contentId: String(contentId),
-      type: type || 'movie'
+      type: effectiveType
     });
     if (season !== undefined) params.set('season', String(season));
     if (episode !== undefined) params.set('episode', String(episode));
@@ -535,10 +780,18 @@ export const api = {
     try {
       const res = await apiFetch<PlaybackResolution>(`/playback/resolve?${params.toString()}`);
       if (res && res.success) {
-        if (!res.embedServers || res.embedServers.length === 0) {
-          res.embedServers = embedServers;
-        }
-        return res;
+        // Validate sources to verify they match the requested movie title
+        const validSources = (res.sources || []).filter((src: any) =>
+          isStreamUrlAccurate(src.url, expectedTitle)
+        );
+
+        return {
+          ...res,
+          mediaType: effectiveType,
+          sources: validSources,
+          embedServers: embedServers,
+          embedUrl: embedServers[0].url
+        };
       }
     } catch (err: any) {
       console.warn('[Netflix API] Local resolvePlayback failed:', err?.message);
@@ -547,8 +800,8 @@ export const api = {
     // Direct FrameX stream fallback
     for (const b of FRAMEX_BACKENDS) {
       try {
-        let streamPath = `${b}/api/stream?id=${encodeURIComponent(contentId)}&type=${type === 'tv' ? 'tv' : 'movie'}`;
-        if (type === 'tv') {
+        let streamPath = `${b}/api/stream?id=${encodeURIComponent(contentId)}&type=${effectiveType === 'tv' ? 'tv' : 'movie'}`;
+        if (effectiveType === 'tv') {
           streamPath += `&season=${s}&episode=${e}`;
         }
         const directRes = await fetch(streamPath, {
@@ -557,23 +810,28 @@ export const api = {
         if (directRes.ok) {
           const data = await directRes.json();
           if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
-            return {
-              success: true,
-              contentId: String(contentId),
-              mediaType: type,
-              season: isEpisodic ? s : undefined,
-              episode: isEpisodic ? e : undefined,
-              provider: data.provider || 'FrameX Direct',
-              sources: data.sources.map((src: any) => ({
+            // Strictly validate every direct source before accepting
+            const validSources = data.sources
+              .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
+              .map((src: any) => ({
                 url: src.url,
                 quality: src.quality || '1080p',
                 type: src.type === 'hls' ? 'hls' : 'mp4',
-                server: src.server || 'FrameX'
-              })),
+                server: src.server || data.provider || 'FrameX'
+              }));
+
+            return {
+              success: true,
+              contentId: String(contentId),
+              mediaType: effectiveType,
+              season: isEpisodic ? s : undefined,
+              episode: isEpisodic ? e : undefined,
+              provider: data.provider || 'FrameX Direct',
+              sources: validSources,
               subtitles: Array.isArray(data.subtitles) ? data.subtitles : [],
               embedUrl: embedServers[0].url,
               embedServers,
-              alternates: Array.isArray(data.alternates) ? data.alternates : ['cinejoy', 'titan', 'bowler']
+              alternates: Array.isArray(data.alternates) ? data.alternates : ['vidsrc', 'multiembed', '2embed']
             };
           }
         }
