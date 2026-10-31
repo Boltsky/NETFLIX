@@ -1,0 +1,19 @@
+{
+  "profiles": [
+    {
+      "id": "bolt",
+      "name": "BOLT",
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&q=80",
+      "isVip": true,
+      "isDefault": true,
+      "createdAt": "2026-10-31T08:30:30.148Z"
+    }
+  ],
+  "watchlist": [],
+  "progress": [],
+  "settings": {
+    "theme": "netflix-dark",
+    "autoplay": "true",
+    "defaultQuality": "1080p"
+  }
+}

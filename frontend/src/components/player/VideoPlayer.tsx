@@ -45,6 +45,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [useIframeFallback, setUseIframeFallback] = useState(false);
   const [selectedServerIndex, setSelectedServerIndex] = useState(0);
   const [activeSubtitle, setActiveSubtitle] = useState<number>(-1);
+  const activeSubtitleRef = useRef<number>(-1);
+  activeSubtitleRef.current = activeSubtitle;
   const [showAudioSubtitleModal, setShowAudioSubtitleModal] = useState(false);
   const [modalCol, setModalCol] = useState(2); // default focus on Servers column (0=audio, 1=subs, 2=server)
   const [modalRow, setModalRow] = useState(0);
@@ -264,13 +266,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           maxBufferSize: 30 * 1024 * 1024,
           maxMaxBufferLength: 45
         });
+        hls.subtitleDisplay = false;
+        hls.subtitleTrack = -1;
         hlsRef.current = hls;
 
         hls.loadSource(source.url);
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (activeSubtitleRef.current === -1) {
+            hls.subtitleTrack = -1;
+            hls.subtitleDisplay = false;
+          }
           video.play().catch(() => setIsPlaying(false));
+        });
+
+        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+          if (activeSubtitleRef.current === -1) {
+            hls.subtitleTrack = -1;
+            hls.subtitleDisplay = false;
+          }
         });
 
         hls.on(Hls.Events.ERROR, (event, data) => {
@@ -298,6 +313,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       video.play().catch(() => setIsPlaying(false));
     }
 
+    const enforceSubtitles = () => {
+      const desired = activeSubtitleRef.current;
+      if (video.textTracks) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          try {
+            video.textTracks[i].mode = (desired >= 0 && i === desired) ? 'showing' : 'disabled';
+          } catch {}
+        }
+      }
+    };
+
+    enforceSubtitles();
+
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
       setDuration(video.duration || 0);
@@ -305,6 +333,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onLoadedMetadata = () => {
+      enforceSubtitles();
+    };
+    const onAddTrack = (e: any) => {
+      const desired = activeSubtitleRef.current;
+      if (e?.track) {
+        e.track.mode = desired >= 0 ? 'showing' : 'disabled';
+      }
+    };
     const onError = () => {
       console.warn('[Netflix Player] Native video error, falling back to embed');
       if (resolution.embedUrl) {
@@ -317,13 +354,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('canplay', enforceSubtitles);
     video.addEventListener('error', onError);
+    if (video.textTracks) {
+      video.textTracks.addEventListener('addtrack', onAddTrack);
+    }
 
     return () => {
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('canplay', enforceSubtitles);
       video.removeEventListener('error', onError);
+      if (video.textTracks) {
+        video.textTracks.removeEventListener('addtrack', onAddTrack);
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -565,12 +612,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Subtitle switch
   const selectSubtitle = (index: number) => {
     setActiveSubtitle(index);
-    if (useIframeFallback) {
-      iframeRef.current?.contentWindow?.postMessage({ action: 'setSubtitle', index }, '*');
-    } else if (videoRef.current) {
-      for (let i = 0; i < videoRef.current.textTracks.length; i++) {
-        videoRef.current.textTracks[i].mode = i === index ? 'showing' : 'disabled';
+    activeSubtitleRef.current = index;
+
+    // 1. Hls.js subtitle track switch / disable
+    if (hlsRef.current) {
+      try {
+        hlsRef.current.subtitleTrack = index;
+        hlsRef.current.subtitleDisplay = index >= 0;
+      } catch (err) {
+        console.warn('[Netflix Player] Failed to update HLS subtitleTrack:', err);
       }
+    }
+
+    // 2. Native HTML5 video textTracks mode switch / disable
+    if (videoRef.current && videoRef.current.textTracks) {
+      for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+        try {
+          videoRef.current.textTracks[i].mode = (index >= 0 && i === index) ? 'showing' : 'disabled';
+        } catch (err) {
+          console.warn('[Netflix Player] Failed to update textTrack mode:', err);
+        }
+      }
+    }
+
+    // 3. PostMessage fallback to embed iframe
+    if (useIframeFallback && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ action: 'setSubtitle', index }, '*');
+      iframeRef.current.contentWindow.postMessage({
+        event: 'setSubtitle',
+        enabled: index >= 0,
+        index
+      }, '*');
     }
   };
 
@@ -638,7 +710,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {!useIframeFallback && (
         <video
           ref={videoRef}
-          className="w-full h-full object-contain bg-black"
+          className={`w-full h-full object-contain bg-black ${activeSubtitle === -1 ? 'hide-subtitles' : ''}`}
           playsInline
           crossOrigin="anonymous"
           onError={() => {
@@ -657,7 +729,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               src={sub.url}
               srcLang={sub.lang}
               label={sub.label}
-              default={sub.isDefault}
+              default={false}
             />
           ))}
         </video>
@@ -765,22 +837,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {formatRemainingTime(currentTime, duration)}
               </span>
             </div>
-
-            {/* TV remote prompt when scrubber is active */}
-            {focusedControl === 'scrubber' && (
-              <div className="flex items-center justify-between pt-1 px-1 text-[11px] font-bold">
-                <span className="text-[#E50914] flex items-center space-x-1 animate-pulse">
-                  <span>◄</span>
-                  <span>Rewind 10s</span>
-                  <span className="mx-1 text-zinc-500">|</span>
-                  <span>Fast-Forward 10s</span>
-                  <span>►</span>
-                </span>
-                <span className="text-zinc-400 font-mono text-[10px]">
-                  Press ENTER to {isPlaying ? 'Pause' : 'Play'} • Press DOWN for Controls
-                </span>
-              </div>
-            )}
           </div>
 
           {/* Action Buttons Row */}

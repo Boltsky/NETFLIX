@@ -789,6 +789,10 @@ export const api = {
           ...res,
           mediaType: effectiveType,
           sources: validSources,
+          subtitles: (res.subtitles || []).map((sub: any) => ({
+            ...sub,
+            isDefault: false
+          })),
           embedServers: embedServers,
           embedUrl: embedServers[0].url
         };
@@ -828,7 +832,10 @@ export const api = {
               episode: isEpisodic ? e : undefined,
               provider: data.provider || 'FrameX Direct',
               sources: validSources,
-              subtitles: Array.isArray(data.subtitles) ? data.subtitles : [],
+              subtitles: (Array.isArray(data.subtitles) ? data.subtitles : []).map((sub: any) => ({
+                ...sub,
+                isDefault: false
+              })),
               embedUrl: embedServers[0].url,
               embedServers,
               alternates: Array.isArray(data.alternates) ? data.alternates : ['vidsrc', 'multiembed', '2embed']

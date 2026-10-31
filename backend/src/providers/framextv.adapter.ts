@@ -413,7 +413,7 @@ export class FrameXTVAdapter implements IContentProvider {
               lang: sub.lang || sub.language || 'en',
               language: sub.language || sub.lang,
               format: sub.format === 'srt' ? 'srt' : 'vtt',
-              isDefault: !!sub.isDefault
+              isDefault: false
             }))
           : [];
 

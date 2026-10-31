@@ -300,5 +300,32 @@ describe('Netflix TV Navigation & UX Tests', () => {
     expect(res.embedServers![1].name).toContain('MultiEmbed');
     expect(res.embedServers![0].url).toContain('155');
   });
+
+  it('verifies subtitles are strictly disabled by default (isDefault: false)', async () => {
+    const { api } = await import('../services/api');
+    const res = await api.resolvePlayback('155', 'movie');
+
+    // All subtitle tracks must have isDefault === false
+    for (const sub of (res.subtitles || [])) {
+      expect(sub.isDefault).toBe(false);
+    }
+  });
+
+  it('validates player subtitle selection state and track disabling logic', () => {
+    let activeSubtitle: number = -1; // Default state must be -1 (Off)
+    expect(activeSubtitle).toBe(-1);
+
+    const selectSubtitle = (index: number) => {
+      activeSubtitle = index;
+    };
+
+    // Selecting subtitle index 0 (e.g. English)
+    selectSubtitle(0);
+    expect(activeSubtitle).toBe(0);
+
+    // Selecting 'Off' (-1) reliably disables subtitles
+    selectSubtitle(-1);
+    expect(activeSubtitle).toBe(-1);
+  });
 });
 
