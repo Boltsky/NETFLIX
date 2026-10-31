@@ -1,13 +1,18 @@
 package com.cinewave.tv
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -16,8 +21,11 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -136,6 +144,9 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
         webView.requestFocus()
+
+        // Register in-app update bridge for Android TV / BlueStacks
+        webView.addJavascriptInterface(AppUpdateBridge(this, webView), "AndroidUpdater")
     }
 
     private fun proxyApiRequest(request: WebResourceRequest): WebResourceResponse? {
@@ -347,5 +358,143 @@ class MainActivity : AppCompatActivity() {
             Log.e("NetflixTV", "Error destroying webview", e)
         }
         super.onDestroy()
+    }
+}
+
+/**
+ * JavaScript Interface Bridge for checking, downloading, and launching APK updates on Android TV.
+ */
+class AppUpdateBridge(private val activity: MainActivity, private val webView: WebView) {
+
+    @JavascriptInterface
+    fun isAndroidApp(): Boolean = true
+
+    @JavascriptInterface
+    fun getAppVersionCode(): Int {
+        return try {
+            val pInfo = activity.packageManager.getPackageInfo(activity.packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pInfo.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode
+            }
+        } catch (e: Exception) {
+            1
+        }
+    }
+
+    @JavascriptInterface
+    fun getAppVersionName(): String {
+        return try {
+            val pInfo = activity.packageManager.getPackageInfo(activity.packageName, 0)
+            pInfo.versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
+    }
+
+    @JavascriptInterface
+    fun downloadAndInstallApk(apkUrl: String) {
+        Log.d("NetflixUpdater", "Initiating APK download from: $apkUrl")
+
+        // Prompt for unknown sources permission on Android 8.0+ if not already granted
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!activity.packageManager.canRequestPackageInstalls()) {
+                Log.w("NetflixUpdater", "REQUEST_INSTALL_PACKAGES not granted, opening system settings")
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${activity.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    activity.startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("NetflixUpdater", "Failed to launch unknown sources settings", e)
+                }
+            }
+        }
+
+        Thread {
+            try {
+                notifyProgress(0, "downloading")
+
+                val url = URL(apkUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 15000
+                conn.readTimeout = 45000
+                conn.instanceFollowRedirects = true
+                conn.connect()
+
+                val status = conn.responseCode
+                if (status !in 200..299) {
+                    notifyProgress(-1, "error: HTTP $status")
+                    return@Thread
+                }
+
+                val contentLength = conn.contentLength
+                val cacheDir = activity.cacheDir
+                val apkFile = File(cacheDir, "Netflix-Update.apk")
+                if (apkFile.exists()) {
+                    apkFile.delete()
+                }
+
+                val input: InputStream = conn.inputStream
+                val output = FileOutputStream(apkFile)
+
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                var totalBytes: Long = 0
+                var lastReportedPercent = -1
+
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    output.write(buffer, 0, bytesRead)
+                    totalBytes += bytesRead
+                    if (contentLength > 0) {
+                        val percent = ((totalBytes * 100) / contentLength).toInt()
+                        if (percent != lastReportedPercent) {
+                            lastReportedPercent = percent
+                            notifyProgress(percent, "downloading")
+                        }
+                    }
+                }
+
+                output.flush()
+                output.close()
+                input.close()
+                conn.disconnect()
+
+                notifyProgress(100, "ready_to_install")
+
+                // Launch package installer intent on main thread
+                activity.runOnUiThread {
+                    try {
+                        val apkUri = FileProvider.getUriForFile(
+                            activity,
+                            "${activity.packageName}.fileprovider",
+                            apkFile
+                        )
+                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        }
+                        activity.startActivity(installIntent)
+                        notifyProgress(100, "installed_prompted")
+                    } catch (e: Exception) {
+                        Log.e("NetflixUpdater", "Failed to start install intent", e)
+                        notifyProgress(-1, "error: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("NetflixUpdater", "Error during APK download", e)
+                notifyProgress(-1, "error: ${e.message}")
+            }
+        }.start()
+    }
+
+    private fun notifyProgress(percent: Int, status: String) {
+        val js = "try { if (window.onUpdateDownloadProgress) { window.onUpdateDownloadProgress($percent, '$status'); } } catch(e){}"
+        activity.runOnUiThread {
+            webView.evaluateJavascript(js, null)
+        }
     }
 }

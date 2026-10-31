@@ -9,9 +9,12 @@ import {
   Bookmark,
   LayoutGrid,
   Users,
-  LogOut
+  LogOut,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { NetflixProfile } from '../profile/ProfileSelector';
+import { CURRENT_APP_VERSION } from '../../version';
 
 export type NetflixNavTab = 'search' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories';
 
@@ -21,6 +24,8 @@ interface NetflixSidebarProps {
   activeProfile: NetflixProfile;
   onSwitchProfile: () => void;
   onExitApp?: () => void;
+  hasUpdate?: boolean;
+  onCheckUpdate?: () => void;
 }
 
 export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
@@ -28,7 +33,9 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
   onSelectTab,
   activeProfile,
   onSwitchProfile,
-  onExitApp
+  onExitApp,
+  hasUpdate,
+  onCheckUpdate
 }) => {
   const { focusedKey, setFocusedKey } = useFocus();
   const [isHovered, setIsHovered] = useState(false);
@@ -149,6 +156,16 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
             onAction={onSwitchProfile}
           />
 
+          {/* Version & Check Updates Action */}
+          <SidebarActionButton
+            id="sidebar-update"
+            label={hasUpdate ? 'Update Available' : `Version v${CURRENT_APP_VERSION.versionName}`}
+            badge={hasUpdate ? 'NEW' : undefined}
+            icon={hasUpdate ? Sparkles : RefreshCw}
+            isExpanded={isExpanded}
+            onAction={onCheckUpdate || (() => {})}
+          />
+
           {/* Exit / Help */}
           <SidebarActionButton
             id="sidebar-exit"
@@ -241,7 +258,14 @@ const SidebarActionButton: React.FC<{
       {avatar ? (
         <div className="flex-shrink-0">{avatar}</div>
       ) : (
-        Icon && <Icon className={`w-5 h-5 flex-shrink-0 ${isFocused ? 'text-black' : 'text-zinc-400'}`} />
+        Icon && (
+          <div className="relative flex-shrink-0">
+            <Icon className={`w-5 h-5 ${isFocused ? 'text-black' : badge === 'NEW' ? 'text-[#E50914]' : 'text-zinc-400'}`} />
+            {badge === 'NEW' && !isExpanded && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#E50914] ring-2 ring-black animate-pulse" />
+            )}
+          </div>
+        )
       )}
       <div
         className={`ml-4 flex items-center space-x-1.5 whitespace-nowrap transition-opacity duration-200 ${
@@ -250,7 +274,11 @@ const SidebarActionButton: React.FC<{
       >
         <span className="text-xs font-medium">{label}</span>
         {badge && (
-          <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 bg-gradient-to-r from-amber-400 to-yellow-500 text-black rounded shadow-sm">
+          <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow-sm ${
+            badge === 'NEW'
+              ? 'bg-[#E50914] text-white animate-pulse'
+              : 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black'
+          }`}>
             {badge}
           </span>
         )}

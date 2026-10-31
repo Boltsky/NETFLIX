@@ -11,6 +11,9 @@ import { VideoPlayer } from './components/player/VideoPlayer';
 import { SearchScreen } from './components/search/SearchScreen';
 import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
 import { CategoriesScreen } from './components/categories/CategoriesScreen';
+import { updateService } from './services/updateService';
+import { AppUpdateManifest, CURRENT_APP_VERSION } from './version';
+import { UpdateModal } from './components/common/UpdateModal';
 
 const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
@@ -71,6 +74,47 @@ export const App: React.FC = () => {
     season?: number;
     episode?: number;
   } | null>(null);
+
+  // App version control & update states
+  const [availableUpdate, setAvailableUpdate] = useState<AppUpdateManifest | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateToast, setUpdateToast] = useState<string | null>(null);
+
+  // Background GitHub update check on startup
+  useEffect(() => {
+    const checkTimer = setTimeout(() => {
+      updateService
+        .checkForAppUpdate(false)
+        .then((manifest) => {
+          if (manifest) {
+            setAvailableUpdate(manifest);
+            setShowUpdateModal(true);
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+
+    return () => clearTimeout(checkTimer);
+  }, []);
+
+  // Manual Check for Updates
+  const handleManualCheckUpdate = async () => {
+    setUpdateToast('Checking GitHub for updates...');
+    try {
+      const manifest = await updateService.checkForAppUpdate(true);
+      if (manifest) {
+        setAvailableUpdate(manifest);
+        setShowUpdateModal(true);
+        setUpdateToast(null);
+      } else {
+        setUpdateToast(`You're on the latest version (v${CURRENT_APP_VERSION.versionName})`);
+        setTimeout(() => setUpdateToast(null), 3500);
+      }
+    } catch {
+      setUpdateToast('Unable to check for updates right now.');
+      setTimeout(() => setUpdateToast(null), 3500);
+    }
+  };
 
   // Load home catalog & progress for active profile
   const loadData = useCallback((profileId: string = activeProfile.id) => {
@@ -316,6 +360,8 @@ export const App: React.FC = () => {
             onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
             activeProfile={activeProfile}
             onSwitchProfile={() => setCurrentScreen('profiles')}
+            hasUpdate={Boolean(availableUpdate)}
+            onCheckUpdate={handleManualCheckUpdate}
           />
         )}
 
@@ -442,6 +488,22 @@ export const App: React.FC = () => {
               </>
             )}
           </main>
+        )}
+
+        {/* Update Notification Toast */}
+        {updateToast && (
+          <div className="fixed bottom-8 right-8 z-50 bg-[#181818]/95 border border-zinc-700 text-white px-5 py-3 rounded-md shadow-2xl flex items-center space-x-3 text-xs font-bold animate-fadeIn">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#E50914] animate-ping" />
+            <span>{updateToast}</span>
+          </div>
+        )}
+
+        {/* In-App Update Modal */}
+        {showUpdateModal && availableUpdate && (
+          <UpdateModal
+            update={availableUpdate}
+            onClose={() => setShowUpdateModal(false)}
+          />
         )}
       </div>
     </FocusProvider>

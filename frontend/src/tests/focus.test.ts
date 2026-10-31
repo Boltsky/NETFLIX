@@ -327,5 +327,81 @@ describe('Netflix TV Navigation & UX Tests', () => {
     selectSubtitle(-1);
     expect(activeSubtitle).toBe(-1);
   });
+
+  it('verifies version comparison logic for GitHub updates', async () => {
+    const { isNewerVersion } = await import('../services/updateService');
+    const { CURRENT_APP_VERSION } = await import('../version');
+
+    // Newer versionCode
+    expect(
+      isNewerVersion({
+        versionCode: CURRENT_APP_VERSION.versionCode + 1,
+        versionName: '1.0.1',
+        commitHash: CURRENT_APP_VERSION.commitHash,
+        releaseDate: '2026-11-01',
+        repo: 'Boltsky/NETFLIX',
+        branch: 'main',
+        title: 'Update',
+        changelog: ['New features'],
+        apkUrl: 'https://example.com/app.apk',
+        releaseUrl: 'https://example.com/releases'
+      })
+    ).toBe(true);
+
+    // Same versionCode but newer/different commit hash
+    expect(
+      isNewerVersion({
+        versionCode: CURRENT_APP_VERSION.versionCode,
+        versionName: CURRENT_APP_VERSION.versionName,
+        commitHash: 'a1b2c3d',
+        releaseDate: '2026-11-01',
+        repo: 'Boltsky/NETFLIX',
+        branch: 'main',
+        title: 'Update',
+        changelog: ['Commit update'],
+        apkUrl: 'https://example.com/app.apk',
+        releaseUrl: 'https://example.com/releases'
+      })
+    ).toBe(true);
+
+    // Identical version and commit
+    expect(
+      isNewerVersion({
+        versionCode: CURRENT_APP_VERSION.versionCode,
+        versionName: CURRENT_APP_VERSION.versionName,
+        commitHash: CURRENT_APP_VERSION.commitHash,
+        releaseDate: '2026-10-31',
+        repo: 'Boltsky/NETFLIX',
+        branch: 'main',
+        title: 'Same Version',
+        changelog: [],
+        apkUrl: 'https://example.com/app.apk',
+        releaseUrl: 'https://example.com/releases'
+      })
+    ).toBe(false);
+  });
+
+  it('manages update dismissal in localStorage correctly', async () => {
+    const store: Record<string, string> = {};
+    if (typeof globalThis.localStorage === 'undefined') {
+      (globalThis as any).localStorage = {
+        getItem: (k: string) => store[k] || null,
+        setItem: (k: string, v: string) => { store[k] = v; },
+        removeItem: (k: string) => { delete store[k]; },
+        clear: () => { Object.keys(store).forEach(k => delete store[k]); }
+      };
+    }
+    const { updateService } = await import('../services/updateService');
+    const testVersionCode = 999;
+
+    updateService.clearDismissedUpdate();
+    expect(localStorage.getItem('netflix_dismissed_version')).toBeNull();
+
+    updateService.dismissUpdate(testVersionCode);
+    expect(localStorage.getItem('netflix_dismissed_version')).toBe('999');
+
+    updateService.clearDismissedUpdate();
+    expect(localStorage.getItem('netflix_dismissed_version')).toBeNull();
+  });
 });
 

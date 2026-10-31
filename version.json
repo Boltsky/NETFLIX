@@ -1,0 +1,19 @@
+{
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "commitHash": "3f92ae6",
+  "releaseDate": "2026-10-31",
+  "repo": "Boltsky/NETFLIX",
+  "branch": "main",
+  "title": "Netflix TV v1.0.0",
+  "changelog": [
+    "Subtitles disabled by default and cleanly toggleable in Audio & Subtitles menu",
+    "Removed player prompt text for a clean, cinema-like Netflix UI",
+    "Enhanced TV remote D-pad focus and timeline seeking",
+    "Continuous category and rail movies pagination",
+    "Added automated GitHub version control and in-app updates"
+  ],
+  "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
+  "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",
+  "isMandatory": false
+}
