@@ -9,6 +9,7 @@ interface HeroBannerProps {
   onMoreInfo: (item: MediaItem) => void;
   isInWatchlist: boolean;
   onToggleWatchlist: (item: MediaItem) => void;
+  hasProgress?: boolean;
 }
 
 export const HeroBanner: React.FC<HeroBannerProps> = ({
@@ -16,7 +17,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   onPlay,
   onMoreInfo,
   isInWatchlist,
-  onToggleWatchlist
+  onToggleWatchlist,
+  hasProgress = false
 }) => {
   if (!item) {
     return (
@@ -96,7 +98,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
         <div className="flex items-center space-x-4 pt-2">
           <NetflixPlayButton
             focusKey="hero-play"
-            label="Play"
+            label={hasProgress ? 'Resume' : 'Play'}
             onClick={() => onPlay(item)}
           />
           <NetflixInfoButton

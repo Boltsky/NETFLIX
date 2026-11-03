@@ -37,10 +37,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Playback state
+  // Playback state & initial resumption
+  const savedProgress = useMemo(() => {
+    if (!item?.id) return null;
+    return api.getItemProgress(item.id, profileId, season, episode);
+  }, [item?.id, profileId, season, episode]);
+
+  const initialResumeTimeSec = useMemo(() => {
+    if (savedProgress && savedProgress.positionMs > 5000) {
+      const pos = savedProgress.positionMs / 1000;
+      const dur = savedProgress.durationMs / 1000;
+      if (dur <= 0 || pos < dur - 30) {
+        return pos;
+      }
+    }
+    return 0;
+  }, [savedProgress]);
+
   const [isPlaying, setIsPlaying] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(initialResumeTimeSec);
+  const [duration, setDuration] = useState(savedProgress?.durationMs ? savedProgress.durationMs / 1000 : 0);
   const [showControls, setShowControls] = useState(true);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
   const [selectedServerIndex, setSelectedServerIndex] = useState(0);
@@ -50,6 +66,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showAudioSubtitleModal, setShowAudioSubtitleModal] = useState(false);
   const [modalCol, setModalCol] = useState(2); // default focus on Servers column (0=audio, 1=subs, 2=server)
   const [modalRow, setModalRow] = useState(0);
+
+  // Resume notification banner
+  const [resumeToast, setResumeToast] = useState<string | null>(null);
+  const hasAppliedResumeRef = useRef(false);
+
+  // Virtual decoupled scrubbing state (Lag-free 60fps fast forwarding)
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const isScrubbingRef = useRef(false);
+  isScrubbingRef.current = isScrubbing;
+
+  const [scrubTargetTime, setScrubTargetTime] = useState(initialResumeTimeSec);
+  const scrubTargetTimeRef = useRef(initialResumeTimeSec);
+  scrubTargetTimeRef.current = scrubTargetTime;
+
+  const scrubCommitTimerRef = useRef<any>(null);
+  const lastScrubKeyTimeRef = useRef<number>(0);
+  const scrubMultiplierRef = useRef<number>(1);
 
   // TV D-pad focus state
   const [focusedControl, setFocusedControlState] = useState<'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>('play');
@@ -121,7 +154,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const bottomControlsRef = useRef(bottomControls);
   bottomControlsRef.current = bottomControls;
 
-  const currentEmbedUrl = servers[selectedServerIndex]?.url || resolution?.embedUrl;
+  const currentEmbedUrl = useMemo(() => {
+    const base = servers[selectedServerIndex]?.url || resolution?.embedUrl;
+    if (!base) return '';
+    if (initialResumeTimeSec > 0 && !hasAppliedResumeRef.current) {
+      const sep = base.includes('?') ? '&' : '?';
+      return `${base}${sep}start=${Math.floor(initialResumeTimeSec)}`;
+    }
+    return base;
+  }, [servers, selectedServerIndex, resolution, initialResumeTimeSec]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -144,28 +185,125 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [item, season, episode, profileId]);
 
-  // Record initial watch progress entry so Continue Watching always has valid title & poster
+  // Ensure Continue Watching has an entry if no progress exists yet (do NOT overwrite existing progress)
   useEffect(() => {
     if (item?.id) {
-      api.saveProgress(item.id, {
-        profileId: profileId || 'bolt',
-        mediaType: item.type,
-        season,
-        episode,
-        positionMs: 15000,
-        durationMs: 7200000,
-        title: item.title,
-        poster: item.poster || item.backdrop
-      }).catch(() => {});
+      const existing = api.getItemProgress(item.id, profileId, season, episode);
+      if (!existing || existing.positionMs <= 0) {
+        api.saveProgress(item.id, {
+          profileId: profileId || 'bolt',
+          mediaType: item.type,
+          season,
+          episode,
+          positionMs: 15000,
+          durationMs: 7200000,
+          title: item.title,
+          poster: item.poster || item.backdrop
+        }).catch(() => {});
+      }
     }
   }, [item, season, episode, profileId]);
 
+  // Periodic progress persistence while playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      if (videoRef.current && videoRef.current.duration > 0 && !videoRef.current.paused) {
+        saveCurrentProgress(videoRef.current.currentTime, videoRef.current.duration);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isPlaying, saveCurrentProgress]);
+
+  // Helper to apply resume time on video element
+  const applyResumeIfAvailable = useCallback((targetVideo: HTMLVideoElement) => {
+    if (!hasAppliedResumeRef.current && initialResumeTimeSec > 0) {
+      hasAppliedResumeRef.current = true;
+      try {
+        targetVideo.currentTime = initialResumeTimeSec;
+      } catch (err) {
+        console.warn('[Netflix Player] Failed to set resume currentTime on video:', err);
+      }
+      const mins = Math.floor(initialResumeTimeSec / 60);
+      const secs = Math.floor(initialResumeTimeSec % 60);
+      const formatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      setResumeToast(`Resumed from ${formatted}`);
+      setTimeout(() => setResumeToast(null), 4000);
+    }
+  }, [initialResumeTimeSec]);
+
+  // Commit debounced seek to actual video decoder
+  const commitSeek = useCallback((targetSec: number) => {
+    if (scrubCommitTimerRef.current) {
+      clearTimeout(scrubCommitTimerRef.current);
+      scrubCommitTimerRef.current = null;
+    }
+    scrubMultiplierRef.current = 1;
+
+    if (useIframeFallback) {
+      iframeRef.current?.contentWindow?.postMessage({ action: 'seek', time: targetSec }, '*');
+      iframeRef.current?.contentWindow?.postMessage({ event: 'seek', time: targetSec }, '*');
+      setCurrentTime(targetSec);
+      setIsScrubbing(false);
+    } else if (videoRef.current) {
+      try {
+        videoRef.current.currentTime = targetSec;
+      } catch (err) {
+        console.warn('[Netflix Player] Failed to seek video currentTime:', err);
+      }
+      setCurrentTime(targetSec);
+      setTimeout(() => {
+        setIsScrubbing(false);
+      }, 200);
+    } else {
+      setIsScrubbing(false);
+    }
+
+    if (duration > 0) {
+      saveCurrentProgress(targetSec, duration);
+    }
+  }, [useIframeFallback, duration, saveCurrentProgress]);
+
+  // Dynamic accelerated scrub step for fast forward / rewind
+  const handleScrubStep = useCallback((direction: 'forward' | 'rewind') => {
+    const now = Date.now();
+    const elapsed = now - lastScrubKeyTimeRef.current;
+    lastScrubKeyTimeRef.current = now;
+
+    // Acceleration: if keys arrive in quick succession (< 450ms)
+    if (elapsed < 450) {
+      scrubMultiplierRef.current = Math.min(16, scrubMultiplierRef.current * 1.5);
+    } else {
+      scrubMultiplierRef.current = 1;
+    }
+
+    const baseStep = 15;
+    const stepSeconds = Math.round(baseStep * scrubMultiplierRef.current);
+    const delta = direction === 'forward' ? stepSeconds : -stepSeconds;
+
+    const currentPos = isScrubbingRef.current ? scrubTargetTimeRef.current : currentTime;
+    const effectiveDuration = duration > 0 ? duration : 7200;
+    const newTarget = Math.max(0, Math.min(effectiveDuration, currentPos + delta));
+
+    setIsScrubbing(true);
+    setScrubTargetTime(newTarget);
+
+    if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
+    scrubCommitTimerRef.current = setTimeout(() => {
+      commitSeek(newTarget);
+    }, 350);
+  }, [currentTime, duration, commitSeek]);
+
   // Clean exit: stops all media and audio
   const handleExit = useCallback(() => {
+    if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
+    const finalPos = isScrubbingRef.current
+      ? scrubTargetTimeRef.current
+      : (videoRef.current ? videoRef.current.currentTime : currentTime);
+    const finalDur = videoRef.current ? videoRef.current.duration : duration;
+    saveCurrentProgress(finalPos, finalDur);
+
     if (videoRef.current) {
-      const pos = videoRef.current.currentTime;
-      const dur = videoRef.current.duration;
-      saveCurrentProgress(pos, dur);
       videoRef.current.pause();
       videoRef.current.src = '';
     }
@@ -178,13 +316,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       iframeRef.current.src = 'about:blank';
     }
     onExit();
-  }, [saveCurrentProgress, onExit]);
+  }, [saveCurrentProgress, onExit, currentTime, duration]);
 
   // Ensure media resources are fully released on unmount
   useEffect(() => {
     return () => {
+      if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
       if (videoRef.current) {
         try {
+          if (videoRef.current.duration > 0) {
+            saveCurrentProgress(videoRef.current.currentTime, videoRef.current.duration);
+          }
           videoRef.current.pause();
           videoRef.current.src = '';
           videoRef.current.load();
@@ -203,7 +345,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } catch {}
       }
     };
-  }, []);
+  }, [saveCurrentProgress]);
 
   // Resolve playback source
   useEffect(() => {
@@ -278,6 +420,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             hls.subtitleTrack = -1;
             hls.subtitleDisplay = false;
           }
+          applyResumeIfAvailable(video);
           video.play().catch(() => setIsPlaying(false));
         });
 
@@ -327,14 +470,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     enforceSubtitles();
 
     const onTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
-      setDuration(video.duration || 0);
+      if (!isScrubbingRef.current) {
+        setCurrentTime(video.currentTime);
+        setDuration(video.duration || 0);
+      }
     };
 
     const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPause = () => {
+      setIsPlaying(false);
+      if (video.duration > 0) {
+        saveCurrentProgress(video.currentTime, video.duration);
+      }
+    };
     const onLoadedMetadata = () => {
       enforceSubtitles();
+      applyResumeIfAvailable(video);
+    };
+    const onCanPlay = () => {
+      enforceSubtitles();
+      applyResumeIfAvailable(video);
     };
     const onAddTrack = (e: any) => {
       const desired = activeSubtitleRef.current;
@@ -355,7 +510,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
-    video.addEventListener('canplay', enforceSubtitles);
+    video.addEventListener('canplay', onCanPlay);
     video.addEventListener('error', onError);
     if (video.textTracks) {
       video.textTracks.addEventListener('addtrack', onAddTrack);
@@ -366,7 +521,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
-      video.removeEventListener('canplay', enforceSubtitles);
+      video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('error', onError);
       if (video.textTracks) {
         video.textTracks.removeEventListener('addtrack', onAddTrack);
@@ -376,14 +531,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current = null;
       }
     };
-  }, [resolution, useIframeFallback]);
+  }, [resolution, useIframeFallback, applyResumeIfAvailable, saveCurrentProgress]);
 
   // FrameXTV PostMessage Telemetry
   useEffect(() => {
     if (!useIframeFallback) return;
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.event === 'frameXTV:timeupdate') {
+      if (event.data?.event === 'frameXTV:timeupdate' && !isScrubbingRef.current) {
         const cur = Number(event.data.currentTime || 0);
         const dur = Number(event.data.duration || 0);
         setCurrentTime(cur);
@@ -401,7 +556,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     showControlsRef.current = true;
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
-      if (!showAudioSubtitleModalRef.current) {
+      if (!showAudioSubtitleModalRef.current && !isScrubbingRef.current) {
         setShowControls(false);
         showControlsRef.current = false;
       }
@@ -481,7 +636,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 'Left':
           e.preventDefault();
           if (curCtrl === 'scrubber') {
-            seekBy(-10);
+            handleScrubStep('rewind');
           } else if (curBottom.includes(curCtrl as any)) {
             const idx = curBottom.indexOf(curCtrl as any);
             if (idx > 0) {
@@ -494,7 +649,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 'Right':
           e.preventDefault();
           if (curCtrl === 'scrubber') {
-            seekBy(10);
+            handleScrubStep('forward');
           } else if (curBottom.includes(curCtrl as any)) {
             const idx = curBottom.indexOf(curCtrl as any);
             if (idx < curBottom.length - 1) {
@@ -506,6 +661,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 'ArrowUp':
         case 'Up':
           e.preventDefault();
+          if (isScrubbingRef.current) {
+            commitSeek(scrubTargetTimeRef.current);
+          }
           if (curBottom.includes(curCtrl as any)) {
             // Navigate UP to scrubber/timeline (NO longer opens dialog)
             setFocusedControl('scrubber');
@@ -518,6 +676,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 'ArrowDown':
         case 'Down':
           e.preventDefault();
+          if (isScrubbingRef.current) {
+            commitSeek(scrubTargetTimeRef.current);
+          }
           if (curCtrl === 'back') {
             // Navigate DOWN to scrubber
             setFocusedControl('scrubber');
@@ -532,12 +693,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           e.preventDefault();
           if (curCtrl === 'back') {
             handleExit();
-          } else if (curCtrl === 'scrubber' || curCtrl === 'play') {
+          } else if (curCtrl === 'scrubber') {
+            if (isScrubbingRef.current) {
+              commitSeek(scrubTargetTimeRef.current);
+            } else {
+              togglePlayPause();
+            }
+          } else if (curCtrl === 'play') {
             togglePlayPause();
           } else if (curCtrl === 'rewind') {
-            seekBy(-10);
+            handleScrubStep('rewind');
           } else if (curCtrl === 'forward') {
-            seekBy(10);
+            handleScrubStep('forward');
           } else if (curCtrl === 'next-ep') {
             if (onNextEpisode) onNextEpisode();
           } else if (curCtrl === 'server') {
@@ -579,7 +746,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     onNextEpisode,
     activeSubtitle,
     modalCol,
-    modalRow
+    modalRow,
+    handleScrubStep,
+    commitSeek
   ]);
 
   // Play / Pause Toggle
@@ -596,16 +765,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         videoRef.current.pause();
         setIsPlaying(false);
       }
-    }
-  };
-
-  // Seek offset
-  const seekBy = (sec: number) => {
-    if (useIframeFallback) {
-      iframeRef.current?.contentWindow?.postMessage({ action: 'seekBy', seconds: sec }, '*');
-      setCurrentTime((prev) => Math.max(0, prev + sec));
-    } else if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime + sec);
     }
   };
 
@@ -659,7 +818,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return `-${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const formatDisplayTime = (sec: number) => {
+    if (sec <= 0) return '00:00';
+    const hours = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
+    const secs = Math.floor(sec % 60);
+    if (hours > 0) {
+      return `${hours}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const formatDiff = (sec: number) => {
+    const s = Math.round(Math.abs(sec));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    if (mins > 0) {
+      return `${mins}m ${secs > 0 ? `${secs}s` : ''}`.trim();
+    }
+    return `${secs}s`;
+  };
+
+  const displayTime = isScrubbing ? scrubTargetTime : currentTime;
+  const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden">
@@ -667,6 +848,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {loading && (
         <div className="absolute inset-0 z-40 bg-black flex flex-col items-center justify-center space-y-4">
           <div className="w-16 h-16 rounded-full border-4 border-[#E50914] border-t-transparent animate-spin" />
+        </div>
+      )}
+
+      {/* Resume Toast Notification */}
+      {resumeToast && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-zinc-900/95 border border-zinc-700 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2.5 text-xs font-bold animate-fadeIn pointer-events-none">
+          <Play className="w-3.5 h-3.5 fill-[#E50914] text-[#E50914]" />
+          <span>{resumeToast}</span>
         </div>
       )}
 
@@ -818,6 +1007,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   className="h-full bg-[#E50914] rounded-full transition-all duration-150 relative"
                   style={{ width: `${progressPercent}%` }}
                 >
+                  {/* Floating Seek Target & Offset Badge when scrubbing */}
+                  {isScrubbing && (
+                    <div className="absolute -top-11 right-0 translate-x-1/2 bg-[#E50914] text-white text-xs font-mono font-bold px-3 py-1 rounded shadow-2xl flex items-center space-x-1.5 z-40 whitespace-nowrap pointer-events-none animate-fadeIn">
+                      <span>{formatDisplayTime(displayTime)}</span>
+                      <span className="text-[10px] text-zinc-200 font-sans">
+                        ({displayTime >= currentTime ? `+${formatDiff(displayTime - currentTime)}` : `-${formatDiff(currentTime - displayTime)}`})
+                      </span>
+                    </div>
+                  )}
+
                   {/* White scrub head handle */}
                   <div
                     className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-white transform translate-x-1/2 transition-all ${
@@ -834,7 +1033,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
                 }`}
               >
-                {formatRemainingTime(currentTime, duration)}
+                {formatRemainingTime(displayTime, duration)}
               </span>
             </div>
           </div>
@@ -862,38 +1061,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 )}
               </button>
 
-              {/* Rewind 10s */}
+              {/* Rewind */}
               <button
                 onClick={() => {
                   setFocusedControl('rewind');
-                  seekBy(-10);
+                  handleScrubStep('rewind');
                 }}
-                className={`p-2.5 rounded-full transition-all relative flex items-center justify-center ${
+                className={`p-2 rounded-full transition-all ${
                   focusedControl === 'rewind'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
                     : 'text-white hover:text-zinc-200'
                 }`}
-                title="Rewind 10s"
+                title="Rewind (Left)"
               >
                 <RotateCcw className={`w-6 h-6 ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`} />
-                <span className={`absolute text-[8px] font-bold ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`}>10</span>
               </button>
 
-              {/* Fast Forward 10s */}
+              {/* Fast Forward */}
               <button
                 onClick={() => {
                   setFocusedControl('forward');
-                  seekBy(10);
+                  handleScrubStep('forward');
                 }}
-                className={`p-2.5 rounded-full transition-all relative flex items-center justify-center ${
+                className={`p-2 rounded-full transition-all ${
                   focusedControl === 'forward'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
                     : 'text-white hover:text-zinc-200'
                 }`}
-                title="Fast Forward 10s"
+                title="Fast Forward (Right)"
               >
                 <RotateCw className={`w-6 h-6 ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`} />
-                <span className={`absolute text-[8px] font-bold ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`}>10</span>
               </button>
 
               {/* Next Episode (if series) */}
@@ -903,9 +1100,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     setFocusedControl('next-ep');
                     onNextEpisode();
                   }}
-                  className={`p-2.5 rounded-full transition-all ${
+                  className={`p-2 rounded-full transition-all ${
                     focusedControl === 'next-ep'
-                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
                       : 'text-white hover:text-zinc-200'
                   }`}
                   title="Next Episode"
@@ -913,10 +1110,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <SkipForward className={`w-6 h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
                 </button>
               )}
-            </div>
 
-            <div className="flex items-center space-x-3">
-              {/* Server Switcher Button */}
+              {/* Server Switch (if fallback) */}
               {useIframeFallback && servers.length > 1 && (
                 <button
                   onClick={() => {
@@ -925,19 +1120,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     setModalCol(2);
                     setModalRow(selectedServerIndex);
                   }}
-                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-[4px] text-xs font-bold transition-all ${
+                  className={`p-2 rounded-full transition-all flex items-center space-x-1.5 ${
                     focusedControl === 'server'
-                      ? 'bg-white text-black ring-4 ring-white/60 scale-105 shadow-2xl'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200'
                   }`}
-                  title="Switch streaming server"
+                  title="Switch Server"
                 >
-                  <Server className="w-4 h-4 text-[#E50914]" />
-                  <span>{servers[selectedServerIndex]?.name || 'Server 1'}</span>
+                  <Server className={`w-5 h-5 ${focusedControl === 'server' ? 'text-black' : 'text-white'}`} />
+                  <span className="text-[10px] font-bold uppercase">{servers[selectedServerIndex]?.name.split(' ')[1] || 'Server'}</span>
                 </button>
               )}
+            </div>
 
-              {/* Audio & Subtitles Menu Trigger */}
+            {/* Subtitles & Audio Dialog Launcher */}
+            <div className="flex items-center space-x-4">
               <button
                 onClick={() => {
                   setFocusedControl('subtitles');
@@ -945,25 +1142,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   setModalCol(1);
                   setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
                 }}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-[4px] text-xs font-bold transition-all ${
+                className={`p-2 rounded-full transition-all flex items-center space-x-2 ${
                   focusedControl === 'subtitles'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-105 shadow-2xl'
-                    : 'hover:bg-white/10 text-white'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                    : 'text-white hover:text-zinc-200'
                 }`}
-                title="Audio & Subtitles"
+                title="Audio, Subtitles & Servers"
               >
-                <Subtitles className={`w-5 h-5 ${focusedControl === 'subtitles' ? 'text-black' : 'text-zinc-300'}`} />
-                <span>Audio & Subtitles</span>
+                <Subtitles className={`w-6 h-6 ${focusedControl === 'subtitles' ? 'text-black' : 'text-white'}`} />
+                <span className="text-xs font-semibold">
+                  {activeSubtitle === -1 ? 'Off' : resolution?.subtitles?.[activeSubtitle]?.label || 'On'}
+                </span>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Netflix Multi-Column Audio, Subtitles & Server Dialog */}
+      {/* Audio, Subtitles & Servers Modal Dialog */}
       {showAudioSubtitleModal && (
-        <div className="absolute inset-0 z-40 bg-black/85 backdrop-blur-md flex items-center justify-center p-8">
-          <div className="bg-[#181818] border border-zinc-700/80 rounded-[4px] max-w-3xl w-full p-8 shadow-2xl relative">
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 animate-fadeIn">
+          <div className="bg-[#181818] border border-zinc-700 rounded-lg max-w-2xl w-full p-8 shadow-2xl relative">
             <button
               onClick={() => setShowAudioSubtitleModal(false)}
               className="absolute top-6 right-6 text-zinc-400 hover:text-white"
@@ -977,7 +1176,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Column 1: Audio */}
               <div className="space-y-3">
                 <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 0 ? 'text-white' : 'text-zinc-400'}`}>
-                  Audio {modalCol === 0 && '◄'}
+                  Audio {modalCol === 0 && '▶'}
                 </h4>
                 <div className={`flex items-center space-x-2 text-white font-bold cursor-pointer p-1.5 rounded ${
                   modalCol === 0 && modalRow === 0 ? 'ring-2 ring-white bg-zinc-800' : ''
@@ -1000,7 +1199,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Column 2: Subtitles */}
               <div className="space-y-3 max-h-64 overflow-y-auto no-scrollbar">
                 <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 1 ? 'text-white' : 'text-zinc-400'}`}>
-                  Subtitles {modalCol === 1 && '◄'}
+                  Subtitles {modalCol === 1 && '▶'}
                 </h4>
                 <div
                   onClick={() => selectSubtitle(-1)}
@@ -1029,7 +1228,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {/* Column 3: Servers */}
               <div className="space-y-3">
                 <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 2 ? 'text-white' : 'text-zinc-400'}`}>
-                  Stream Server {modalCol === 2 && '◄'}
+                  Stream Server {modalCol === 2 && '▶'}
                 </h4>
                 {servers.map((srv, idx) => (
                   <div

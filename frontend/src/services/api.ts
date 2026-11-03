@@ -910,6 +910,29 @@ export const api = {
   },
 
   // Progress
+  getItemProgress(
+    contentId: string,
+    profileId: string = 'bolt',
+    season?: number,
+    episode?: number
+  ): PlaybackProgress | null {
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      const stored = localStorage.getItem(`cinewave_progress_${profileId}`);
+      if (!stored) return null;
+      const list: PlaybackProgress[] = JSON.parse(stored);
+      if (!Array.isArray(list)) return null;
+      const match = list.find((p) =>
+        String(p.contentId) === String(contentId) &&
+        (season === undefined || p.season === season) &&
+        (episode === undefined || p.episode === episode)
+      );
+      return match || null;
+    } catch {
+      return null;
+    }
+  },
+
   async getProgress(profileId: string = 'bolt'): Promise<PlaybackProgress[]> {
     let localList: PlaybackProgress[] = [];
     try {

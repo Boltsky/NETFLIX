@@ -381,6 +381,7 @@ export const App: React.FC = () => {
           <ContentDetails
             contentId={selectedTitle.id}
             mediaType={selectedTitle.type}
+            profileId={activeProfile.id}
             onPlay={handleLaunchPlayer}
             onBack={() => setCurrentScreen(previousScreen)}
             isInWatchlist={isInWatchlist(selectedTitle.id)}
@@ -440,6 +441,7 @@ export const App: React.FC = () => {
                   onMoreInfo={handleOpenDetails}
                   isInWatchlist={catalog?.hero ? isInWatchlist(catalog.hero.id) : false}
                   onToggleWatchlist={handleToggleWatchlist}
+                  hasProgress={catalog?.hero ? Boolean(progressMap[catalog.hero.id]) : false}
                 />
 
                 {/* Content Rows */}

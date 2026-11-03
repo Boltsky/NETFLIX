@@ -403,5 +403,42 @@ describe('Netflix TV Navigation & UX Tests', () => {
     updateService.clearDismissedUpdate();
     expect(localStorage.getItem('netflix_dismissed_version')).toBeNull();
   });
+
+  it('correctly persists and retrieves playback progress per profile for seamless resumption', async () => {
+    const { api } = await import('../services/api');
+
+    // Save progress for BOLT profile (1 hour 15 mins in)
+    await api.saveProgress('movie-dune-2', {
+      profileId: 'bolt',
+      mediaType: 'movie',
+      title: 'Dune: Part Two',
+      positionMs: 4500000,
+      durationMs: 9960000
+    });
+
+    // Save different progress for CONOR profile (25 mins in)
+    await api.saveProgress('movie-dune-2', {
+      profileId: 'p-conor',
+      mediaType: 'movie',
+      title: 'Dune: Part Two',
+      positionMs: 1500000,
+      durationMs: 9960000
+    });
+
+    // Verify BOLT resumes from 4,500,000 ms
+    const boltProgress = api.getItemProgress('movie-dune-2', 'bolt');
+    expect(boltProgress).not.toBeNull();
+    expect(boltProgress?.positionMs).toBe(4500000);
+    expect(boltProgress?.durationMs).toBe(9960000);
+
+    // Verify CONOR resumes from 1,500,000 ms
+    const conorProgress = api.getItemProgress('movie-dune-2', 'p-conor');
+    expect(conorProgress).not.toBeNull();
+    expect(conorProgress?.positionMs).toBe(1500000);
+
+    // Verify Kids has no progress for this title
+    const kidsProgress = api.getItemProgress('movie-dune-2', 'p-kids');
+    expect(kidsProgress).toBeNull();
+  });
 });
 

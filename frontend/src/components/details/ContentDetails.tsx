@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { TitleDetails, Episode, MediaItem } from '../../types';
 import { api } from '../../services/api';
 import { useFocusable } from '../focus/FocusContext';
-import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film } from 'lucide-react';
+import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw } from 'lucide-react';
 
 interface ContentDetailsProps {
   contentId: string;
   mediaType: 'movie' | 'tv' | 'anime';
+  profileId?: string;
   onPlay: (item: MediaItem, season?: number, episode?: number) => void;
   onBack: () => void;
   isInWatchlist: boolean;
@@ -17,6 +18,7 @@ interface ContentDetailsProps {
 export const ContentDetails: React.FC<ContentDetailsProps> = ({
   contentId,
   mediaType,
+  profileId,
   onPlay,
   onBack,
   isInWatchlist,
@@ -28,6 +30,12 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+
+  const savedProgress = useMemo(() => {
+    return api.getItemProgress(contentId, profileId);
+  }, [contentId, profileId]);
+
+  const hasResume = Boolean(savedProgress && savedProgress.positionMs > 5000);
 
   useEffect(() => {
     let isMounted = true;
@@ -150,9 +158,39 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
           <div className="flex items-center space-x-4 pt-2">
             <PlayButton
               focusKey="detail-play"
-              label={details.type === 'tv' ? 'Resume S1:E1' : 'Play'}
-              onClick={() => onPlay(details, details.type === 'tv' ? selectedSeason : undefined, details.type === 'tv' ? 1 : undefined)}
+              label={
+                details.type === 'tv'
+                  ? (hasResume && savedProgress?.season && savedProgress?.episode
+                      ? `Resume S${savedProgress.season}:E${savedProgress.episode}`
+                      : 'Play Episode 1')
+                  : (hasResume ? 'Resume Movie' : 'Play Movie')
+              }
+              onClick={() =>
+                onPlay(
+                  details,
+                  details.type === 'tv' ? (savedProgress?.season || selectedSeason) : undefined,
+                  details.type === 'tv' ? (savedProgress?.episode || 1) : undefined
+                )
+              }
             />
+            {hasResume && (
+              <RestartButton
+                focusKey="detail-restart"
+                onClick={() => {
+                  api.saveProgress(contentId, {
+                    profileId: profileId || 'bolt',
+                    mediaType: details.type,
+                    season: details.type === 'tv' ? 1 : undefined,
+                    episode: details.type === 'tv' ? 1 : undefined,
+                    positionMs: 0,
+                    durationMs: savedProgress?.durationMs || 7200000,
+                    title: details.title,
+                    poster: details.poster || details.backdrop
+                  }).catch(() => {});
+                  onPlay(details, details.type === 'tv' ? 1 : undefined, details.type === 'tv' ? 1 : undefined);
+                }}
+              />
+            )}
             <MyListButton
               focusKey="detail-watchlist"
               isInWatchlist={isInWatchlist}
@@ -288,6 +326,33 @@ const PlayButton: React.FC<{
     >
       <Play className="w-5 h-5 fill-black text-black" />
       <span>{label}</span>
+    </button>
+  );
+};
+
+const RestartButton: React.FC<{
+  focusKey: string;
+  onClick: () => void;
+}> = ({ focusKey, onClick }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey,
+    groupId: 'detail-actions',
+    onEnter: onClick
+  });
+
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      className={`flex items-center space-x-2 px-5 py-2.5 rounded-[4px] font-bold text-sm tracking-wide transition-all tv-focusable ${
+        isFocused
+          ? 'scale-108 bg-white text-black shadow-2xl ring-4 ring-white/50'
+          : 'bg-zinc-800 text-white hover:bg-zinc-700 border border-white/20'
+      }`}
+      title="Start from Beginning"
+    >
+      <RotateCcw className="w-4 h-4" />
+      <span>Restart</span>
     </button>
   );
 };
