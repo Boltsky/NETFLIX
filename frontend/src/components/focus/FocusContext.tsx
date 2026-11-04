@@ -129,9 +129,10 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setFocusedKey(lastKeyboardKeyRef.current || 'kb-Q');
         return;
       }
-      // If on Categories / Browse / Watchlist screen, jump to the active pill, card, or button
+      // If on Categories / Browse / Watchlist / Settings screen, jump to the active pill, card, or button
       for (const [k] of nodesRef.current.entries()) {
         if (
+          k.startsWith('settings-tab-') ||
           k.startsWith('cat-pill-') ||
           k.startsWith('cat-card-') ||
           k.startsWith('watch-card-') ||
@@ -171,6 +172,10 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (isHeroPlay || (!hasSiblingToLeft && !currentKey.startsWith('search-card-') && !currentKey.startsWith('hist-card-')) || isLeftKeyOnKeyboard) {
+        if ((currentKey.startsWith('settings-tab-') || currentKey === 'settings-btn-back') && nodesRef.current.has('sidebar-settings')) {
+          setFocusedKey('sidebar-settings');
+          return;
+        }
         if (isLeftKeyOnKeyboard && nodesRef.current.has('sidebar-nav-search')) {
           setFocusedKey('sidebar-nav-search');
           return;

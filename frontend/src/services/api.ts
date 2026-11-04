@@ -722,37 +722,37 @@ export const api = {
     const expectedTitle = title || cached?.title || '';
     const isEpisodic = effectiveType === 'tv' || effectiveType === 'anime';
 
-    // Prioritize high-accuracy embed servers that strictly use TMDB IDs
+    // Prioritize clean, ad-free embed servers (FrameX and AutoEmbed) without robot verification prompts
     const embedServers = [
       {
-        name: 'Server 1 (VidSrc)',
+        name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${contentId}`
+          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${contentId}?autoplay=1`
       },
       {
-        name: 'Server 2 (MultiEmbed)',
+        name: 'Server 2 (AutoEmbed)',
+        url: isEpisodic
+          ? `https://player.autoembed.cc/embed/tv/${contentId}/${s}/${e}`
+          : `https://player.autoembed.cc/embed/movie/${contentId}`
+      },
+      {
+        name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
           ? `https://multiembed.mov/?video_id=${contentId}&tmdb=1&s=${s}&e=${e}`
           : `https://multiembed.mov/?video_id=${contentId}&tmdb=1`
       },
       {
-        name: 'Server 3 (2Embed)',
+        name: 'Server 4 (2Embed)',
         url: isEpisodic
           ? `https://www.2embed.cc/embedtv/${contentId}&s=${s}&e=${e}`
           : `https://www.2embed.cc/embed/${contentId}`
       },
       {
-        name: 'Server 4 (VidSrc.xyz)',
+        name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.xyz/embed/tv/${contentId}/${s}/${e}`
-          : `https://vidsrc.xyz/embed/movie/${contentId}`
-      },
-      {
-        name: 'Server 5 (FrameX)',
-        url: isEpisodic
-          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${contentId}?autoplay=1`
+          ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${contentId}`
       }
     ];
 
@@ -767,7 +767,7 @@ export const api = {
       subtitles: [],
       embedUrl: embedServers[0].url,
       embedServers,
-      alternates: ['vidsrc', 'multiembed', '2embed', 'framex']
+      alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
     };
 
     const params = new URLSearchParams({
@@ -794,7 +794,7 @@ export const api = {
             isDefault: false
           })),
           embedServers: embedServers,
-          embedUrl: embedServers[0].url
+          embedUrl: res.embedUrl || embedServers[0].url
         };
       }
     } catch (err: any) {
@@ -838,7 +838,7 @@ export const api = {
               })),
               embedUrl: embedServers[0].url,
               embedServers,
-              alternates: Array.isArray(data.alternates) ? data.alternates : ['vidsrc', 'multiembed', '2embed']
+              alternates: Array.isArray(data.alternates) ? data.alternates : ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
             };
           }
         }

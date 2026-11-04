@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
@@ -13,6 +14,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -83,12 +86,37 @@ class MainActivity : AppCompatActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
 
+        // Popup & multi-window controls
+        settings.javaScriptCanOpenWindowsAutomatically = false
+        settings.setSupportMultipleWindows(true)
+
+        // Normalize User-Agent: strip '; wv)' and 'Version/4.0' to prevent Cloudflare Turnstile bot challenges
+        val defaultUa = settings.userAgentString ?: ""
+        val sanitizedUa = defaultUa
+            .replace("; wv)", ")")
+            .replace("; wv", "")
+            .replace("Version/4.0 ", "")
+        settings.userAgentString = sanitizedUa
+        Log.i("CineWaveWebView", "Sanitized User-Agent: $sanitizedUa")
+
         android.webkit.CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
         }
 
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                return handleUrlOverride(view, request.url, request.isForMainFrame)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                return handleUrlOverride(view, Uri.parse(url), true)
+            }
+
             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                 Log.w("NetflixTV", "WebView render process gone! Crashed: ${detail?.didCrash()}")
                 try {
@@ -127,6 +155,12 @@ class MainActivity : AppCompatActivity() {
                     return proxyApiRequest(request)
                 }
 
+                // 3. Intercept and block ad networks, tracking scripts, and popunders
+                if (isAdOrBlockedUrl(url)) {
+                    Log.d("CineWaveAdBlock", "Blocked ad resource request: $url")
+                    return createEmptyResourceResponse()
+                }
+
                 return super.shouldInterceptRequest(view, request)
             }
         }
@@ -136,6 +170,61 @@ class MainActivity : AppCompatActivity() {
                 if (consoleMessage != null) {
                     Log.d("NetflixWeb", "[${consoleMessage.messageLevel()}] ${consoleMessage.message()} -- line ${consoleMessage.lineNumber()}")
                 }
+                return true
+            }
+
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                Log.w("CineWaveAdBlock", "Blocked popup window creation (isDialog=$isDialog, isUserGesture=$isUserGesture)")
+                return false
+            }
+
+            override fun onJsAlert(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                result: JsResult?
+            ): Boolean {
+                Log.d("CineWaveAdBlock", "Suppressed JS Alert from $url: $message")
+                result?.confirm()
+                return true
+            }
+
+            override fun onJsConfirm(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                result: JsResult?
+            ): Boolean {
+                Log.d("CineWaveAdBlock", "Suppressed JS Confirm from $url: $message")
+                result?.cancel()
+                return true
+            }
+
+            override fun onJsPrompt(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                defaultValue: String?,
+                result: JsPromptResult?
+            ): Boolean {
+                Log.d("CineWaveAdBlock", "Suppressed JS Prompt from $url: $message")
+                result?.cancel()
+                return true
+            }
+
+            override fun onJsBeforeUnload(
+                view: WebView?,
+                url: String?,
+                message: String?,
+                result: JsResult?
+            ): Boolean {
+                Log.d("CineWaveAdBlock", "Suppressed JS BeforeUnload from $url: $message")
+                result?.confirm()
                 return true
             }
         }
@@ -358,6 +447,124 @@ class MainActivity : AppCompatActivity() {
             Log.e("NetflixTV", "Error destroying webview", e)
         }
         super.onDestroy()
+    }
+
+    private fun handleUrlOverride(view: WebView, uri: Uri?, isForMainFrame: Boolean): Boolean {
+        if (uri == null) return false
+        val urlStr = uri.toString()
+        val scheme = uri.scheme?.lowercase()
+
+        // 1. Always allow local app assets
+        if (urlStr.startsWith("https://appassets.androidplatform.net/") ||
+            uri.host == "appassets.androidplatform.net"
+        ) {
+            return false
+        }
+
+        // 2. Block non-http/https schemes (e.g. market://, intent://, itms-apps://)
+        if (scheme != "http" && scheme != "https") {
+            Log.w("CineWaveAdBlock", "Blocked external custom scheme: $urlStr")
+            return true
+        }
+
+        // 3. Protect main application frame from top-level hijacking/redirects
+        if (isForMainFrame) {
+            Log.w("CineWaveAdBlock", "Blocked main frame navigation to external URL: $urlStr")
+            return true
+        }
+
+        // 4. Block known ad/malware domains in subframes
+        if (isAdOrBlockedUrl(uri)) {
+            Log.w("CineWaveAdBlock", "Blocked subframe ad redirect: $urlStr")
+            return true
+        }
+
+        // Allow legitimate subframe navigations (e.g. video embed players/CDNs)
+        return false
+    }
+
+    private fun createEmptyResourceResponse(): WebResourceResponse {
+        val emptyBytes = ByteArray(0)
+        val headers = mutableMapOf<String, String>()
+        headers["Access-Control-Allow-Origin"] = "*"
+        headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        headers["Pragma"] = "no-cache"
+        headers["Expires"] = "0"
+        return WebResourceResponse(
+            "text/plain",
+            "UTF-8",
+            200,
+            "OK",
+            headers,
+            ByteArrayInputStream(emptyBytes)
+        )
+    }
+
+    private fun isAdOrBlockedUrl(uri: Uri): Boolean {
+        val host = uri.host?.lowercase() ?: return false
+        val urlStr = uri.toString().lowercase()
+
+        // Whitelist app assets, internal endpoints, and legitimate embed providers
+        if (host == "appassets.androidplatform.net" ||
+            host.contains("framextv") ||
+            host.contains("autoembed") ||
+            host.contains("multiembed") ||
+            host.contains("2embed") ||
+            host.contains("vidsrc") ||
+            host.contains("themoviedb.org") ||
+            host.contains("tmdb.org")
+        ) {
+            return false
+        }
+
+        return BLOCKED_HOST_PATTERNS.any { pattern -> host.contains(pattern) || urlStr.contains(pattern) }
+    }
+
+    companion object {
+        private val BLOCKED_HOST_PATTERNS = listOf(
+            "popads",
+            "popcash",
+            "adsterra",
+            "propellerads",
+            "exoclick",
+            "hilltopads",
+            "monetag",
+            "onclickalgo",
+            "onclickperformance",
+            "clickadu",
+            "ad-delivery",
+            "admaven",
+            "doubleclick",
+            "googlesyndication",
+            "google-analytics",
+            "adnxs",
+            "adxpose",
+            "moatads",
+            "criteo",
+            "outbrain",
+            "taboola",
+            "trafficfactory",
+            "juicyads",
+            "ero-advertising",
+            "tsyndicate",
+            "adfox",
+            "aniview",
+            "spotxchange",
+            "springserve",
+            "vlitag",
+            "vidazoo",
+            "yieldmo",
+            "revcontent",
+            "mgid",
+            "adskeeper",
+            "richaudience",
+            "teads",
+            "bet365",
+            "1xbet",
+            "mostbet",
+            "melbet",
+            "parimatch"
+        )
     }
 }
 

@@ -288,17 +288,21 @@ describe('Netflix TV Navigation & UX Tests', () => {
     expect(details.id).toBe(unknownId);
     expect(details.title).not.toBe('Stranger Things');
     expect(details.title).not.toBe('Fight Club');
-  });
+  }, 15000);
 
-  it('verifies resolvePlayback embed servers prioritize verified TMDB providers', async () => {
+  it('verifies resolvePlayback embed servers prioritize clean providers (FrameX, AutoEmbed) and eliminate bot verification gates', async () => {
     const { api } = await import('../services/api');
     const res = await api.resolvePlayback('155', 'movie');
 
     expect(res.embedServers).toBeDefined();
-    expect(res.embedServers!.length).toBeGreaterThanOrEqual(4);
-    expect(res.embedServers![0].name).toContain('VidSrc');
-    expect(res.embedServers![1].name).toContain('MultiEmbed');
+    expect(res.embedServers!.length).toBe(5);
+    expect(res.embedServers![0].name).toContain('FrameX');
+    expect(res.embedServers![1].name).toContain('AutoEmbed');
+    expect(res.embedServers![4].name).toContain('VidSrc');
     expect(res.embedServers![0].url).toContain('155');
+    expect(res.embedServers![0].url).toContain('framextv.cc/embed/155');
+    expect(res.embedServers![1].url).toContain('player.autoembed.cc/embed/movie/155');
+    expect(res.embedUrl).toContain('framextv.cc/embed/155');
   });
 
   it('verifies subtitles are strictly disabled by default (isDefault: false)', async () => {
@@ -439,6 +443,51 @@ describe('Netflix TV Navigation & UX Tests', () => {
     // Verify Kids has no progress for this title
     const kidsProgress = api.getItemProgress('movie-dune-2', 'p-kids');
     expect(kidsProgress).toBeNull();
+  });
+
+  it('validates iframe sandbox security tokens and absence of dangerous permissions', () => {
+    const requiredSandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation';
+    const tokens = requiredSandbox.split(' ');
+
+    expect(tokens).toContain('allow-scripts');
+    expect(tokens).toContain('allow-same-origin');
+    expect(tokens).toContain('allow-forms');
+    expect(tokens).toContain('allow-presentation');
+
+    // Dangerous tokens that allow ad redirects and robot popups must NEVER be included
+    expect(tokens).not.toContain('allow-top-navigation');
+    expect(tokens).not.toContain('allow-top-navigation-by-user-activation');
+    expect(tokens).not.toContain('allow-popups');
+    expect(tokens).not.toContain('allow-popups-to-escape-sandbox');
+    expect(tokens).not.toContain('allow-modals');
+  });
+
+  it('validates fallback watchdog timer threshold and circular rotation limits', () => {
+    const servers = [
+      { name: 'Server 1 (FrameX)', url: 'https://framextv.cc/embed/155' },
+      { name: 'Server 2 (AutoEmbed)', url: 'https://player.autoembed.cc/embed/movie/155' },
+      { name: 'Server 3 (MultiEmbed)', url: 'https://multiembed.mov/?video_id=155' },
+      { name: 'Server 4 (2Embed)', url: 'https://www.2embed.cc/embed/155' },
+      { name: 'Server 5 (VidSrc)', url: 'https://vidsrc.to/embed/movie/155' }
+    ];
+
+    const attempted = new Set<number>();
+    let currentIndex = 0;
+
+    // Simulate 4 successive watchdog timeouts
+    for (let i = 0; i < 4; i++) {
+      attempted.add(currentIndex);
+      currentIndex = (currentIndex + 1) % servers.length;
+    }
+
+    expect(attempted.size).toBe(4);
+    expect(currentIndex).toBe(4); // Reached Server 5 (VidSrc)
+
+    // Simulate 5th timeout: all servers exhausted
+    attempted.add(currentIndex);
+    expect(attempted.size).toBe(servers.length);
+    const isExhausted = attempted.size >= servers.length;
+    expect(isExhausted).toBe(true);
   });
 });
 

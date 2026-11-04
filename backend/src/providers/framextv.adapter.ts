@@ -350,41 +350,41 @@ export class FrameXTVAdapter implements IContentProvider {
   ): Promise<PlaybackResolution> {
     const s = season || 1;
     const e = episode || 1;
-    const embedUrl = type === 'tv'
+    const isEpisodic = type === 'tv' || (type as string) === 'anime';
+    const embedUrl = isEpisodic
       ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1`
       : `${this.embedOrigin}/embed/${id}?autoplay=1`;
 
-    const isEpisodic = type === 'tv';
     const embedServers = [
       {
-        name: 'Server 1 (VidSrc)',
+        name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${id}`
+          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${id}?autoplay=1`
       },
       {
-        name: 'Server 2 (MultiEmbed)',
+        name: 'Server 2 (AutoEmbed)',
+        url: isEpisodic
+          ? `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`
+          : `https://player.autoembed.cc/embed/movie/${id}`
+      },
+      {
+        name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
           ? `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
           : `https://multiembed.mov/?video_id=${id}&tmdb=1`
       },
       {
-        name: 'Server 3 (2Embed)',
+        name: 'Server 4 (2Embed)',
         url: isEpisodic
           ? `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
           : `https://www.2embed.cc/embed/${id}`
       },
       {
-        name: 'Server 4 (VidSrc.xyz)',
+        name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.xyz/embed/tv/${id}/${s}/${e}`
-          : `https://vidsrc.xyz/embed/movie/${id}`
-      },
-      {
-        name: 'Server 5 (FrameX)',
-        url: isEpisodic
-          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${id}?autoplay=1`
+          ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${id}`
       }
     ];
 
@@ -448,7 +448,7 @@ export class FrameXTVAdapter implements IContentProvider {
       subtitles: [],
       embedUrl,
       embedServers,
-      alternates: ['cinejoy', 'titan', 'bowler']
+      alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
     };
   }
 

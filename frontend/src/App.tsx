@@ -11,13 +11,15 @@ import { VideoPlayer } from './components/player/VideoPlayer';
 import { SearchScreen } from './components/search/SearchScreen';
 import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
 import { CategoriesScreen } from './components/categories/CategoriesScreen';
+import { SettingsScreen } from './components/settings/SettingsScreen';
 import { updateService } from './services/updateService';
+import { getAppSettings } from './services/settingsService';
 import { AppUpdateManifest, CURRENT_APP_VERSION } from './version';
 import { UpdateModal } from './components/common/UpdateModal';
 
 const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
-type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player';
+type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player' | 'settings';
 
 const ScreenFocusController: React.FC<{
   screen: Screen;
@@ -45,6 +47,9 @@ const ScreenFocusController: React.FC<{
         setFocusedKey('cat-pill-cat-trending');
       } else if (screen === 'watchlist') {
         window.scrollTo({ top: 0, behavior: 'auto' });
+      } else if (screen === 'settings') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        setFocusedKey('settings-tab-updates');
       }
     }, 60);
     return () => clearTimeout(timer);
@@ -82,6 +87,11 @@ export const App: React.FC = () => {
 
   // Background GitHub update check on startup
   useEffect(() => {
+    const settings = getAppSettings();
+    if (!settings.updates.autoCheckOnLaunch) {
+      return;
+    }
+
     const checkTimer = setTimeout(() => {
       updateService
         .checkForAppUpdate(false)
@@ -164,6 +174,7 @@ export const App: React.FC = () => {
           currentScreen === 'movies' ||
           currentScreen === 'popular' ||
           currentScreen === 'categories' ||
+          currentScreen === 'settings' ||
           currentScreen === 'profiles'
         ) {
           setCurrentScreen('home');
@@ -362,6 +373,8 @@ export const App: React.FC = () => {
             onSwitchProfile={() => setCurrentScreen('profiles')}
             hasUpdate={Boolean(availableUpdate)}
             onCheckUpdate={handleManualCheckUpdate}
+            onOpenSettings={() => setCurrentScreen('settings')}
+            isSettingsActive={currentScreen === 'settings'}
           />
         )}
 
@@ -420,6 +433,14 @@ export const App: React.FC = () => {
         {/* SCREEN 5: Categories & Genres Explorer */}
         {currentScreen === 'categories' && (
           <CategoriesScreen onSelectTitle={handleOpenDetails} />
+        )}
+
+        {/* SCREEN 6: Settings Screen */}
+        {currentScreen === 'settings' && (
+          <SettingsScreen
+            onBack={() => setCurrentScreen('home')}
+            onCheckUpdates={handleManualCheckUpdate}
+          />
         )}
 
         {/* SCREEN 6: Main TV Browsing (Home, Series, Movies, New & Popular) */}

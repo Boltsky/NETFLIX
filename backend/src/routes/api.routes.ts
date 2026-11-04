@@ -36,4 +36,7 @@ router.put('/users/me/progress/:contentId', CatalogController.saveProgress);
 router.get('/settings', CatalogController.getSettings);
 router.post('/settings', CatalogController.updateSetting);
 
+// Subtitles CORS Proxy
+router.get('/subtitles/proxy', CatalogController.proxySubtitle);
+
 export default router;

@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import Hls from 'hls.js';
 import { PlaybackResolution, MediaItem, StreamSource, SubtitleTrack } from '../../types';
 import { api } from '../../services/api';
+import { SubtitleOverlay } from './SubtitleOverlay';
+import { parseSubtitles, SubtitleCue } from '../../utils/subtitleParser';
+import { getAppSettings } from '../../services/settingsService';
 import {
   Play,
   Pause,
@@ -59,16 +62,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [duration, setDuration] = useState(savedProgress?.durationMs ? savedProgress.durationMs / 1000 : 0);
   const [showControls, setShowControls] = useState(true);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
-  const [selectedServerIndex, setSelectedServerIndex] = useState(0);
+  const [selectedServerIndex, setSelectedServerIndex] = useState(() => {
+    try {
+      return getAppSettings().playback.preferredServerIndex || 0;
+    } catch {
+      return 0;
+    }
+  });
   const [activeSubtitle, setActiveSubtitle] = useState<number>(-1);
   const activeSubtitleRef = useRef<number>(-1);
   activeSubtitleRef.current = activeSubtitle;
+  const [cues, setCues] = useState<SubtitleCue[]>([]);
+  const subtitleCacheRef = useRef<Map<string, SubtitleCue[]>>(new Map());
+  const subtitleAbortRef = useRef<AbortController | null>(null);
   const [showAudioSubtitleModal, setShowAudioSubtitleModal] = useState(false);
   const [modalCol, setModalCol] = useState(2); // default focus on Servers column (0=audio, 1=subs, 2=server)
   const [modalRow, setModalRow] = useState(0);
 
-  // Resume notification banner
-  const [resumeToast, setResumeToast] = useState<string | null>(null);
+  // Fallback watchdog & TV toast state
+  const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPlaybackStartedRef = useRef<boolean>(false);
+  const attemptedServersRef = useRef<Set<number>>(new Set());
+
+  // TV Toast Notification (Server switch / Watchdog / Resume)
+  const [playerToast, setPlayerToast] = useState<{ message: string; icon?: 'server' | 'play' | 'alert' } | null>(null);
+  const playerToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showPlayerToast = useCallback((message: string, icon: 'server' | 'play' | 'alert' = 'server', durationMs: number = 3500) => {
+    if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
+    setPlayerToast({ message, icon });
+    playerToastTimerRef.current = setTimeout(() => {
+      setPlayerToast(null);
+    }, durationMs);
+  }, []);
+
   const hasAppliedResumeRef = useRef(false);
 
   // Virtual decoupled scrubbing state (Lag-free 60fps fast forwarding)
@@ -107,34 +134,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const e = episode || 1;
     return [
       {
-        name: 'Server 1 (VidSrc)',
+        name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${item.id}`
+          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${item.id}?autoplay=1`
       },
       {
-        name: 'Server 2 (MultiEmbed)',
+        name: 'Server 2 (AutoEmbed)',
+        url: isEpisodic
+          ? `https://player.autoembed.cc/embed/tv/${item.id}/${s}/${e}`
+          : `https://player.autoembed.cc/embed/movie/${item.id}`
+      },
+      {
+        name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
           ? `https://multiembed.mov/?video_id=${item.id}&tmdb=1&s=${s}&e=${e}`
           : `https://multiembed.mov/?video_id=${item.id}&tmdb=1`
       },
       {
-        name: 'Server 3 (2Embed)',
+        name: 'Server 4 (2Embed)',
         url: isEpisodic
           ? `https://www.2embed.cc/embedtv/${item.id}&s=${s}&e=${e}`
           : `https://www.2embed.cc/embed/${item.id}`
       },
       {
-        name: 'Server 4 (VidSrc.xyz)',
+        name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.xyz/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.xyz/embed/movie/${item.id}`
-      },
-      {
-        name: 'Server 5 (FrameX)',
-        url: isEpisodic
-          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${item.id}?autoplay=1`
+          ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${item.id}`
       }
     ];
   }, [resolution, item, season, episode]);
@@ -163,6 +190,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
     return base;
   }, [servers, selectedServerIndex, resolution, initialResumeTimeSec]);
+
+  const handleSwitchServer = useCallback((targetIndex: number, manual: boolean = true) => {
+    const nextIndex = ((targetIndex % servers.length) + servers.length) % servers.length;
+    setSelectedServerIndex(nextIndex);
+    setUseIframeFallback(true);
+    setError(null);
+
+    // Disarm current watchdog and reset confirmed playback flag
+    if (watchdogTimerRef.current) {
+      clearTimeout(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
+    }
+    hasPlaybackStartedRef.current = false;
+
+    if (manual) {
+      attemptedServersRef.current.clear();
+      showPlayerToast(`Switched to ${servers[nextIndex]?.name || `Server ${nextIndex + 1}`}`, 'server');
+    } else {
+      showPlayerToast(`Stream server unavailable, switching to ${servers[nextIndex]?.name || `Server ${nextIndex + 1}`}...`, 'server');
+    }
+  }, [servers, showPlayerToast]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -227,10 +275,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const mins = Math.floor(initialResumeTimeSec / 60);
       const secs = Math.floor(initialResumeTimeSec % 60);
       const formatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-      setResumeToast(`Resumed from ${formatted}`);
-      setTimeout(() => setResumeToast(null), 4000);
+      showPlayerToast(`Resumed from ${formatted}`, 'play', 4000);
     }
-  }, [initialResumeTimeSec]);
+  }, [initialResumeTimeSec, showPlayerToast]);
 
   // Commit debounced seek to actual video decoder
   const commitSeek = useCallback((targetSec: number) => {
@@ -297,6 +344,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Clean exit: stops all media and audio
   const handleExit = useCallback(() => {
     if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
+    if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+    if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
     const finalPos = isScrubbingRef.current
       ? scrubTargetTimeRef.current
       : (videoRef.current ? videoRef.current.currentTime : currentTime);
@@ -322,6 +371,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     return () => {
       if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
+      if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+      if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
       if (videoRef.current) {
         try {
           if (videoRef.current.duration > 0) {
@@ -344,6 +395,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           iframeRef.current.src = 'about:blank';
         } catch {}
       }
+      if (subtitleAbortRef.current) {
+        subtitleAbortRef.current.abort();
+        subtitleAbortRef.current = null;
+      }
     };
   }, [saveCurrentProgress]);
 
@@ -352,6 +407,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     let isMounted = true;
     setLoading(true);
     setError(null);
+    setActiveSubtitle(-1);
+    activeSubtitleRef.current = -1;
+    setCues([]);
+    subtitleCacheRef.current.clear();
 
     api.resolvePlayback(item.id, item.type, season, episode, item.title)
       .then((res) => {
@@ -483,6 +542,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         saveCurrentProgress(video.currentTime, video.duration);
       }
     };
+    const onEnded = () => {
+      setIsPlaying(false);
+      if (video.duration > 0) {
+        saveCurrentProgress(video.currentTime, video.duration);
+      }
+      const appSettings = getAppSettings();
+      if (appSettings.playback.autoplayNextEpisode && onNextEpisode) {
+        onNextEpisode();
+      }
+    };
     const onLoadedMetadata = () => {
       enforceSubtitles();
       applyResumeIfAvailable(video);
@@ -509,6 +578,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('ended', onEnded);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('canplay', onCanPlay);
     video.addEventListener('error', onError);
@@ -520,6 +590,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('ended', onEnded);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('error', onError);
@@ -533,16 +604,100 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [resolution, useIframeFallback, applyResumeIfAvailable, saveCurrentProgress]);
 
-  // FrameXTV PostMessage Telemetry
+  // Automated Fallback Watchdog Timer (10s timeout)
+  useEffect(() => {
+    if (!useIframeFallback || !currentEmbedUrl) {
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+      return;
+    }
+
+    hasPlaybackStartedRef.current = false;
+
+    if (watchdogTimerRef.current) {
+      clearTimeout(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
+    }
+
+    const WATCHDOG_TIMEOUT_MS = 10000; // 10 seconds
+
+    watchdogTimerRef.current = setTimeout(() => {
+      if (!hasPlaybackStartedRef.current) {
+        console.warn(`[Netflix Player Watchdog] Server ${selectedServerIndex} (${servers[selectedServerIndex]?.name}) timed out or failed to start playback`);
+
+        const appSettings = getAppSettings();
+        if (!appSettings.playback.autoServerFailover) {
+          console.log('[Netflix Player Watchdog] Auto server failover disabled in settings.');
+          return;
+        }
+
+        attemptedServersRef.current.add(selectedServerIndex);
+
+        if (attemptedServersRef.current.size >= servers.length) {
+          console.error('[Netflix Player Watchdog] All fallback stream servers exhausted.');
+          setError('All streaming servers are currently unavailable. Please try again later or select another server.');
+          return;
+        }
+
+        const nextIndex = (selectedServerIndex + 1) % servers.length;
+        handleSwitchServer(nextIndex, false);
+      }
+    }, WATCHDOG_TIMEOUT_MS);
+
+    return () => {
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+    };
+  }, [useIframeFallback, currentEmbedUrl, selectedServerIndex, servers, handleSwitchServer]);
+
+  // Embed PostMessage Telemetry & Watchdog Disarm
   useEffect(() => {
     if (!useIframeFallback) return;
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.event === 'frameXTV:timeupdate' && !isScrubbingRef.current) {
-        const cur = Number(event.data.currentTime || 0);
-        const dur = Number(event.data.duration || 0);
-        setCurrentTime(cur);
-        setDuration(dur);
+      const data = event.data;
+      if (!data) return;
+
+      const isTimeUpdate =
+        data.event === 'frameXTV:timeupdate' ||
+        data.event === 'timeupdate' ||
+        data.type === 'timeupdate';
+
+      const isPlayingEvent =
+        data.event === 'playing' ||
+        data.event === 'play' ||
+        data.type === 'playing' ||
+        data.type === 'play';
+
+      if (isTimeUpdate) {
+        const cur = Number(data.currentTime || 0);
+        const dur = Number(data.duration || 0);
+        if (!isScrubbingRef.current && cur >= 0) {
+          setCurrentTime(cur);
+          if (dur > 0) setDuration(dur);
+        }
+
+        if (cur > 0 || dur > 0) {
+          if (!hasPlaybackStartedRef.current) {
+            hasPlaybackStartedRef.current = true;
+            if (watchdogTimerRef.current) {
+              clearTimeout(watchdogTimerRef.current);
+              watchdogTimerRef.current = null;
+            }
+          }
+        }
+      } else if (isPlayingEvent) {
+        if (!hasPlaybackStartedRef.current) {
+          hasPlaybackStartedRef.current = true;
+          if (watchdogTimerRef.current) {
+            clearTimeout(watchdogTimerRef.current);
+            watchdogTimerRef.current = null;
+          }
+        }
       }
     };
 
@@ -605,9 +760,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             selectSubtitle(modalRow === 0 ? -1 : modalRow - 1);
           } else if (modalCol === 2) {
             if (servers[modalRow]) {
-              setSelectedServerIndex(modalRow);
-              setUseIframeFallback(true);
-              setError(null);
+              handleSwitchServer(modalRow, true);
+              setShowAudioSubtitleModal(false);
             }
           }
           return;
@@ -708,9 +862,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           } else if (curCtrl === 'next-ep') {
             if (onNextEpisode) onNextEpisode();
           } else if (curCtrl === 'server') {
-            setShowAudioSubtitleModal(true);
-            setModalCol(2);
-            setModalRow(selectedServerIndex);
+            handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
           } else if (curCtrl === 'subtitles') {
             setShowAudioSubtitleModal(true);
             setModalCol(1);
@@ -721,9 +873,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 's':
         case 'S':
           e.preventDefault();
-          setSelectedServerIndex((prev) => (prev + 1) % servers.length);
-          setUseIframeFallback(true);
-          setError(null);
+          handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+          break;
+
+        case 'PageUp':
+        case 'ChannelUp':
+          e.preventDefault();
+          handleSwitchServer((selectedServerIndex - 1 + servers.length) % servers.length, true);
+          break;
+
+        case 'PageDown':
+        case 'ChannelDown':
+          e.preventDefault();
+          handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
           break;
 
         case 'Back':
@@ -748,7 +910,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     modalCol,
     modalRow,
     handleScrubStep,
-    commitSeek
+    commitSeek,
+    handleSwitchServer
   ]);
 
   // Play / Pause Toggle
@@ -768,12 +931,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  // Subtitle switch
-  const selectSubtitle = (index: number) => {
+  // Subtitle switch with 0ms instant clearing, asynchronous fetch/parse, and memory caching
+  const selectSubtitle = useCallback(async (index: number) => {
     setActiveSubtitle(index);
     activeSubtitleRef.current = index;
 
-    // 1. Hls.js subtitle track switch / disable
+    // 1. Instantaneous 0ms clearing: clear active cues immediately
+    setCues([]);
+
+    // 2. Abort any active in-flight subtitle fetch
+    if (subtitleAbortRef.current) {
+      subtitleAbortRef.current.abort();
+      subtitleAbortRef.current = null;
+    }
+
+    // 3. Update Hls.js subtitle display
     if (hlsRef.current) {
       try {
         hlsRef.current.subtitleTrack = index;
@@ -783,7 +955,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     }
 
-    // 2. Native HTML5 video textTracks mode switch / disable
+    // 4. Update Native HTML5 video textTracks mode
     if (videoRef.current && videoRef.current.textTracks) {
       for (let i = 0; i < videoRef.current.textTracks.length; i++) {
         try {
@@ -794,7 +966,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     }
 
-    // 3. PostMessage fallback to embed iframe
+    // 5. PostMessage fallback to embed iframe
     if (useIframeFallback && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage({ action: 'setSubtitle', index }, '*');
       iframeRef.current.contentWindow.postMessage({
@@ -803,7 +975,70 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         index
       }, '*');
     }
-  };
+
+    // If disabling subtitles (-1), complete immediately
+    if (index < 0) {
+      return;
+    }
+
+    const track = resolution?.subtitles?.[index];
+    if (!track || !track.url) {
+      return;
+    }
+
+    // Check memory cache first
+    const cachedCues = subtitleCacheRef.current.get(track.url);
+    if (cachedCues) {
+      if (activeSubtitleRef.current === index) {
+        setCues(cachedCues);
+      }
+      return;
+    }
+
+    // Fetch and parse subtitle track
+    const controller = new AbortController();
+    subtitleAbortRef.current = controller;
+
+    try {
+      let rawContent: string | null = null;
+
+      // Primary: Direct network fetch
+      try {
+        const res = await fetch(track.url, { signal: controller.signal });
+        if (res.ok) {
+          rawContent = await res.text();
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') return;
+        console.warn('[Netflix Player] Direct fetch failed, attempting backend proxy:', fetchErr?.message);
+      }
+
+      // Fallback: Backend CORS proxy
+      if (!rawContent) {
+        try {
+          const proxyUrl = `/api/v1/subtitles/proxy?url=${encodeURIComponent(track.url)}`;
+          const pRes = await fetch(proxyUrl, { signal: controller.signal });
+          if (pRes.ok) {
+            rawContent = await pRes.text();
+          }
+        } catch (proxyErr: any) {
+          if (proxyErr.name === 'AbortError') return;
+        }
+      }
+
+      if (rawContent) {
+        const parsed = parseSubtitles(rawContent, track.format);
+        subtitleCacheRef.current.set(track.url, parsed);
+        if (activeSubtitleRef.current === index) {
+          setCues(parsed);
+        }
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.warn('[Netflix Player] Failed to load subtitle track:', err);
+      }
+    }
+  }, [resolution?.subtitles, useIframeFallback]);
 
   const formatRemainingTime = (current: number, total: number) => {
     if (total <= 0 || current > total) return '--:--';
@@ -851,11 +1086,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Resume Toast Notification */}
-      {resumeToast && (
+      {/* TV Toast Notification (Server switch / Watchdog / Resume) */}
+      {playerToast && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-zinc-900/95 border border-zinc-700 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2.5 text-xs font-bold animate-fadeIn pointer-events-none">
-          <Play className="w-3.5 h-3.5 fill-[#E50914] text-[#E50914]" />
-          <span>{resumeToast}</span>
+          {playerToast.icon === 'server' && <Server className="w-3.5 h-3.5 text-[#E50914]" />}
+          {playerToast.icon === 'play' && <Play className="w-3.5 h-3.5 fill-[#E50914] text-[#E50914]" />}
+          {playerToast.icon === 'alert' && <AlertTriangle className="w-3.5 h-3.5 text-[#E50914]" />}
+          <span>{playerToast.message}</span>
         </div>
       )}
 
@@ -931,10 +1168,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           ref={iframeRef}
           src={currentEmbedUrl}
           className="w-full h-full border-0"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           title="Netflix Player"
+          onError={() => {
+            console.warn(`[Netflix Player] Iframe load error for ${servers[selectedServerIndex]?.name}`);
+            attemptedServersRef.current.add(selectedServerIndex);
+            if (attemptedServersRef.current.size < servers.length) {
+              const nextIndex = (selectedServerIndex + 1) % servers.length;
+              handleSwitchServer(nextIndex, false);
+            } else {
+              setError('All streaming servers are currently unavailable.');
+            }
+          }}
         />
       )}
+
+      {/* Subtitle Overlay (Positioned at z-25, above video and iframe, below OSD controls) */}
+      <SubtitleOverlay
+        cues={cues}
+        currentTime={displayTime}
+        activeSubtitle={activeSubtitle}
+      />
 
       {/* Netflix TV OSD Controls Overlay */}
       <div
@@ -1116,16 +1371,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   onClick={() => {
                     setFocusedControl('server');
-                    setShowAudioSubtitleModal(true);
-                    setModalCol(2);
-                    setModalRow(selectedServerIndex);
+                    handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
                   }}
                   className={`p-2 rounded-full transition-all flex items-center space-x-1.5 ${
                     focusedControl === 'server'
                       ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
                       : 'text-white hover:text-zinc-200'
                   }`}
-                  title="Switch Server"
+                  title="Switch Server (Enter)"
                 >
                   <Server className={`w-5 h-5 ${focusedControl === 'server' ? 'text-black' : 'text-white'}`} />
                   <span className="text-[10px] font-bold uppercase">{servers[selectedServerIndex]?.name.split(' ')[1] || 'Server'}</span>

@@ -76,7 +76,7 @@ export interface SubtitleTrack {
   label: string;
   lang: string;
   language?: string;
-  format: 'vtt' | 'srt';
+  format: 'vtt' | 'srt' | 'ass';
   isDefault?: boolean;
 }
 

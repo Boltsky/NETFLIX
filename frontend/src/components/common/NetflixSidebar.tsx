@@ -11,7 +11,8 @@ import {
   Users,
   LogOut,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Settings
 } from 'lucide-react';
 import { NetflixProfile } from '../profile/ProfileSelector';
 import { CURRENT_APP_VERSION } from '../../version';
@@ -26,6 +27,8 @@ interface NetflixSidebarProps {
   onExitApp?: () => void;
   hasUpdate?: boolean;
   onCheckUpdate?: () => void;
+  onOpenSettings?: () => void;
+  isSettingsActive?: boolean;
 }
 
 export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
@@ -35,7 +38,9 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
   onSwitchProfile,
   onExitApp,
   hasUpdate,
-  onCheckUpdate
+  onCheckUpdate,
+  onOpenSettings,
+  isSettingsActive
 }) => {
   const { focusedKey, setFocusedKey } = useFocus();
   const [isHovered, setIsHovered] = useState(false);
@@ -156,6 +161,16 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
             onAction={onSwitchProfile}
           />
 
+          {/* Settings Action */}
+          <SidebarActionButton
+            id="sidebar-settings"
+            label="Settings"
+            icon={Settings}
+            isActive={isSettingsActive}
+            isExpanded={isExpanded}
+            onAction={onOpenSettings || (() => {})}
+          />
+
           {/* Version & Check Updates Action */}
           <SidebarActionButton
             id="sidebar-update"
@@ -236,9 +251,10 @@ const SidebarActionButton: React.FC<{
   badge?: string;
   icon?: any;
   avatar?: React.ReactNode;
+  isActive?: boolean;
   isExpanded: boolean;
   onAction: () => void;
-}> = ({ id, label, badge, icon: Icon, avatar, isExpanded, onAction }) => {
+}> = ({ id, label, badge, icon: Icon, avatar, isActive, isExpanded, onAction }) => {
   const { ref, isFocused } = useFocusable({
     focusKey: id,
     groupId: 'netflix-sidebar',
@@ -252,6 +268,8 @@ const SidebarActionButton: React.FC<{
       className={`w-full flex items-center h-10 px-3 rounded-md transition-all tv-focusable text-left ${
         isFocused
           ? 'bg-white text-black font-bold shadow-lg'
+          : isActive
+          ? 'text-white font-bold bg-white/10'
           : 'text-zinc-400 hover:text-white'
       }`}
     >

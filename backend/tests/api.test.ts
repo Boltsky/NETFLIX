@@ -61,6 +61,10 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.sources).toBeInstanceOf(Array);
     expect(res.body.sources.length).toBeGreaterThan(0);
     expect(res.body.embedUrl).toContain('framextv.cc/embed/550');
+    expect(res.body.embedServers).toBeInstanceOf(Array);
+    expect(res.body.embedServers[0].name).toContain('FrameX');
+    expect(res.body.embedServers[1].name).toContain('AutoEmbed');
+    expect(res.body.embedServers[4].name).toContain('VidSrc');
   }, 10000);
 
   it('GET /api/v1/playback/resolve should return stream and embed sources via query params', async () => {
@@ -71,6 +75,10 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.sources).toBeInstanceOf(Array);
     expect(res.body.sources.length).toBeGreaterThan(0);
     expect(res.body.embedUrl).toContain('framextv.cc/embed/550');
+    expect(res.body.embedServers).toBeInstanceOf(Array);
+    expect(res.body.embedServers[0].name).toContain('FrameX');
+    expect(res.body.embedServers[1].name).toContain('AutoEmbed');
+    expect(res.body.embedServers[4].name).toContain('VidSrc');
   }, 10000);
 
   it('Watchlist CRUD operations should succeed and persist', async () => {
