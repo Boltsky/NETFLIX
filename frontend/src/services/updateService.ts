@@ -40,17 +40,23 @@ const removeStorageItem = (key: string) => {
   } catch {}
 };
 
-export function isNewerVersion(remote: AppUpdateManifest): boolean {
+export function isNewerVersion(
+  remote: AppUpdateManifest,
+  current?: { versionCode: number; commitHash?: string }
+): boolean {
+  const currentCode = current?.versionCode ?? CURRENT_APP_VERSION.versionCode;
+  const currentHash = current?.commitHash ?? CURRENT_APP_VERSION.commitHash;
+
   // 1. versionCode check
-  if (remote.versionCode > CURRENT_APP_VERSION.versionCode) {
+  if (remote.versionCode > currentCode) {
     return true;
   }
   // 2. Different commit check if versionCode is the same
   if (
-    remote.versionCode === CURRENT_APP_VERSION.versionCode &&
+    remote.versionCode === currentCode &&
     remote.commitHash &&
-    CURRENT_APP_VERSION.commitHash &&
-    remote.commitHash.toLowerCase() !== CURRENT_APP_VERSION.commitHash.toLowerCase()
+    currentHash &&
+    remote.commitHash.toLowerCase() !== currentHash.toLowerCase()
   ) {
     return true;
   }
@@ -86,7 +92,8 @@ export const updateService = {
       const manifest: AppUpdateManifest = await res.json();
       setStorageItem(STORAGE_KEY_LAST_CHECK, String(now));
 
-      if (isNewerVersion(manifest)) {
+      const currentVersion = updateService.getCurrentVersion();
+      if (isNewerVersion(manifest, currentVersion)) {
         const dismissedVersion = getStorageItem(STORAGE_KEY_DISMISSED);
         const isDismissed = dismissedVersion === String(manifest.versionCode);
 
@@ -115,6 +122,29 @@ export const updateService = {
    */
   clearDismissedUpdate() {
     removeStorageItem(STORAGE_KEY_DISMISSED);
+  },
+
+  /**
+   * Retrieves current installed app version information, prioritizing native bridge.
+   */
+  getCurrentVersion(): { versionCode: number; versionName: string; commitHash: string } {
+    let versionCode = CURRENT_APP_VERSION.versionCode;
+    let versionName = CURRENT_APP_VERSION.versionName;
+    const commitHash = CURRENT_APP_VERSION.commitHash;
+
+    if (typeof window !== 'undefined' && window.AndroidUpdater) {
+      try {
+        if (typeof window.AndroidUpdater.getAppVersionCode === 'function') {
+          const vc = window.AndroidUpdater.getAppVersionCode();
+          if (typeof vc === 'number' && vc > 0) versionCode = vc;
+        }
+        if (typeof window.AndroidUpdater.getAppVersionName === 'function') {
+          const vn = window.AndroidUpdater.getAppVersionName();
+          if (vn) versionName = vn;
+        }
+      } catch {}
+    }
+    return { versionCode, versionName, commitHash };
   },
 
   /**
