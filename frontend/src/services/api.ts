@@ -133,8 +133,17 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
   if (!sourceUrl) return false;
   const decoded = decodeURIComponent(sourceUrl).toLowerCase();
 
-  // Reject garbage, placeholder, or offensive stream URLs
-  const BLACKLIST = ['fastcloud', 'dummy_stream', 'placeholder_url', '/error.m3u8', '/404.m3u8'];
+  // Reject garbage, placeholder, fake geo-blocked cards, or offensive stream URLs
+  const BLACKLIST = [
+    'fastcloud',
+    'dummy_stream',
+    'placeholder_url',
+    '/error.m3u8',
+    '/404.m3u8',
+    'atlantic.st',
+    'totallyacdn.cc',
+    'amnestyinternational.dev'
+  ];
   if (BLACKLIST.some((b) => decoded.includes(b))) {
     return false;
   }
@@ -237,6 +246,70 @@ async function fetchAlternateSources(
               type: src.type === 'hls' ? 'hls' : 'mp4',
               server: src.server || provider
             }));
+        }
+      }
+    } catch {}
+  }
+  return [];
+}
+
+// Dedicated multi-server stream resolver for FrameXTV's official Backup provider (VidBolt)
+export async function fetchVidboltSources(
+  contentId: string,
+  type: 'movie' | 'tv' | 'anime',
+  season?: number,
+  episode?: number,
+  expectedTitle?: string
+): Promise<StreamSource[]> {
+  const isEpisodic = type === 'tv' || type === 'anime';
+  const s = season || 1;
+  const e = episode || 1;
+  const preferServers = ['orion', 'callisto', 'vega', 'quantum'];
+
+  for (const server of preferServers) {
+    try {
+      let url = `https://vidbolt.xyz/api/resolve?type=${isEpisodic ? 'tv' : 'movie'}&id=${encodeURIComponent(contentId)}&prefer=${server}`;
+      if (isEpisodic) {
+        url += `&season=${s}&episode=${e}`;
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Referer': 'https://vidbolt.xyz/'
+        }
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.stream && Array.isArray(data.stream.sources) && data.stream.sources.length > 0) {
+          // Sort sources: prioritize English, or French (if title is French), then 1080p
+          const sorted = [...data.stream.sources].sort((a: any, b: any) => {
+            const langA = (a.language || '').toLowerCase();
+            const langB = (b.language || '').toLowerCase();
+            if (langA === 'english' && langB !== 'english') return -1;
+            if (langB === 'english' && langA !== 'english') return 1;
+            if (langA === 'french' && langB !== 'french') return -1;
+            if (langB === 'french' && langA !== 'french') return 1;
+            return 0;
+          });
+
+          const sources: StreamSource[] = sorted
+            .filter((src: any) => src.url && isStreamUrlAccurate(src.url, expectedTitle))
+            .map((src: any) => ({
+              url: src.url,
+              quality: src.quality || '1080p',
+              type: 'hls' as const,
+              server: `Backup / VidBolt (${src.language || server})`
+            }));
+
+          if (sources.length > 0) {
+            return sources;
+          }
         }
       }
     } catch {}
@@ -848,8 +921,8 @@ export const api = {
       {
         name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${contentId}?autoplay=1`
+          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1&provider=backup`
+          : `https://framextv.cc/embed/${contentId}?autoplay=1&provider=backup`
       },
       {
         name: 'Server 2 (AutoEmbed)',
@@ -860,14 +933,14 @@ export const api = {
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://vidlink.pro/tv/${contentId}/${s}/${e}`
-          : `https://vidlink.pro/movie/${contentId}`
+          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${contentId}?autoplay=1`
       },
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://www.2embed.cc/embedtv/${contentId}&s=${s}&e=${e}`
-          : `https://www.2embed.cc/embed/${contentId}`
+          ? `https://vidup.to/tv/${contentId}/${s}/${e}?autoPlay=1&theme=e50914&nextButton=true&autoNext=true`
+          : `https://vidup.to/movie/${contentId}?autoPlay=1&theme=e50914`
       },
       {
         name: 'Server 5 (VidSrc)',
@@ -937,6 +1010,8 @@ export const api = {
           }
         }
 
+
+
         return {
           ...res,
           mediaType: effectiveType,
@@ -996,6 +1071,8 @@ export const api = {
               }
             }
 
+
+
             return {
               success: true,
               contentId: String(contentId),
@@ -1010,7 +1087,7 @@ export const api = {
               })),
               embedUrl: embedServers[0].url,
               embedServers,
-              alternates: Array.isArray(data.alternates) ? data.alternates : ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+              alternates: Array.isArray(data.alternates) ? data.alternates : ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
             };
           }
         }
@@ -1035,11 +1112,13 @@ export const api = {
             subtitles: defaultFallbackSubtitles,
             embedUrl: embedServers[0].url,
             embedServers,
-            alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+            alternates: ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
           };
         }
       } catch {}
     }
+
+
 
     return fallbackResolution;
   },

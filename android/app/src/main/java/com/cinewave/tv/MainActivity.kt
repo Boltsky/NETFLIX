@@ -128,6 +128,25 @@ class MainActivity : AppCompatActivity() {
                 view?.evaluateJavascript(js, null)
             }
 
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                val antiAdJs = """
+                    (function() {
+                        try {
+                            const css = '#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*="advertisement"], [id*="advertisement"], a[href*="adplox.com"], a[href*="bet"], div[style*="z-index: 99999"], div[style*="z-index: 2147483647"], div[id*="gift"], div[class*="gift"], img[src*="gift"], a[href*="gift"], div[class*="floating"], div[id*="ad"], [class*="floating"], div[class*="bonus"], div[id*="bonus"], [class*="casino"], [id*="casino"], [class*="claim"], [id*="claim"], [class*="wheel"], [id*="wheel"], [class*="reward"], [id*="reward"], div[class*="recaptcha"], iframe[src*="recaptcha"], div[class*="cf-turnstile"], iframe[src*="turnstile"], div[id*="turnstile"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; }';
+                            let s = document.getElementById('cinewave-anti-ad');
+                            if (!s) {
+                                s = document.createElement('style');
+                                s.id = 'cinewave-anti-ad';
+                                s.textContent = css;
+                                (document.head || document.documentElement).appendChild(s);
+                            }
+                        } catch(e) {}
+                    })();
+                """.trimIndent()
+                view?.evaluateJavascript(antiAdJs, null)
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
@@ -281,17 +300,24 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 6. Intercept 2embed / framextv / vidsrc embed HTML to neutralize anti-sandbox and suppress ad modals
+                // 6. Intercept 2embed / framextv / vidsrc / vidbolt / vidup embed HTML to neutralize anti-sandbox and suppress ad modals
                 if (url.host?.contains("2embed.cc") == true ||
                     url.host?.contains("framextv.cc") == true ||
-                    url.host?.contains("vidsrc.to") == true) {
+                    url.host?.contains("vidsrc.to") == true ||
+                    url.host?.contains("vidbolt.xyz") == true ||
+                    url.host?.contains("vidup.to") == true) {
                     try {
                         val conn = URL(url.toString()).openConnection() as HttpURLConnection
                         conn.requestMethod = "GET"
                         conn.connectTimeout = 4000
                         conn.readTimeout = 8000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                        conn.setRequestProperty("Referer", "https://appassets.androidplatform.net/")
+                        if (url.host?.contains("vidbolt") == true || url.host?.contains("vidup") == true) {
+                            conn.setRequestProperty("Referer", "https://framextv.cc/")
+                            conn.setRequestProperty("Origin", "https://framextv.cc")
+                        } else {
+                            conn.setRequestProperty("Referer", "https://appassets.androidplatform.net/")
+                        }
                         val status = conn.responseCode
                         if (status in 200..399) {
                             val mime = conn.contentType?.split(";")?.get(0)?.trim() ?: "text/html"
@@ -626,6 +652,10 @@ class MainActivity : AppCompatActivity() {
         // 4. In subframes: only allow navigations to verified streaming hosts; block all external ad redirects
         val isAllowedStreamingHost = host.contains("framextv") ||
             host.contains("autoembed") ||
+            host.contains("vidbolt") ||
+            host.contains("vidup") ||
+            host.contains("hakunaymatata") ||
+            host.contains("johndoesdmc") ||
             host.contains("vidlink") ||
             host.contains("smashystream") ||
             host.contains("anyembed") ||
@@ -638,10 +668,9 @@ class MainActivity : AppCompatActivity() {
             host.contains("hscow.com") ||
             host.contains("strem.io") ||
             host.contains("rezesubs.com") ||
-            host.contains("amnestyinternational.dev") ||
-            host.contains("totallyacdn.cc") ||
             host.contains("slowcloud.live") ||
             host.contains("hybrows.workers.dev") ||
+            host.contains("wsrv.nl") ||
             host.contains("cloudflare") ||
             host.contains("gstatic.com") ||
             host.contains("googleapis.com")
@@ -657,7 +686,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun neutralizeHtml(rawHtml: String): String {
         val antiSandboxScript = "<script>try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}</script>"
-        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; }</style>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"], div[class*=\"bonus\"], div[id*=\"bonus\"], [class*=\"casino\"], [id*=\"casino\"], [class*=\"claim\"], [id*=\"claim\"], [class*=\"wheel\"], [id*=\"wheel\"], [class*=\"reward\"], [id*=\"reward\"], div[class*=\"recaptcha\"], iframe[src*=\"recaptcha\"], div[class*=\"cf-turnstile\"], iframe[src*=\"turnstile\"], div[id*=\"turnstile\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
 
         var result = rawHtml
             .replace("<head>", "<head>$antiSandboxScript$antiAdStyle", ignoreCase = true)
@@ -667,12 +696,19 @@ class MainActivity : AppCompatActivity() {
             .replace("isReallySandboxed()", "false")
             .replace("/asb.html", "/disabled_asb.html")
             .replace("if(s){die();throw'';}", "// neutralized anti-sandbox")
+            .replace("sandboxed=true", "sandboxed=false")
+            .replace("sandboxed=e&&e.name==='SecurityError'", "sandboxed=false")
+            .replace("if((framed||dev)&&!sandboxed)return;", "/* bypass sandbox gate */")
+            .replace("if((framed||dev)&&!sandboxed)", "if(true)")
+            .replace("document.domain=document.domain", "// neutralized domain")
 
-        // Strip autoembed anti-sandbox scripts and casino ad generation scripts
+        // Strip autoembed and vidbolt anti-sandbox scripts and casino ad generation scripts
         result = result.replace(Regex("<script[^>]*>[\\s\\S]*?asb\\.html[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
         result = result.replace(Regex("<script[^>]*>[\\s\\S]*?var die=function[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
         result = result.replace(Regex("<script[^>]*>[\\s\\S]*?ad_slot[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
         result = result.replace(Regex("<script[^>]*>[\\s\\S]*?window\\.frameElement[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*>[\\s\\S]*?Remove the <code>sandbox</code>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*>[\\s\\S]*?Playback disabled[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
 
         // Strip soycdn, __ads, tagivi, createlouisville, histats scripts
         result = result.replace(Regex("<script[^>]*soycdn[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
@@ -707,10 +743,14 @@ class MainActivity : AppCompatActivity() {
         val urlStr = uri.toString().lowercase()
         val path = uri.path?.lowercase() ?: ""
 
-        // Explicitly block turnstile challenges, robot verification, and anti-sandbox redirects
+        // Explicitly block turnstile challenges, robot verification, fake media cards, and anti-sandbox redirects
         if (host.contains("turnstile") || urlStr.contains("turnstile") ||
             urlStr.contains("challenges.cloudflare.com") ||
+            urlStr.contains("recaptcha") || host.contains("recaptcha") ||
             host.contains("streamingnow.mov") ||
+            host.contains("atlantic.st") ||
+            host.contains("totallyacdn.cc") ||
+            host.contains("amnestyinternational.dev") ||
             path.contains("asb.html") ||
             urlStr.contains("asb.html")
         ) {
@@ -736,6 +776,10 @@ class MainActivity : AppCompatActivity() {
         if (host == "appassets.androidplatform.net" ||
             host.contains("framextv") ||
             host.contains("autoembed") ||
+            host.contains("vidbolt") ||
+            host.contains("vidup") ||
+            host.contains("hakunaymatata") ||
+            host.contains("johndoesdmc") ||
             host.contains("vidlink") ||
             host.contains("smashystream") ||
             host.contains("anyembed") ||
@@ -748,10 +792,9 @@ class MainActivity : AppCompatActivity() {
             host.contains("hscow.com") ||
             host.contains("strem.io") ||
             host.contains("rezesubs.com") ||
-            host.contains("amnestyinternational.dev") ||
-            host.contains("totallyacdn.cc") ||
             host.contains("slowcloud.live") ||
-            host.contains("hybrows.workers.dev")
+            host.contains("hybrows.workers.dev") ||
+            host.contains("wsrv.nl")
         ) {
             return false
         }
@@ -804,6 +847,8 @@ class MainActivity : AppCompatActivity() {
             "teads",
             "poringasitia",
             "streamingnow.mov",
+            "atlantic.st",
+            "totallyacdn.cc",
             "multiembed",
             "histats",
             "soycdn",

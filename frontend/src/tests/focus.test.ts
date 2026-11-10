@@ -263,6 +263,21 @@ describe('Netflix TV Navigation & UX Tests', () => {
       'Fall 2: Deadpoint'
     )).toBe(false);
 
+    expect(isStreamUrlAccurate(
+      'https://frappe.hybrows.workers.dev/?url=https%3A%2F%2Fmulti.amnestyinternational.dev%2Fm3u8-proxy.m3u8%3Fdata%3D123',
+      'The Good Lawyer'
+    )).toBe(false);
+
+    expect(isStreamUrlAccurate(
+      'https://totallyacdn.cc/dash/843465491883746536/master.m3u8',
+      'The Good Lawyer'
+    )).toBe(false);
+
+    expect(isStreamUrlAccurate(
+      'https://atlantic.st/video-card.m3u8',
+      'The Good Lawyer'
+    )).toBe(false);
+
     // Matching URLs MUST be accepted
     expect(isStreamUrlAccurate(
       'https://xstreamx.films365.org/movie/a616bcaa-40eb-478e-8080-526ea87e16fa/The+Dark+Knight',

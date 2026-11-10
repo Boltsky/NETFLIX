@@ -1,17 +1,17 @@
 {
-  "versionCode": 11,
-  "versionName": "1.2.8",
-  "commitHash": "a92b3a2",
+  "versionCode": 13,
+  "versionName": "1.3.0",
+  "commitHash": "5b6c5da",
   "releaseDate": "2026-11-10",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.2.8",
+  "title": "Netflix TV v1.3.0",
   "changelog": [
-    "Fixed universal direct 1080p FHD streaming for The Notebook, The Good Lawyer, and all movie & TV catalog titles",
-    "Restored worker stream URL integrity and native Origin/Referer header proxying in WebView interceptor",
-    "Completely eradicated AutoEmbed anti-sandbox redirect loops and casino/gambling popup ads",
-    "Fixed player watchdog timer from interrupting active playback and centered error views",
-    "Suppressed soycdn, floating gift ads, bot checks, and third-party popunder scripts"
+    "Integrated FrameXTV official Backup stream provider (VidUp / VidBolt) for seamless auto-failover",
+    "Completely eradicated atlantic.st and totallyacdn VPN/proxy fake warning video cards",
+    "Neutralized anti-sandbox popups, sandbox disabled errors, and casino advertisements across all embed engines",
+    "Resolved instant playback for The Good Lawyer, The Notebook, and all movies and TV shows",
+    "Enabled dynamic CSS and script neutralization on Android TV WebView for clean ad-free streaming"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

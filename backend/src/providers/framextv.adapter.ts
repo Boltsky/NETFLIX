@@ -352,15 +352,15 @@ export class FrameXTVAdapter implements IContentProvider {
     const e = episode || 1;
     const isEpisodic = type === 'tv' || (type as string) === 'anime';
     const embedUrl = isEpisodic
-      ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1`
-      : `${this.embedOrigin}/embed/${id}?autoplay=1`;
+      ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1&provider=backup`
+      : `${this.embedOrigin}/embed/${id}?autoplay=1&provider=backup`;
 
     const embedServers = [
       {
         name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${id}?autoplay=1`
+          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1&provider=backup`
+          : `https://framextv.cc/embed/${id}?autoplay=1&provider=backup`
       },
       {
         name: 'Server 2 (AutoEmbed)',
@@ -371,14 +371,14 @@ export class FrameXTVAdapter implements IContentProvider {
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://vidlink.pro/tv/${id}/${s}/${e}`
-          : `https://vidlink.pro/movie/${id}`
+          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${id}?autoplay=1`
       },
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
-          : `https://www.2embed.cc/embed/${id}`
+          ? `https://vidup.to/tv/${id}/${s}/${e}?autoPlay=1&theme=e50914&nextButton=true&autoNext=true`
+          : `https://vidup.to/movie/${id}?autoPlay=1&theme=e50914`
       },
       {
         name: 'Server 5 (VidSrc)',
@@ -403,6 +403,14 @@ export class FrameXTVAdapter implements IContentProvider {
       return rawUrl;
     };
 
+    const isBlacklisted = (rawUrl: string): boolean => {
+      if (!rawUrl) return true;
+      const lower = rawUrl.toLowerCase();
+      return lower.includes('atlantic.st') || lower.includes('totallyacdn.cc') || lower.includes('amnestyinternational.dev') || lower.includes('dummy_stream') || lower.includes('/error.m3u8');
+    };
+
+
+
     try {
       let streamPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}`;
       if (type === 'tv') {
@@ -420,7 +428,8 @@ export class FrameXTVAdapter implements IContentProvider {
             type: src.type === 'hls' ? 'hls' : 'mp4',
             server: src.server || data.provider || 'FrameX',
             skipProxy: !!src.skipProxy
-          }));
+          }))
+          .filter((src: any) => src.url && !isBlacklisted(src.url));
 
         // Failover across alternate providers for reliable 1080p direct streams
         const alternates = ['bowler', 'giant', 'executioner', 'grand_warden'];
@@ -441,7 +450,8 @@ export class FrameXTVAdapter implements IContentProvider {
                     type: src.type === 'hls' ? 'hls' : 'mp4',
                     server: src.server || alt,
                     skipProxy: !!src.skipProxy
-                  }));
+                  }))
+                  .filter((src: any) => src.url && !isBlacklisted(src.url));
                 if (altSources.length > 0) {
                   sources = altSources;
                   break;
@@ -450,6 +460,8 @@ export class FrameXTVAdapter implements IContentProvider {
             } catch {}
           }
         }
+
+
 
         const subtitles: SubtitleTrack[] = Array.isArray(data.subtitles)
           ? data.subtitles.map((sub: any) => ({
@@ -498,7 +510,8 @@ export class FrameXTVAdapter implements IContentProvider {
               type: src.type === 'hls' ? 'hls' : 'mp4',
               server: src.server || alt,
               skipProxy: !!src.skipProxy
-            }));
+            }))
+            .filter((src: any) => src.url && !isBlacklisted(src.url));
           if (sources.length > 0) {
             return {
               success: true,
@@ -511,12 +524,14 @@ export class FrameXTVAdapter implements IContentProvider {
               subtitles: [],
               embedUrl,
               embedServers,
-              alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+              alternates: ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
             };
           }
         }
       } catch {}
     }
+
+
 
     // Fallback: If external direct extraction failed or has no direct stream, provide FrameXTV Embed.
     // sources is left empty so VideoPlayer activates the verified multi-source FrameXTV player for this exact title!

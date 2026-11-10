@@ -141,8 +141,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${item.id}?autoplay=1`
+          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1&provider=backup`
+          : `https://framextv.cc/embed/${item.id}?autoplay=1&provider=backup`
       },
       {
         name: 'Server 2 (AutoEmbed)',
@@ -153,14 +153,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://vidlink.pro/tv/${item.id}/${s}/${e}`
-          : `https://vidlink.pro/movie/${item.id}`
+          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
+          : `https://framextv.cc/embed/${item.id}?autoplay=1`
       },
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://www.2embed.cc/embedtv/${item.id}&s=${s}&e=${e}`
-          : `https://www.2embed.cc/embed/${item.id}`
+          ? `https://vidup.to/tv/${item.id}/${s}/${e}?autoPlay=1&theme=e50914&nextButton=true&autoNext=true`
+          : `https://vidup.to/movie/${item.id}?autoPlay=1&theme=e50914`
       },
       {
         name: 'Server 5 (VidSrc)',
