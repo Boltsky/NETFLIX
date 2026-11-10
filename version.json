@@ -1,18 +1,18 @@
 {
-  "versionCode": 7,
-  "versionName": "1.2.4",
+  "versionCode": 8,
+  "versionName": "1.2.5",
   "commitHash": "e18422a",
   "releaseDate": "2026-11-10",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.2.4",
+  "title": "Netflix TV v1.2.5",
   "changelog": [
-    "Fixed playback time display in player OSD to show both time played and time remaining side-by-side",
-    "Resolved singles/movies mistakenly displaying episodic S1:E1 badges and season tabs",
-    "Eliminated duplicate items in Continue Watching rail and catalog rails",
-    "Strict content-type isolation preventing movie progress entries from saving or inheriting season/episode data",
-    "Universal playback fix for all movies and TV shows across direct HLS and embed fallbacks",
-    "Settings Page with in-app automatic update checking and installation"
+    "Fixed universal movie playback across all titles including The Notebook and The Good Lawyer",
+    "Enabled dynamic multi-provider direct HLS streaming across FrameX provider pool (giant, bowler, executioner, grand_warden)",
+    "Eliminated 'We Couldn't Find This Content' stall by preventing iframe onLoad from prematurely cancelling watchdog",
+    "Enhanced automated fallback watchdog timer to advance across all 5 streaming servers smoothly",
+    "Removed forced provider restrictions and obsolete domain configurations",
+    "Time played and time remaining side-by-side on scrubber bar with full D-Pad seeking support"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

@@ -382,20 +382,10 @@ class MainActivity : AppCompatActivity() {
         val candidateTargets = mutableListOf<String>()
         // 1. Prioritize reliable live upstream endpoints to ensure zero latency on physical TV
         if (upstreamPath != null) {
-            val effectiveStreamPath = if (upstreamPath.startsWith("/api/stream") && !upstreamPath.contains("provider=")) {
-                val sep = if (upstreamPath.contains("?")) "&" else "?"
-                "$upstreamPath${sep}provider=executioner"
-            } else {
-                upstreamPath
-            }
-            candidateTargets.add("https://api.framextv.tech$effectiveStreamPath")
-            candidateTargets.add("https://api.framextv.cc$effectiveStreamPath")
-            candidateTargets.add("https://api.framextv.pro$effectiveStreamPath")
-            candidateTargets.add("https://api.framextv.xyz$effectiveStreamPath")
-            if (effectiveStreamPath != upstreamPath) {
-                candidateTargets.add("https://api.framextv.tech$upstreamPath")
-                candidateTargets.add("https://api.framextv.cc$upstreamPath")
-            }
+            candidateTargets.add("https://api.framextv.tech$upstreamPath")
+            candidateTargets.add("https://api.framextv.cc$upstreamPath")
+            candidateTargets.add("https://api.framextv.pro$upstreamPath")
+            candidateTargets.add("https://api.framextv.xyz$upstreamPath")
         }
 
         // 2. Emulator fallback gateway

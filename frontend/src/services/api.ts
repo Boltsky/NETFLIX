@@ -875,13 +875,12 @@ export const api = {
       subtitles: defaultFallbackSubtitles,
       embedUrl: embedServers[0].url,
       embedServers,
-      alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+      alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
     };
 
     const params = new URLSearchParams({
       contentId: String(contentId),
-      type: effectiveType,
-      provider: 'executioner'
+      type: effectiveType
     });
     if (season !== undefined) params.set('season', String(season));
     if (episode !== undefined) params.set('episode', String(episode));
@@ -894,14 +893,21 @@ export const api = {
           !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle)
         );
 
-        // Multi-provider alternate stream resolution (e.g. executioner) for instant 1080p playback
-        if (Array.isArray(res.alternates) && res.alternates.includes('executioner')) {
-          try {
-            const altSources = await fetchAlternateSources(contentId, effectiveType, 'executioner', season, episode, expectedTitle);
-            if (altSources.length > 0) {
-              validSources = [...altSources, ...validSources];
-            }
-          } catch {}
+        // Multi-provider alternate stream resolution for instant 1080p playback
+        const candidateAlternates = Array.isArray(res.alternates) && res.alternates.length > 0
+          ? res.alternates
+          : ['bowler', 'giant', 'executioner', 'grand_warden'];
+
+        if (validSources.length === 0) {
+          for (const altProvider of candidateAlternates) {
+            try {
+              const altSources = await fetchAlternateSources(contentId, effectiveType, altProvider, season, episode, expectedTitle);
+              if (altSources.length > 0) {
+                validSources = altSources;
+                break;
+              }
+            } catch {}
+          }
         }
 
         return {
@@ -943,14 +949,20 @@ export const api = {
                 server: src.server || data.provider || 'FrameX'
               }));
 
-            // Multi-provider alternate stream failover (e.g. executioner)
-            if (Array.isArray(data.alternates) && data.alternates.includes('executioner')) {
-              try {
-                const altSources = await fetchAlternateSources(contentId, effectiveType, 'executioner', season, episode, expectedTitle);
-                if (altSources.length > 0) {
-                  validSources = [...altSources, ...validSources];
-                }
-              } catch {}
+            // Multi-provider alternate stream failover if primary sources were filtered or empty
+            if (validSources.length === 0) {
+              const directAlts = Array.isArray(data.alternates) && data.alternates.length > 0
+                ? data.alternates
+                : ['bowler', 'giant', 'executioner', 'grand_warden'];
+              for (const alt of directAlts) {
+                try {
+                  const altSources = await fetchAlternateSources(contentId, effectiveType, alt, season, episode, expectedTitle);
+                  if (altSources.length > 0) {
+                    validSources = altSources;
+                    break;
+                  }
+                } catch {}
+              }
             }
 
             return {
@@ -967,7 +979,7 @@ export const api = {
               })),
               embedUrl: embedServers[0].url,
               embedServers,
-              alternates: Array.isArray(data.alternates) ? data.alternates : ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+              alternates: Array.isArray(data.alternates) ? data.alternates : ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
             };
           }
         }
@@ -976,25 +988,27 @@ export const api = {
       }
     }
 
-    // Direct multi-provider failover before embed fallback
-    try {
-      const altSources = await fetchAlternateSources(contentId, effectiveType, 'executioner', season, episode, expectedTitle);
-      if (altSources.length > 0) {
-        return {
-          success: true,
-          contentId: String(contentId),
-          mediaType: effectiveType,
-          season: isEpisodic ? s : undefined,
-          episode: isEpisodic ? e : undefined,
-          provider: 'FrameX Executioner Direct',
-          sources: altSources,
-          subtitles: defaultFallbackSubtitles,
-          embedUrl: embedServers[0].url,
-          embedServers,
-          alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
-        };
-      }
-    } catch {}
+    // Direct multi-provider failover across provider pool before embed fallback
+    for (const alt of ['bowler', 'giant', 'executioner', 'grand_warden']) {
+      try {
+        const altSources = await fetchAlternateSources(contentId, effectiveType, alt, season, episode, expectedTitle);
+        if (altSources.length > 0) {
+          return {
+            success: true,
+            contentId: String(contentId),
+            mediaType: effectiveType,
+            season: isEpisodic ? s : undefined,
+            episode: isEpisodic ? e : undefined,
+            provider: `FrameX ${alt} Direct`,
+            sources: altSources,
+            subtitles: defaultFallbackSubtitles,
+            embedUrl: embedServers[0].url,
+            embedServers,
+            alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+          };
+        }
+      } catch {}
+    }
 
     return fallbackResolution;
   },

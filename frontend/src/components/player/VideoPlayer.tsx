@@ -416,6 +416,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     activeSubtitleRef.current = -1;
     setCues([]);
     subtitleCacheRef.current.clear();
+    attemptedServersRef.current.clear();
+    setSelectedServerIndex(0);
+    setUseIframeFallback(false);
+    hasPlaybackStartedRef.current = false;
+    if (watchdogTimerRef.current) {
+      clearTimeout(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
+    }
 
     api.resolvePlayback(item.id, item.type, season, episode, item.title)
       .then((res) => {
@@ -1189,12 +1197,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           title="Netflix Player"
           onLoad={() => {
-            console.log(`[Netflix Player] Iframe loaded successfully for ${servers[selectedServerIndex]?.name || 'server'}`);
-            hasPlaybackStartedRef.current = true;
-            if (watchdogTimerRef.current) {
-              clearTimeout(watchdogTimerRef.current);
-              watchdogTimerRef.current = null;
-            }
+            console.log(`[Netflix Player] Iframe loaded document for ${servers[selectedServerIndex]?.name || 'server'}`);
+            // Note: Do NOT mark hasPlaybackStartedRef.current = true or disarm watchdog on onLoad!
+            // Error pages ("We Couldn't Find This Content") or captcha pages also trigger onLoad.
+            // Confirmed playback telemetry arrives via postMessage ('timeupdate', 'playing', etc.).
           }}
           onError={() => {
             console.warn(`[Netflix Player] Iframe load error for ${servers[selectedServerIndex]?.name}`);

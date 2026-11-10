@@ -490,7 +490,7 @@ export class FrameXTVAdapter implements IContentProvider {
           subtitles: [],
           embedUrl,
           embedServers,
-          alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+          alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
         };
       }
     } catch {}
@@ -508,7 +508,7 @@ export class FrameXTVAdapter implements IContentProvider {
       subtitles: [],
       embedUrl,
       embedServers,
-      alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+      alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
     };
   }
 
