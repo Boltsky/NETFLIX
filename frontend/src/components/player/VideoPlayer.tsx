@@ -624,16 +624,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [resolution, useIframeFallback, currentSourceIndex, applyResumeIfAvailable, saveCurrentProgress, showPlayerToast]);
 
-  // Automated Fallback Watchdog Timer (10s timeout)
+  // Automated Fallback Watchdog Timer (25s timeout)
+  const activeEmbedUrlRef = useRef<string>('');
   useEffect(() => {
     if (!useIframeFallback || !currentEmbedUrl) {
       if (watchdogTimerRef.current) {
         clearTimeout(watchdogTimerRef.current);
         watchdogTimerRef.current = null;
       }
+      activeEmbedUrlRef.current = '';
       return;
     }
 
+    // Only arm watchdog if we switched to a new embed URL
+    if (activeEmbedUrlRef.current === currentEmbedUrl && hasPlaybackStartedRef.current) {
+      return;
+    }
+    activeEmbedUrlRef.current = currentEmbedUrl;
     hasPlaybackStartedRef.current = false;
 
     if (watchdogTimerRef.current) {
@@ -1117,38 +1124,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
 
       {/* Error View */}
-      {error && (
-        <div className="absolute inset-0 z-40 bg-black/95 flex flex-col items-center justify-center space-y-4 p-8 text-center max-w-md">
-          <AlertTriangle className="w-16 h-16 text-[#E50914]" />
-          <h2 className="text-xl font-bold text-white">Playback Unavailable</h2>
-          <p className="text-xs text-zinc-400">{error}</p>
-          {servers.length > 1 && (
-            <div className="flex flex-wrap gap-2 justify-center pt-2">
-              {servers.map((s, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    setError(null);
-                    setSelectedServerIndex(idx);
-                    setUseIframeFallback(true);
-                  }}
-                  className={`px-4 py-1.5 rounded text-xs font-bold transition-colors ${
-                    selectedServerIndex === idx
-                      ? 'bg-[#E50914] text-white'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                  }`}
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            onClick={handleExit}
-            className="px-6 py-2.5 rounded-[4px] bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm"
-          >
-            Return
-          </button>
+      {error && !hasPlaybackStartedRef.current && (
+        <div className="absolute inset-0 z-40 bg-black/95 flex items-center justify-center p-8 text-center">
+          <div className="max-w-md w-full flex flex-col items-center justify-center space-y-4">
+            <AlertTriangle className="w-16 h-16 text-[#E50914]" />
+            <h2 className="text-xl font-bold text-white">Playback Unavailable</h2>
+            <p className="text-xs text-zinc-400">{error}</p>
+            {servers.length > 1 && (
+              <div className="flex flex-wrap gap-2 justify-center pt-2">
+                {servers.map((s, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setError(null);
+                      setSelectedServerIndex(idx);
+                      setUseIframeFallback(true);
+                    }}
+                    className={`px-4 py-1.5 rounded text-xs font-bold transition-colors ${
+                      selectedServerIndex === idx
+                        ? 'bg-[#E50914] text-white'
+                        : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={handleExit}
+              className="px-6 py-2.5 rounded-[4px] bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm"
+            >
+              Return
+            </button>
+          </div>
         </div>
       )}
 

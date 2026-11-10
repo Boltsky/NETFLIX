@@ -323,8 +323,8 @@ class FrameXTVAdapter {
             {
                 name: 'Server 2 (AutoEmbed)',
                 url: isEpisodic
-                    ? `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`
-                    : `https://player.autoembed.cc/embed/movie/${id}`
+                    ? `https://player.autoembed.me/embed/tv/${id}/${s}/${e}`
+                    : `https://player.autoembed.me/embed/movie/${id}`
             },
             {
                 name: 'Server 3 (MultiEmbed)',
@@ -341,10 +341,26 @@ class FrameXTVAdapter {
             {
                 name: 'Server 5 (VidSrc)',
                 url: isEpisodic
-                    ? `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`
-                    : `https://vidsrc.pm/embed/movie/${id}`
+                    ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+                    : `https://vidsrc.to/embed/movie/${id}`
             }
         ];
+        const normalizeUrl = (rawUrl) => {
+            if (!rawUrl)
+                return rawUrl;
+            if (rawUrl.includes('multi.amnestyinternational.dev') && rawUrl.includes('url=')) {
+                const match = rawUrl.match(/url=([^&]+)/);
+                if (match && match[1]) {
+                    try {
+                        return decodeURIComponent(match[1]);
+                    }
+                    catch {
+                        return match[1];
+                    }
+                }
+            }
+            return rawUrl;
+        };
         try {
             let streamPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}`;
             if (type === 'tv') {
@@ -354,37 +370,41 @@ class FrameXTVAdapter {
             const data = await res.json();
             if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
                 let sources = data.sources
-                    .filter((src) => !src.url?.includes('fprime.at'))
                     .map((src) => ({
-                    url: src.url,
+                    url: normalizeUrl(src.url),
                     quality: src.quality || '1080p',
                     type: src.type === 'hls' ? 'hls' : 'mp4',
                     server: src.server || data.provider || 'FrameX',
                     skipProxy: !!src.skipProxy
                 }));
-                // Failover to alternate executioner provider for reliable 1080p direct streams
-                if (Array.isArray(data.alternates) && data.alternates.includes('executioner')) {
-                    try {
-                        let altPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=executioner`;
-                        if (type === 'tv') {
-                            altPath += `&season=${s}&episode=${e}`;
+                // Failover across alternate providers for reliable 1080p direct streams
+                const alternates = ['bowler', 'giant', 'executioner', 'grand_warden'];
+                if (sources.length === 0) {
+                    for (const alt of alternates) {
+                        try {
+                            let altPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=${alt}`;
+                            if (type === 'tv') {
+                                altPath += `&season=${s}&episode=${e}`;
+                            }
+                            const altRes = await this.fetchWithFailover(altPath);
+                            const altData = await altRes.json();
+                            if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
+                                const altSources = altData.sources
+                                    .map((src) => ({
+                                    url: normalizeUrl(src.url),
+                                    quality: src.quality || '1080p',
+                                    type: src.type === 'hls' ? 'hls' : 'mp4',
+                                    server: src.server || alt,
+                                    skipProxy: !!src.skipProxy
+                                }));
+                                if (altSources.length > 0) {
+                                    sources = altSources;
+                                    break;
+                                }
+                            }
                         }
-                        const altRes = await this.fetchWithFailover(altPath);
-                        const altData = await altRes.json();
-                        if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
-                            const altSources = altData.sources
-                                .filter((src) => !src.url?.includes('fprime.at'))
-                                .map((src) => ({
-                                url: src.url,
-                                quality: src.quality || '1080p',
-                                type: src.type === 'hls' ? 'hls' : 'mp4',
-                                server: src.server || 'Executioner',
-                                skipProxy: !!src.skipProxy
-                            }));
-                            sources = [...altSources, ...sources];
-                        }
+                        catch { }
                     }
-                    catch { }
                 }
                 const subtitles = Array.isArray(data.subtitles)
                     ? data.subtitles.map((sub) => ({
@@ -414,40 +434,44 @@ class FrameXTVAdapter {
         catch (err) {
             console.warn(`[FrameXTV] Direct stream resolution error for ${id}:`, err.message);
         }
-        // Direct alternate provider fallback before embed
-        try {
-            let altPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=executioner`;
-            if (type === 'tv') {
-                altPath += `&season=${s}&episode=${e}`;
+        // Direct alternate provider fallback across pool before embed
+        const directPool = ['bowler', 'giant', 'executioner', 'grand_warden'];
+        for (const alt of directPool) {
+            try {
+                let altPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=${alt}`;
+                if (type === 'tv') {
+                    altPath += `&season=${s}&episode=${e}`;
+                }
+                const altRes = await this.fetchWithFailover(altPath);
+                const altData = await altRes.json();
+                if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
+                    const sources = altData.sources
+                        .map((src) => ({
+                        url: normalizeUrl(src.url),
+                        quality: src.quality || '1080p',
+                        type: src.type === 'hls' ? 'hls' : 'mp4',
+                        server: src.server || alt,
+                        skipProxy: !!src.skipProxy
+                    }));
+                    if (sources.length > 0) {
+                        return {
+                            success: true,
+                            contentId: id,
+                            mediaType: type,
+                            season: type === 'tv' ? s : undefined,
+                            episode: type === 'tv' ? e : undefined,
+                            provider: `FrameX ${alt}`,
+                            sources,
+                            subtitles: [],
+                            embedUrl,
+                            embedServers,
+                            alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+                        };
+                    }
+                }
             }
-            const altRes = await this.fetchWithFailover(altPath);
-            const altData = await altRes.json();
-            if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
-                const sources = altData.sources
-                    .filter((src) => !src.url?.includes('fprime.at'))
-                    .map((src) => ({
-                    url: src.url,
-                    quality: src.quality || '1080p',
-                    type: src.type === 'hls' ? 'hls' : 'mp4',
-                    server: src.server || 'Executioner',
-                    skipProxy: !!src.skipProxy
-                }));
-                return {
-                    success: true,
-                    contentId: id,
-                    mediaType: type,
-                    season: type === 'tv' ? s : undefined,
-                    episode: type === 'tv' ? e : undefined,
-                    provider: 'FrameX Executioner',
-                    sources,
-                    subtitles: [],
-                    embedUrl,
-                    embedServers,
-                    alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
-                };
-            }
+            catch { }
         }
-        catch { }
         // Fallback: If external direct extraction failed or has no direct stream, provide FrameXTV Embed.
         // sources is left empty so VideoPlayer activates the verified multi-source FrameXTV player for this exact title!
         return {
@@ -461,7 +485,7 @@ class FrameXTVAdapter {
             subtitles: [],
             embedUrl,
             embedServers,
-            alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+            alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
         };
     }
     mapMediaItem(item, defaultType) {

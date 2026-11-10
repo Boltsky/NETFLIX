@@ -178,19 +178,81 @@ class MainActivity : AppCompatActivity() {
                     return proxyApiRequest(request)
                 }
 
-                // 3. Intercept and block ad networks, tracking scripts, and popunders
+                // 3. Direct HLS media stream proxying for fprime (amnestyinternational / totallyacdn) and vidrock (concretemiracle / slowcloud / vercetti)
+                val streamHost = url.host?.lowercase() ?: ""
+                val isAmnestyStream = streamHost.contains("amnestyinternational.dev") ||
+                    streamHost.contains("totallyacdn.cc") ||
+                    (streamHost.contains("hybrows.workers.dev") && url.query?.contains("amnestyinternational.dev") == true)
+                val isVidrockStream = streamHost.contains("concretemiracle.lol") ||
+                    streamHost.contains("slowcloud.live") ||
+                    streamHost.contains("vercetti.org")
+
+                if (isAmnestyStream || isVidrockStream) {
+                    if (request.method.equals("OPTIONS", ignoreCase = true)) {
+                        val headers = mutableMapOf<String, String>()
+                        headers["Access-Control-Allow-Origin"] = "*"
+                        headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+                        headers["Access-Control-Allow-Headers"] = "*"
+                        return WebResourceResponse("text/plain", "UTF-8", 200, "OK", headers, ByteArrayInputStream(ByteArray(0)))
+                    }
+
+                    val rawTarget = if (url.query?.contains("url=") == true && url.query?.contains("amnestyinternational.dev") == true) {
+                        url.getQueryParameter("url") ?: url.toString()
+                    } else {
+                        url.toString()
+                    }
+                    try {
+                        val conn = URL(rawTarget).openConnection() as HttpURLConnection
+                        conn.requestMethod = "GET"
+                        conn.connectTimeout = 6000
+                        conn.readTimeout = 12000
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                        if (isAmnestyStream) {
+                            conn.setRequestProperty("Referer", "https://fprime.at/")
+                            conn.setRequestProperty("Origin", "https://fprime.at")
+                        } else {
+                            conn.setRequestProperty("Referer", "https://vidrock.to/")
+                            conn.setRequestProperty("Origin", "https://vidrock.to")
+                        }
+                        val range = request.requestHeaders["Range"]
+                        if (range != null) {
+                            conn.setRequestProperty("Range", range)
+                        }
+                        val status = conn.responseCode
+                        if (status in 200..399) {
+                            val mime = conn.contentType?.split(";")?.get(0)?.trim()
+                                ?: if (rawTarget.contains(".m3u8")) "application/vnd.apple.mpegurl" else "video/mp2t"
+                            val headers = mutableMapOf<String, String>()
+                            headers["Access-Control-Allow-Origin"] = "*"
+                            headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+                            headers["Access-Control-Allow-Headers"] = "*"
+                            val contentRange = conn.getHeaderField("Content-Range")
+                            if (contentRange != null) headers["Content-Range"] = contentRange
+                            val acceptRanges = conn.getHeaderField("Accept-Ranges")
+                            if (acceptRanges != null) headers["Accept-Ranges"] = acceptRanges
+                            return WebResourceResponse(mime, "UTF-8", status, if (status == 206) "Partial Content" else "OK", headers, conn.inputStream)
+                        }
+                    } catch (e: Exception) {
+                        Log.w("CineWaveProxy", "Failed to proxy stream ($streamHost): ${e.message}")
+                    }
+                }
+
+                // 4. Intercept and block ad networks, tracking scripts, and popunders
                 if (isAdOrBlockedUrl(url)) {
                     Log.d("CineWaveAdBlock", "Blocked ad resource request: $url")
                     return createEmptyResourceResponse()
                 }
 
-                // 4. Map dead player.autoembed.cc / player.moviesapi.vip to live player.autoembed.me, neutralizing anti-sandbox redirections
+                // 5. Map dead player.autoembed.cc / player.moviesapi.vip to live player.autoembed.me, neutralizing anti-sandbox redirections
                 if (url.host?.contains("player.autoembed.cc") == true ||
                     url.host?.contains("player.moviesapi.vip") == true ||
                     url.host?.contains("player.autoembed.me") == true) {
                     var path = url.path ?: ""
                     if (path.startsWith("/movie/") || path.startsWith("/tv/")) {
                         path = "/embed$path"
+                    }
+                    if (path.contains("asb.html")) {
+                        return createEmptyResourceResponse()
                     }
                     val pathAndQuery = path + if (url.query != null) "?${url.query}" else ""
                     val liveUrl = "https://player.autoembed.me$pathAndQuery"
@@ -219,7 +281,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 5. Intercept 2embed / framextv / vidsrc embed HTML to neutralize anti-sandbox and suppress ad modals
+                // 6. Intercept 2embed / framextv / vidsrc embed HTML to neutralize anti-sandbox and suppress ad modals
                 if (url.host?.contains("2embed.cc") == true ||
                     url.host?.contains("framextv.cc") == true ||
                     url.host?.contains("vidsrc.to") == true) {
@@ -576,6 +638,10 @@ class MainActivity : AppCompatActivity() {
             host.contains("hscow.com") ||
             host.contains("strem.io") ||
             host.contains("rezesubs.com") ||
+            host.contains("amnestyinternational.dev") ||
+            host.contains("totallyacdn.cc") ||
+            host.contains("slowcloud.live") ||
+            host.contains("hybrows.workers.dev") ||
             host.contains("cloudflare") ||
             host.contains("gstatic.com") ||
             host.contains("googleapis.com")
@@ -590,10 +656,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun neutralizeHtml(rawHtml: String): String {
-        val antiSandboxScript = "<script>try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}</script>"
-        val antiAdStyle = "<style>#sbxErr, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; }</style>"
+        val antiSandboxScript = "<script>try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}</script>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; }</style>"
 
-        return rawHtml
+        var result = rawHtml
             .replace("<head>", "<head>$antiSandboxScript$antiAdStyle", ignoreCase = true)
             .replace("try{document.domain=document.domain}catch(t){r();return}", "")
             .replace("if(window.frameElement.hasAttribute(\"sandbox\")){r()}", "")
@@ -601,6 +667,22 @@ class MainActivity : AppCompatActivity() {
             .replace("isReallySandboxed()", "false")
             .replace("/asb.html", "/disabled_asb.html")
             .replace("if(s){die();throw'';}", "// neutralized anti-sandbox")
+
+        // Strip autoembed anti-sandbox scripts and casino ad generation scripts
+        result = result.replace(Regex("<script[^>]*>[\\s\\S]*?asb\\.html[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*>[\\s\\S]*?var die=function[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*>[\\s\\S]*?ad_slot[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*>[\\s\\S]*?window\\.frameElement[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+
+        // Strip soycdn, __ads, tagivi, createlouisville, histats scripts
+        result = result.replace(Regex("<script[^>]*soycdn[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*__ads[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*createlouisville[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*tagivi[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script[^>]*histats[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        result = result.replace(Regex("<script>\\(function\\(\\)\\{function r\\(\\)\\{[\\s\\S]*?window\\.location\\.href=u[\\s\\S]*?\\}\\)\\(\\);</script>", RegexOption.IGNORE_CASE), "")
+
+        return result
     }
 
     private fun createEmptyResourceResponse(): WebResourceResponse {
@@ -623,16 +705,34 @@ class MainActivity : AppCompatActivity() {
     private fun isAdOrBlockedUrl(uri: Uri): Boolean {
         val host = uri.host?.lowercase() ?: return false
         val urlStr = uri.toString().lowercase()
+        val path = uri.path?.lowercase() ?: ""
 
-        // Explicitly block turnstile challenges and robot verification
+        // Explicitly block turnstile challenges, robot verification, and anti-sandbox redirects
         if (host.contains("turnstile") || urlStr.contains("turnstile") ||
             urlStr.contains("challenges.cloudflare.com") ||
-            host.contains("streamingnow.mov")
+            host.contains("streamingnow.mov") ||
+            path.contains("asb.html") ||
+            urlStr.contains("asb.html")
         ) {
             return true
         }
 
-        // Whitelist app assets, internal endpoints, and verified embed providers
+        // Explicitly block ad injection scripts, soycdn, and popup widgets
+        if (host.contains("soycdn") ||
+            host.contains("createlouisville") ||
+            host.contains("tagivi") ||
+            host.contains("histats") ||
+            host.contains("profiton") ||
+            path.contains("/__ads") ||
+            path.contains("/ads/") ||
+            urlStr.contains("/__ads/") ||
+            urlStr.contains("vidsrcto.js") ||
+            urlStr.contains("ad.js")
+        ) {
+            return true
+        }
+
+        // Whitelist app assets, internal endpoints, and verified embed & streaming providers
         if (host == "appassets.androidplatform.net" ||
             host.contains("framextv") ||
             host.contains("autoembed") ||
@@ -647,7 +747,11 @@ class MainActivity : AppCompatActivity() {
             host.contains("tmdb.org") ||
             host.contains("hscow.com") ||
             host.contains("strem.io") ||
-            host.contains("rezesubs.com")
+            host.contains("rezesubs.com") ||
+            host.contains("amnestyinternational.dev") ||
+            host.contains("totallyacdn.cc") ||
+            host.contains("slowcloud.live") ||
+            host.contains("hybrows.workers.dev")
         ) {
             return false
         }
@@ -702,6 +806,13 @@ class MainActivity : AppCompatActivity() {
             "streamingnow.mov",
             "multiembed",
             "histats",
+            "soycdn",
+            "createlouisville",
+            "tagivi",
+            "profiton",
+            "asb.html",
+            "popunder",
+            "gift",
             "realsrv",
             "syndication",
             "serving-sys",

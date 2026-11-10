@@ -112,6 +112,22 @@ export function getCachedMediaItem(id: string): MediaItem | undefined {
   return mediaItemCache.get(String(id));
 }
 
+// Normalizes stream URLs (unwrapping any expired proxy workers to direct streaming origins)
+export function normalizeStreamUrl(rawUrl: string): string {
+  if (!rawUrl) return rawUrl;
+  if (rawUrl.includes('multi.amnestyinternational.dev') && rawUrl.includes('url=')) {
+    const match = rawUrl.match(/url=([^&]+)/);
+    if (match && match[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+  }
+  return rawUrl;
+}
+
 // Validates that a resolved stream source belongs to the expected title, rejecting fuzzy scraper mismatches
 export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): boolean {
   if (!sourceUrl) return false;
@@ -183,7 +199,11 @@ async function fetchAlternateSources(
     const d = await apiFetch<any>(`/playback/resolve?${params.toString()}`);
     if (d && d.success && Array.isArray(d.sources) && d.sources.length > 0) {
       const valid = d.sources
-        .filter((src: any) => !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle))
+        .map((src: any) => ({
+          ...src,
+          url: normalizeStreamUrl(src.url)
+        }))
+        .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
         .map((src: any) => ({
           url: src.url,
           quality: src.quality || '1080p',
@@ -206,7 +226,11 @@ async function fetchAlternateSources(
         const d = await r.json();
         if (d && d.success && Array.isArray(d.sources) && d.sources.length > 0) {
           return d.sources
-            .filter((src: any) => !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle))
+            .map((src: any) => ({
+              ...src,
+              url: normalizeStreamUrl(src.url)
+            }))
+            .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
             .map((src: any) => ({
               url: src.url,
               quality: src.quality || '1080p',
@@ -888,10 +912,13 @@ export const api = {
     try {
       const res = await apiFetch<PlaybackResolution>(`/playback/resolve?${params.toString()}`);
       if (res && res.success) {
-        // Validate sources to verify they match the requested movie title and filter out broken proxy hosts
-        let validSources = (res.sources || []).filter((src: any) =>
-          !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle)
-        );
+        // Validate sources to verify they match the requested movie title and normalize streams
+        let validSources = (res.sources || [])
+          .map((src: any) => ({
+            ...src,
+            url: normalizeStreamUrl(src.url)
+          }))
+          .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle));
 
         // Multi-provider alternate stream resolution for instant 1080p playback
         const candidateAlternates = Array.isArray(res.alternates) && res.alternates.length > 0
@@ -939,9 +966,13 @@ export const api = {
         if (directRes.ok) {
           const data = await directRes.json();
           if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
-            // Strictly validate every direct source before accepting and filter broken proxies
+            // Strictly validate every direct source before accepting and normalize streams
             let validSources = data.sources
-              .filter((src: any) => !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle))
+              .map((src: any) => ({
+                ...src,
+                url: normalizeStreamUrl(src.url)
+              }))
+              .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
               .map((src: any) => ({
                 url: src.url,
                 quality: src.quality || '1080p',

@@ -1,18 +1,17 @@
 {
-  "versionCode": 9,
-  "versionName": "1.2.6",
-  "commitHash": "0f53b06",
+  "versionCode": 11,
+  "versionName": "1.2.8",
+  "commitHash": "latest",
   "releaseDate": "2026-11-10",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.2.6",
+  "title": "Netflix TV v1.2.8",
   "changelog": [
-    "Unblocked pristine direct 1080p HLS playback for The Notebook and all titles by removing false CDN keyword filtering",
-    "Completely eliminated 'Please Disable Sandbox' and 'This content cannot be embedded in a sandboxed frame' via universal document.domain polyfill and neutralization",
-    "Eliminated 'Playback Unavailable' watchdog overlay while video is actively playing in the background",
-    "Upgraded embed server pool to live endpoints: AutoEmbed.me and VidSrc.to (eliminating 404 Not Found and ERR_NAME_NOT_RESOLVED)",
-    "Hardened in-app ad blocker to suppress gambling popups ('Claim your bonus!'), ad overlays, and robot verification prompts",
-    "Full D-Pad remote control support with dual time played & remaining on scrubber bar"
+    "Fixed universal direct 1080p FHD streaming for The Notebook, The Good Lawyer, and all movie & TV catalog titles",
+    "Restored worker stream URL integrity and native Origin/Referer header proxying in WebView interceptor",
+    "Completely eradicated AutoEmbed anti-sandbox redirect loops and casino/gambling popup ads",
+    "Fixed player watchdog timer from interrupting active playback and centered error views",
+    "Suppressed soycdn, floating gift ads, bot checks, and third-party popunder scripts"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

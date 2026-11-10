@@ -82,3 +82,21 @@ video::cue {
   line-height: 1.4;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
 }
+
+/* Ad & Floating Widget Suppression */
+div[style*="z-index: 2147483647"],
+div[style*="z-index: 99999"],
+div[class*="floating"],
+div[id*="gift"],
+div[class*="gift"],
+img[src*="gift"],
+a[href*="gift"],
+#sbxErr,
+#asb {
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
