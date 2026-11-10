@@ -1,16 +1,17 @@
 {
-  "versionCode": 4,
-  "versionName": "1.2.1",
-  "commitHash": "37fc47c",
+  "versionCode": 5,
+  "versionName": "1.2.2",
+  "commitHash": "826b751",
   "releaseDate": "2026-11-10",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.2.1",
+  "title": "Netflix TV v1.2.2",
   "changelog": [
+    "Fixed playback resolution for The Notebook (11036) and all titles via high-speed direct Executioner HLS streams",
     "Eliminated all video playback ads, casino popups, and anti-sandbox iframe warnings",
     "Eliminated robot verification (reCAPTCHA and Cloudflare Turnstile) challenges on playback fallback",
-    "Enabled multi-provider direct stream failover with high-speed 1080p Executioner HLS streams",
-    "Added automatic direct stream source cycling in video player for uninterrupted playback",
+    "Neutralized iframe sandboxing detection and resolved player.moviesapi.vip DNS failures",
+    "Fixed watchdog timeout on player iframe embeds with automated load detection",
     "Settings Page prominently placed in sidebar navigation with full TV remote D-pad controls",
     "Automatic startup update checking with seamless in-app installation"
   ],

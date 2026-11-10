@@ -1179,6 +1179,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           title="Netflix Player"
+          onLoad={() => {
+            console.log(`[Netflix Player] Iframe loaded successfully for ${servers[selectedServerIndex]?.name || 'server'}`);
+            hasPlaybackStartedRef.current = true;
+            if (watchdogTimerRef.current) {
+              clearTimeout(watchdogTimerRef.current);
+              watchdogTimerRef.current = null;
+            }
+          }}
           onError={() => {
             console.warn(`[Netflix Player] Iframe load error for ${servers[selectedServerIndex]?.name}`);
             attemptedServersRef.current.add(selectedServerIndex);

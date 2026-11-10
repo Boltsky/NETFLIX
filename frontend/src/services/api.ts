@@ -168,6 +168,32 @@ async function fetchAlternateSources(
   const e = episode || 1;
   const isEpisodic = type === 'tv' || type === 'anime';
 
+  // 1. Try local/native proxy first (guarantees zero CORS in Android TV WebView)
+  try {
+    const params = new URLSearchParams({
+      contentId: String(contentId),
+      type: isEpisodic ? 'tv' : 'movie',
+      provider: provider
+    });
+    if (isEpisodic) {
+      params.set('season', String(s));
+      params.set('episode', String(e));
+    }
+    const d = await apiFetch<any>(`/playback/resolve?${params.toString()}`);
+    if (d && d.success && Array.isArray(d.sources) && d.sources.length > 0) {
+      const valid = d.sources
+        .filter((src: any) => !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle))
+        .map((src: any) => ({
+          url: src.url,
+          quality: src.quality || '1080p',
+          type: src.type === 'hls' ? 'hls' : 'mp4',
+          server: src.server || provider
+        }));
+      if (valid.length > 0) return valid;
+    }
+  } catch {}
+
+  // 2. Direct upstream failover across backends
   for (const b of FRAMEX_BACKENDS) {
     try {
       let p = `${b}/api/stream?id=${encodeURIComponent(contentId)}&type=${isEpisodic ? 'tv' : 'movie'}&provider=${encodeURIComponent(provider)}`;
@@ -811,7 +837,8 @@ export const api = {
 
     const params = new URLSearchParams({
       contentId: String(contentId),
-      type: effectiveType
+      type: effectiveType,
+      provider: 'executioner'
     });
     if (season !== undefined) params.set('season', String(season));
     if (episode !== undefined) params.set('episode', String(episode));

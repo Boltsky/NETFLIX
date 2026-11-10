@@ -161,6 +161,40 @@ class MainActivity : AppCompatActivity() {
                     return createEmptyResourceResponse()
                 }
 
+                // 4. Map dead player.autoembed.cc / player.moviesapi.vip to live player.autoembed.me, neutralizing anti-sandbox redirections
+                if (url.host?.contains("player.autoembed.cc") == true ||
+                    url.host?.contains("player.moviesapi.vip") == true ||
+                    url.host?.contains("player.autoembed.me") == true) {
+                    val pathAndQuery = (url.path ?: "") + if (url.query != null) "?${url.query}" else ""
+                    val liveUrl = "https://player.autoembed.me$pathAndQuery"
+                    try {
+                        val conn = URL(liveUrl).openConnection() as HttpURLConnection
+                        conn.requestMethod = "GET"
+                        conn.connectTimeout = 3000
+                        conn.readTimeout = 8000
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                        val status = conn.responseCode
+                        if (status in 200..399) {
+                            val mime = conn.contentType?.split(";")?.get(0)?.trim() ?: "text/html"
+                            val headers = mutableMapOf<String, String>()
+                            headers["Access-Control-Allow-Origin"] = "*"
+                            val stream = if (mime.contains("html", ignoreCase = true)) {
+                                val rawHtml = conn.inputStream.bufferedReader().use { it.readText() }
+                                val neutralizedHtml = rawHtml
+                                    .replace("try{document.domain=document.domain}catch(t){r();return}", "")
+                                    .replace("if(window.frameElement.hasAttribute(\"sandbox\")){r()}", "")
+                                    .replace("/asb.html", "/disabled_asb.html")
+                                neutralizedHtml.byteInputStream(Charsets.UTF_8)
+                            } else {
+                                conn.inputStream
+                            }
+                            return WebResourceResponse(mime, "UTF-8", status, "OK", headers, stream)
+                        }
+                    } catch (e: Exception) {
+                        Log.w("CineWaveProxy", "Failed to forward autoembed: ${e.message}")
+                    }
+                }
+
                 return super.shouldInterceptRequest(view, request)
             }
         }
@@ -323,15 +357,20 @@ class MainActivity : AppCompatActivity() {
         val candidateTargets = mutableListOf<String>()
         // 1. Prioritize reliable live upstream endpoints to ensure zero latency on physical TV
         if (upstreamPath != null) {
-            candidateTargets.add("https://api.framextv.tech$upstreamPath")
-            candidateTargets.add("https://api.framextv.cc$upstreamPath")
-            if (upstreamPath.startsWith("/api/stream") && !upstreamPath.contains("provider=")) {
+            val effectiveStreamPath = if (upstreamPath.startsWith("/api/stream") && !upstreamPath.contains("provider=")) {
                 val sep = if (upstreamPath.contains("?")) "&" else "?"
-                candidateTargets.add("https://api.framextv.tech$upstreamPath${sep}provider=executioner")
-                candidateTargets.add("https://api.framextv.cc$upstreamPath${sep}provider=executioner")
+                "$upstreamPath${sep}provider=executioner"
+            } else {
+                upstreamPath
             }
-            candidateTargets.add("https://api.framextv.pro$upstreamPath")
-            candidateTargets.add("https://api.framextv.xyz$upstreamPath")
+            candidateTargets.add("https://api.framextv.tech$effectiveStreamPath")
+            candidateTargets.add("https://api.framextv.cc$effectiveStreamPath")
+            candidateTargets.add("https://api.framextv.pro$effectiveStreamPath")
+            candidateTargets.add("https://api.framextv.xyz$effectiveStreamPath")
+            if (effectiveStreamPath != upstreamPath) {
+                candidateTargets.add("https://api.framextv.tech$upstreamPath")
+                candidateTargets.add("https://api.framextv.cc$upstreamPath")
+            }
         }
 
         // 2. Emulator fallback gateway
