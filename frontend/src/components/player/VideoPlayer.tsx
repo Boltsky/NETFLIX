@@ -40,11 +40,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isEpisodic = item.type === 'tv' || item.type === 'anime';
+  const effectiveSeason = isEpisodic ? season : undefined;
+  const effectiveEpisode = isEpisodic ? episode : undefined;
+
   // Playback state & initial resumption
   const savedProgress = useMemo(() => {
     if (!item?.id) return null;
-    return api.getItemProgress(item.id, profileId, season, episode);
-  }, [item?.id, profileId, season, episode]);
+    return api.getItemProgress(item.id, profileId, effectiveSeason, effectiveEpisode);
+  }, [item?.id, profileId, effectiveSeason, effectiveEpisode]);
 
   const initialResumeTimeSec = useMemo(() => {
     if (savedProgress && savedProgress.positionMs > 5000) {
@@ -169,7 +173,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const bottomControls = useMemo<Array<'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>>(() => {
     const list: Array<'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'> = ['play', 'rewind', 'forward'];
-    if (season && episode && onNextEpisode) {
+    if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode) {
       list.push('next-ep');
     }
     if (useIframeFallback && servers.length > 1) {
@@ -177,7 +181,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
     list.push('subtitles');
     return list;
-  }, [season, episode, onNextEpisode, useIframeFallback, servers.length]);
+  }, [isEpisodic, effectiveSeason, effectiveEpisode, onNextEpisode, useIframeFallback, servers.length]);
 
   const bottomControlsRef = useRef(bottomControls);
   bottomControlsRef.current = bottomControls;
@@ -224,26 +228,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       api.saveProgress(item.id, {
         profileId: profileId || 'bolt',
         mediaType: item.type,
-        season,
-        episode,
+        season: effectiveSeason,
+        episode: effectiveEpisode,
         positionMs: Math.round(posSec * 1000),
         durationMs: Math.round(durSec * 1000),
         title: item.title,
         poster: item.poster || item.backdrop
       }).catch((e) => console.warn('Failed to save progress:', e));
     }
-  }, [item, season, episode, profileId]);
+  }, [item, effectiveSeason, effectiveEpisode, profileId]);
 
   // Ensure Continue Watching has an entry if no progress exists yet (do NOT overwrite existing progress)
   useEffect(() => {
     if (item?.id) {
-      const existing = api.getItemProgress(item.id, profileId, season, episode);
+      const existing = api.getItemProgress(item.id, profileId, effectiveSeason, effectiveEpisode);
       if (!existing || existing.positionMs <= 0) {
         api.saveProgress(item.id, {
           profileId: profileId || 'bolt',
           mediaType: item.type,
-          season,
-          episode,
+          season: effectiveSeason,
+          episode: effectiveEpisode,
           positionMs: 15000,
           durationMs: 7200000,
           title: item.title,
@@ -251,7 +255,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }).catch(() => {});
       }
     }
-  }, [item, season, episode, profileId]);
+  }, [item, effectiveSeason, effectiveEpisode, profileId]);
 
   // Periodic progress persistence while playing
   useEffect(() => {
@@ -1234,9 +1238,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </button>
             <div>
               <h2 className="text-2xl font-black text-white drop-shadow tracking-tight">{item.title}</h2>
-              {season && episode && (
+              {isEpisodic && effectiveSeason && effectiveEpisode && (
                 <p className="text-xs font-bold text-zinc-300">
-                  S{season}:E{episode}
+                  S{effectiveSeason}:E{effectiveEpisode}
                 </p>
               )}
             </div>
@@ -1271,6 +1275,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }`}
           >
             <div className="flex items-center space-x-4">
+              {/* Netflix Time Played */}
+              <span
+                className={`text-xs font-mono font-bold w-16 text-left transition-colors ${
+                  focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
+                }`}
+              >
+                {formatDisplayTime(displayTime)}
+              </span>
+
               <div
                 className={`relative flex-1 rounded-full overflow-visible transition-all ${
                   focusedControl === 'scrubber'
@@ -1370,7 +1383,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </button>
 
               {/* Next Episode (if series) */}
-              {season && episode && onNextEpisode && (
+              {isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && (
                 <button
                   onClick={() => {
                     setFocusedControl('next-ep');

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem } from './types';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem, CatalogRail } from './types';
 import { api } from './services/api';
 import { FocusProvider, useFocus } from './components/focus/FocusContext';
 import { NetflixSidebar, NetflixNavTab } from './components/common/NetflixSidebar';
@@ -195,13 +195,23 @@ export const App: React.FC = () => {
 
   // Launch Player
   const handleLaunchPlayer = (item: MediaItem, season?: number, episode?: number) => {
-    setPlayerTarget({ item, season, episode });
+    const isEpisodic = item.type === 'tv' || item.type === 'anime';
+    setPlayerTarget({
+      item,
+      season: isEpisodic ? season : undefined,
+      episode: isEpisodic ? episode : undefined
+    });
     setCurrentScreen('player');
   };
 
   useEffect(() => {
     (window as any).cinewavePlay = (id: string, title?: string, type: 'movie' | 'tv' = 'movie', season?: number, episode?: number) => {
-      handleLaunchPlayer({ id: String(id), title: title || 'Title', type }, season, episode);
+      const isEpisodic = type === 'tv';
+      handleLaunchPlayer(
+        { id: String(id), title: title || 'Title', type },
+        isEpisodic ? season : undefined,
+        isEpisodic ? episode : undefined
+      );
     };
     return () => {
       delete (window as any).cinewavePlay;
@@ -313,40 +323,55 @@ export const App: React.FC = () => {
     }
   });
 
-  // Filter rails for tab views
-  const filteredRails = (catalog?.rails || []).filter((r) => {
-    if (r.id === 'rail-top-10' || r.category === 'top-10') return false;
-    if (currentScreen === 'series') return r.type === 'tv' || r.type === 'anime';
-    if (currentScreen === 'movies') return r.type === 'movie';
-    if (currentScreen === 'popular') return r.category === 'trending' || r.category === 'popular';
-    return true; // 'home'
-  });
+  // Filter rails for tab views (guarantee unique rail IDs)
+  const filteredRails: CatalogRail[] = useMemo(() => {
+    const seenRailIds = new Set<string>();
+    return (catalog?.rails || []).filter((r) => {
+      if (!r || !r.id) return false;
+      if (seenRailIds.has(r.id)) return false;
+      seenRailIds.add(r.id);
 
-  // Continue Watching Rail with catalog poster & title enrichment
-  const continueWatchingItems: MediaItem[] = (progressList || [])
-    .filter((p) => {
-      if (!p || !p.contentId) return false;
+      if (r.id === 'rail-top-10' || r.category === 'top-10') return false;
+      if (currentScreen === 'series') return r.type === 'tv' || r.type === 'anime';
+      if (currentScreen === 'movies') return r.type === 'movie';
+      if (currentScreen === 'popular') return r.category === 'trending' || r.category === 'popular';
+      return true; // 'home'
+    });
+  }, [catalog?.rails, currentScreen]);
+
+  // Continue Watching Rail with catalog poster & title enrichment and strict deduplication by contentId
+  const continueWatchingItems: MediaItem[] = useMemo(() => {
+    const seenContentIds = new Set<string>();
+    const items: MediaItem[] = [];
+    const allCatalogItems = catalog?.rails?.flatMap((r) => r.items) || [];
+
+    for (const p of progressList || []) {
+      if (!p || !p.contentId) continue;
+      const cid = String(p.contentId);
+      if (seenContentIds.has(cid)) continue;
+
       // Exclude invalid placeholder items with no duration, position, or poster
       if (p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')) {
-        return false;
+        continue;
       }
-      return true;
-    })
-    .map((p) => {
+      seenContentIds.add(cid);
+
       // Lookup from loaded catalog rails if poster or real title is missing
-      const allCatalogItems = catalog?.rails?.flatMap((r) => r.items) || [];
-      const matchedCatalogItem = allCatalogItems.find((item) => item && String(item.id) === String(p.contentId));
+      const matchedCatalogItem = allCatalogItems.find((item) => item && String(item.id) === cid);
       const resolvedPoster = p.poster || matchedCatalogItem?.poster || matchedCatalogItem?.backdrop;
       const resolvedTitle = (p.title && p.title !== 'Untitled') ? p.title : (matchedCatalogItem?.title || p.title);
 
-      return {
-        id: p.contentId,
+      items.push({
+        id: cid,
         title: resolvedTitle,
         type: p.mediaType,
         poster: resolvedPoster,
         backdrop: matchedCatalogItem?.backdrop
-      };
-    });
+      });
+    }
+
+    return items;
+  }, [progressList, catalog]);
 
   // Top 10 Rail items
   const top10Items = catalog?.rails?.find((r) => r.category === 'top-10' || r.category === 'trending' || r.category === 'popular')?.items.slice(0, 10) || [];

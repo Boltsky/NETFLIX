@@ -489,5 +489,68 @@ describe('Netflix TV Navigation & UX Tests', () => {
     const isExhausted = attempted.size >= servers.length;
     expect(isExhausted).toBe(true);
   });
+
+  it('verifies VideoPlayer timeline renders both time played and time remaining', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const playerCode = fs.readFileSync(path.resolve(__dirname, '../components/player/VideoPlayer.tsx'), 'utf-8');
+
+    // Must render time played via formatDisplayTime and time remaining via formatRemainingTime
+    expect(playerCode).toContain('formatDisplayTime(displayTime)');
+    expect(playerCode).toContain('formatRemainingTime(displayTime, duration)');
+
+    // Scrubber line must contain both time played and time remaining elements
+    expect(playerCode).toContain('Netflix Time Played');
+    expect(playerCode).toContain('Netflix Time Remaining');
+  });
+
+  it('verifies singles/movies never show season or episode indicators', async () => {
+    const { api } = await import('../services/api');
+    const movieDetails = await api.getTitleDetails('155', 'movie');
+    expect(movieDetails.type).toBe('movie');
+    expect(movieDetails.numberOfSeasons).toBeUndefined();
+    expect(movieDetails.seasons).toBeUndefined();
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const playerCode = fs.readFileSync(path.resolve(__dirname, '../components/player/VideoPlayer.tsx'), 'utf-8');
+
+    // S{season}:E{episode} header must be guarded by isEpisodic check
+    expect(playerCode).toContain('isEpisodic && effectiveSeason && effectiveEpisode && (');
+    // Next Episode button must also be guarded by isEpisodic check
+    expect(playerCode).toContain('isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && (');
+  });
+
+  it('verifies progress storage and retrieval deduplicates movie entries by contentId', async () => {
+    const { api } = await import('../services/api');
+    const testProfile = 'test_dedup_profile';
+
+    // Save movie once with extraneous season/episode (simulating old bug)
+    await api.saveProgress('99911', {
+      profileId: testProfile,
+      mediaType: 'movie',
+      season: 1,
+      episode: 1,
+      positionMs: 50000,
+      durationMs: 7200000,
+      title: 'The Notebook 2004'
+    });
+
+    // Save same movie again without season/episode
+    await api.saveProgress('99911', {
+      profileId: testProfile,
+      mediaType: 'movie',
+      positionMs: 65000,
+      durationMs: 7200000,
+      title: 'The Notebook 2004'
+    });
+
+    const progress = await api.getProgress(testProfile);
+    const matches = progress.filter(p => String(p.contentId) === '99911');
+    expect(matches.length).toBe(1);
+    expect(matches[0].positionMs).toBe(65000);
+    expect(matches[0].season).toBeUndefined();
+    expect(matches[0].episode).toBeUndefined();
+  });
 });
 

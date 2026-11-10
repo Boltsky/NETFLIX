@@ -77,9 +77,10 @@ class MainActivity : AppCompatActivity() {
         val playId = intent?.getStringExtra("play_id") ?: return
         val playTitle = intent.getStringExtra("play_title") ?: "Title"
         val playType = intent.getStringExtra("play_type") ?: "movie"
-        val season = intent.getIntExtra("season", 1)
-        val episode = intent.getIntExtra("episode", 1)
-        val js = "try { if (window.cinewavePlay) { window.cinewavePlay('$playId', '$playTitle', '$playType', $season, $episode); } } catch(e){}"
+        val isEpisodic = playType == "tv" || playType == "anime"
+        val seasonParam = if (isEpisodic && intent.hasExtra("season")) intent.getIntExtra("season", 1).toString() else "undefined"
+        val episodeParam = if (isEpisodic && intent.hasExtra("episode")) intent.getIntExtra("episode", 1).toString() else "undefined"
+        val js = "try { if (window.cinewavePlay) { window.cinewavePlay('$playId', '$playTitle', '$playType', $seasonParam, $episodeParam); } } catch(e){}"
         webView.postDelayed({ webView.evaluateJavascript(js, null) }, 600)
     }
 

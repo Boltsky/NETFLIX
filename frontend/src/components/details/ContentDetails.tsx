@@ -135,7 +135,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
 
             {details.year && <span className="text-zinc-300 font-normal">{details.year}</span>}
 
-            {details.numberOfSeasons && (
+            {details.type === 'tv' && details.numberOfSeasons && (
               <span className="text-zinc-300 font-normal">
                 {details.numberOfSeasons} {details.numberOfSeasons === 1 ? 'Season' : 'Seasons'}
               </span>

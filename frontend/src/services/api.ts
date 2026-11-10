@@ -263,6 +263,33 @@ function mapMediaItem(item: any, defaultType: 'movie' | 'tv' | 'anime' = 'movie'
   return mapped;
 }
 
+function deduplicateRailItems(items: MediaItem[]): MediaItem[] {
+  const seen = new Set<string>();
+  const out: MediaItem[] = [];
+  for (const item of items) {
+    if (item && item.id && !seen.has(String(item.id))) {
+      seen.add(String(item.id));
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function deduplicateRails(rails: CatalogRail[]): CatalogRail[] {
+  const seen = new Set<string>();
+  const out: CatalogRail[] = [];
+  for (const r of rails) {
+    if (r && r.id && !seen.has(r.id)) {
+      seen.add(r.id);
+      out.push({
+        ...r,
+        items: deduplicateRailItems(r.items || [])
+      });
+    }
+  }
+  return out;
+}
+
 function normalizeHomeCatalog(raw: any): HomeCatalog {
   if (!raw) return MOCK_HOME_CATALOG;
 
@@ -288,7 +315,7 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
       hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
     }
 
-    return { hero, rails };
+    return { hero, rails: deduplicateRails(rails) };
   }
 
   // Case 2: Array rails directly on raw
@@ -303,7 +330,7 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
       hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
     }
 
-    return { hero, rails };
+    return { hero, rails: deduplicateRails(rails) };
   }
 
   // Case 3: Direct FrameXTV format with rails object { trending_movies: { results: [...] }, ... }
@@ -365,16 +392,16 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
     }
 
     if (rails.length > 0) {
-      return { hero, rails };
+      return { hero, rails: deduplicateRails(rails) };
     }
   }
 
   return {
     hero: MOCK_HOME_CATALOG.hero ? mapMediaItem(MOCK_HOME_CATALOG.hero, 'tv') : null,
-    rails: MOCK_HOME_CATALOG.rails.map((r) => ({
+    rails: deduplicateRails(MOCK_HOME_CATALOG.rails.map((r) => ({
       ...r,
       items: r.items.map((i) => mapMediaItem(i, r.type))
-    }))
+    })))
   };
 }
 
@@ -474,9 +501,9 @@ function normalizeTitleDetails(raw: any, fallbackId: string, type: 'movie' | 'tv
     voteCount: d.vote_count,
     cast,
     recommendations,
-    numberOfSeasons: d.number_of_seasons ?? d.numberOfSeasons,
-    numberOfEpisodes: d.number_of_episodes ?? d.numberOfEpisodes,
-    seasons
+    numberOfSeasons: (type === 'tv' || type === 'anime') ? (d.number_of_seasons ?? d.numberOfSeasons) : undefined,
+    numberOfEpisodes: (type === 'tv' || type === 'anime') ? (d.number_of_episodes ?? d.numberOfEpisodes) : undefined,
+    seasons: (type === 'tv' || type === 'anime') ? seasons : undefined
   };
 }
 
@@ -1044,11 +1071,13 @@ export const api = {
       if (!stored) return null;
       const list: PlaybackProgress[] = JSON.parse(stored);
       if (!Array.isArray(list)) return null;
-      const match = list.find((p) =>
-        String(p.contentId) === String(contentId) &&
-        (season === undefined || p.season === season) &&
-        (episode === undefined || p.episode === episode)
-      );
+      const match = list.find((p) => {
+        if (!p || String(p.contentId) !== String(contentId)) return false;
+        const isEpisodic = p.mediaType === 'tv' || p.mediaType === 'anime';
+        if (!isEpisodic) return true; // Singles/movies match directly by contentId
+        return (season === undefined || p.season === season) &&
+               (episode === undefined || p.episode === episode);
+      });
       return match || null;
     } catch {
       return null;
@@ -1070,10 +1099,15 @@ export const api = {
       );
       const remoteList = res.progress || [];
 
-      // Merge remote & local, preferring items with valid title & poster
+      // Merge remote & local, strictly deduplicating by contentId for movies, and contentId-season-episode for episodic
       const map = new Map<string, PlaybackProgress>();
       [...remoteList, ...localList].forEach((p) => {
-        const key = `${p.contentId}-${p.season || 0}-${p.episode || 0}`;
+        if (!p || !p.contentId) return;
+        const isEpisodic = p.mediaType === 'tv' || p.mediaType === 'anime';
+        const key = isEpisodic
+          ? `${p.contentId}-s${p.season || 1}-e${p.episode || 1}`
+          : String(p.contentId);
+
         const existing = map.get(key);
         if (!existing) {
           map.set(key, p);
@@ -1090,7 +1124,18 @@ export const api = {
         .filter(p => !(p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')))
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     } catch {
-      return localList.filter(p => !(p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')));
+      const map = new Map<string, PlaybackProgress>();
+      localList.forEach((p) => {
+        if (!p || !p.contentId) return;
+        const isEpisodic = p.mediaType === 'tv' || p.mediaType === 'anime';
+        const key = isEpisodic
+          ? `${p.contentId}-s${p.season || 1}-e${p.episode || 1}`
+          : String(p.contentId);
+        if (!map.has(key)) map.set(key, p);
+      });
+      return Array.from(map.values())
+        .filter(p => !(p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')))
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     }
   },
 
@@ -1108,12 +1153,17 @@ export const api = {
     }
   ): Promise<PlaybackProgress> {
     const profileId = data.profileId || 'bolt';
+    const isEpisodic = data.mediaType === 'tv' || data.mediaType === 'anime';
+    const cleanSeason = isEpisodic ? data.season : undefined;
+    const cleanEpisode = isEpisodic ? data.episode : undefined;
 
     // 1. Immediately persist to localStorage for instant UI reactivity
     const newProgress: PlaybackProgress = {
       ...data,
       profileId,
-      contentId,
+      contentId: String(contentId),
+      season: cleanSeason,
+      episode: cleanEpisode,
       updatedAt: new Date().toISOString()
     };
 
@@ -1122,7 +1172,12 @@ export const api = {
       const list: PlaybackProgress[] = stored ? JSON.parse(stored) : [];
       const updated = [
         newProgress,
-        ...list.filter(p => !(p.contentId === contentId && p.season === data.season && p.episode === data.episode))
+        ...list.filter((p) => {
+          if (!p || !p.contentId) return false;
+          if (String(p.contentId) !== String(contentId)) return true;
+          if (!isEpisodic) return false; // For movies, clear any prior entry with matching contentId
+          return !(p.season === cleanSeason && p.episode === cleanEpisode);
+        })
       ];
       localStorage.setItem(`cinewave_progress_${profileId}`, JSON.stringify(updated));
     } catch {}
@@ -1137,14 +1192,18 @@ export const api = {
         dur: String(data.durationMs)
       });
       if (data.poster) qParams.set('poster', data.poster);
-      if (data.season !== undefined) qParams.set('season', String(data.season));
-      if (data.episode !== undefined) qParams.set('episode', String(data.episode));
+      if (cleanSeason !== undefined) qParams.set('season', String(cleanSeason));
+      if (cleanEpisode !== undefined) qParams.set('episode', String(cleanEpisode));
 
       const res = await apiFetch<{ success: boolean; progress: PlaybackProgress }>(
         `/users/me/progress/${encodeURIComponent(contentId)}?${qParams.toString()}`,
         {
           method: 'PUT',
-          body: JSON.stringify(data)
+          body: JSON.stringify({
+            ...data,
+            season: cleanSeason,
+            episode: cleanEpisode
+          })
         }
       );
       return res.progress || newProgress;
