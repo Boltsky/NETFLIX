@@ -65,6 +65,22 @@ class MainActivity : AppCompatActivity() {
 
         setupWebView()
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+        handlePlaybackIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        handlePlaybackIntent(intent)
+    }
+
+    private fun handlePlaybackIntent(intent: Intent?) {
+        val playId = intent?.getStringExtra("play_id") ?: return
+        val playTitle = intent.getStringExtra("play_title") ?: "Title"
+        val playType = intent.getStringExtra("play_type") ?: "movie"
+        val season = intent.getIntExtra("season", 1)
+        val episode = intent.getIntExtra("episode", 1)
+        val js = "try { if (window.cinewavePlay) { window.cinewavePlay('$playId', '$playTitle', '$playType', $season, $episode); } } catch(e){}"
+        webView.postDelayed({ webView.evaluateJavascript(js, null) }, 600)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -165,7 +181,11 @@ class MainActivity : AppCompatActivity() {
                 if (url.host?.contains("player.autoembed.cc") == true ||
                     url.host?.contains("player.moviesapi.vip") == true ||
                     url.host?.contains("player.autoembed.me") == true) {
-                    val pathAndQuery = (url.path ?: "") + if (url.query != null) "?${url.query}" else ""
+                    var path = url.path ?: ""
+                    if (path.startsWith("/movie/") || path.startsWith("/tv/")) {
+                        path = "/embed$path"
+                    }
+                    val pathAndQuery = path + if (url.query != null) "?${url.query}" else ""
                     val liveUrl = "https://player.autoembed.me$pathAndQuery"
                     try {
                         val conn = URL(liveUrl).openConnection() as HttpURLConnection
@@ -183,7 +203,9 @@ class MainActivity : AppCompatActivity() {
                                 val neutralizedHtml = rawHtml
                                     .replace("try{document.domain=document.domain}catch(t){r();return}", "")
                                     .replace("if(window.frameElement.hasAttribute(\"sandbox\")){r()}", "")
+                                    .replace("if(window.frameElement.hasAttribute('sandbox')){r()}", "")
                                     .replace("/asb.html", "/disabled_asb.html")
+                                    .replace("if(s){die();throw'';}", "// neutralized anti-sandbox")
                                 neutralizedHtml.byteInputStream(Charsets.UTF_8)
                             } else {
                                 conn.inputStream
@@ -351,6 +373,8 @@ class MainActivity : AppCompatActivity() {
             }
             pathAndQuery.startsWith("/api/v1/playback/resolve") -> pathAndQuery.replace("/api/v1/playback/resolve", "/api/stream").replace("contentId=", "id=")
             pathAndQuery.startsWith("/api/playback/resolve") -> pathAndQuery.replace("/api/playback/resolve", "/api/stream").replace("contentId=", "id=")
+            pathAndQuery.startsWith("/api/stream") -> pathAndQuery.replace("contentId=", "id=")
+            pathAndQuery.startsWith("/api/") -> pathAndQuery
             else -> null
         }
 

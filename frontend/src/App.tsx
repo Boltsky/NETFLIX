@@ -199,6 +199,15 @@ export const App: React.FC = () => {
     setCurrentScreen('player');
   };
 
+  useEffect(() => {
+    (window as any).cinewavePlay = (id: string, title?: string, type: 'movie' | 'tv' = 'movie', season?: number, episode?: number) => {
+      handleLaunchPlayer({ id: String(id), title: title || 'Title', type }, season, episode);
+    };
+    return () => {
+      delete (window as any).cinewavePlay;
+    };
+  }, []);
+
   // Exit Player
   const handleExitPlayer = () => {
     setPlayerTarget(null);

@@ -9,7 +9,8 @@ import {
   PlaybackProgress,
   CategoryQueryParams,
   CategoryResponse,
-  StreamSource
+  StreamSource,
+  SubtitleTrack
 } from '../types';
 import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data';
 
@@ -495,9 +496,13 @@ export const api = {
     // Direct multi-host fallback to upstream FrameXTV backends
     for (const b of FRAMEX_BACKENDS) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         const directRes = await fetch(`${b}/api/home`, {
+          signal: controller.signal,
           headers: { 'Accept': 'application/json' }
         });
+        clearTimeout(timeoutId);
         if (directRes.ok) {
           const data = await directRes.json();
           const normalized = normalizeHomeCatalog(data);
@@ -821,6 +826,17 @@ export const api = {
       }
     ];
 
+    const defaultFallbackSubtitles: SubtitleTrack[] = [
+      {
+        url: `https://subs5.strem.io/en/download/subencoding-stremio-utf8/src-api/file/default_${contentId}`,
+        label: 'English',
+        lang: 'en',
+        language: 'en',
+        format: 'vtt',
+        isDefault: false
+      }
+    ];
+
     const fallbackResolution: PlaybackResolution = {
       success: true,
       contentId: String(contentId),
@@ -829,7 +845,7 @@ export const api = {
       episode: isEpisodic ? e : undefined,
       provider: 'Verified Multi-Server Embed',
       sources: [],
-      subtitles: [],
+      subtitles: defaultFallbackSubtitles,
       embedUrl: embedServers[0].url,
       embedServers,
       alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
@@ -945,7 +961,7 @@ export const api = {
           episode: isEpisodic ? e : undefined,
           provider: 'FrameX Executioner Direct',
           sources: altSources,
-          subtitles: [],
+          subtitles: defaultFallbackSubtitles,
           embedUrl: embedServers[0].url,
           embedServers,
           alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
