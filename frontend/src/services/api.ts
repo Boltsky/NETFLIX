@@ -8,7 +8,8 @@ import {
   WatchlistItem,
   PlaybackProgress,
   CategoryQueryParams,
-  CategoryResponse
+  CategoryResponse,
+  StreamSource
 } from '../types';
 import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data';
 
@@ -152,6 +153,44 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
   }
 
   return true;
+}
+
+// Multi-provider alternate stream retriever (e.g. executioner, bowler) for pristine 1080p playback
+async function fetchAlternateSources(
+  contentId: string,
+  type: 'movie' | 'tv' | 'anime',
+  provider: string,
+  season?: number,
+  episode?: number,
+  expectedTitle?: string
+): Promise<StreamSource[]> {
+  const s = season || 1;
+  const e = episode || 1;
+  const isEpisodic = type === 'tv' || type === 'anime';
+
+  for (const b of FRAMEX_BACKENDS) {
+    try {
+      let p = `${b}/api/stream?id=${encodeURIComponent(contentId)}&type=${isEpisodic ? 'tv' : 'movie'}&provider=${encodeURIComponent(provider)}`;
+      if (isEpisodic) {
+        p += `&season=${s}&episode=${e}`;
+      }
+      const r = await fetch(p, { headers: { 'Accept': 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.success && Array.isArray(d.sources) && d.sources.length > 0) {
+          return d.sources
+            .filter((src: any) => !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle))
+            .map((src: any) => ({
+              url: src.url,
+              quality: src.quality || '1080p',
+              type: src.type === 'hls' ? 'hls' : 'mp4',
+              server: src.server || provider
+            }));
+        }
+      }
+    } catch {}
+  }
+  return [];
 }
 
 // Verifies that a retrieved title is consistent with what was displayed on the clicked poster
@@ -739,8 +778,8 @@ export const api = {
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://multiembed.mov/?video_id=${contentId}&tmdb=1&s=${s}&e=${e}`
-          : `https://multiembed.mov/?video_id=${contentId}&tmdb=1`
+          ? `https://vidlink.pro/tv/${contentId}/${s}/${e}`
+          : `https://vidlink.pro/movie/${contentId}`
       },
       {
         name: 'Server 4 (2Embed)',
@@ -751,8 +790,8 @@ export const api = {
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${contentId}`
+          ? `https://vidsrc.pm/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.pm/embed/movie/${contentId}`
       }
     ];
 
@@ -780,10 +819,20 @@ export const api = {
     try {
       const res = await apiFetch<PlaybackResolution>(`/playback/resolve?${params.toString()}`);
       if (res && res.success) {
-        // Validate sources to verify they match the requested movie title
-        const validSources = (res.sources || []).filter((src: any) =>
-          isStreamUrlAccurate(src.url, expectedTitle)
+        // Validate sources to verify they match the requested movie title and filter out broken proxy hosts
+        let validSources = (res.sources || []).filter((src: any) =>
+          !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle)
         );
+
+        // Multi-provider alternate stream resolution (e.g. executioner) for instant 1080p playback
+        if (Array.isArray(res.alternates) && res.alternates.includes('executioner')) {
+          try {
+            const altSources = await fetchAlternateSources(contentId, effectiveType, 'executioner', season, episode, expectedTitle);
+            if (altSources.length > 0) {
+              validSources = [...altSources, ...validSources];
+            }
+          } catch {}
+        }
 
         return {
           ...res,
@@ -814,15 +863,25 @@ export const api = {
         if (directRes.ok) {
           const data = await directRes.json();
           if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
-            // Strictly validate every direct source before accepting
-            const validSources = data.sources
-              .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
+            // Strictly validate every direct source before accepting and filter broken proxies
+            let validSources = data.sources
+              .filter((src: any) => !src.url.includes('fprime.at') && isStreamUrlAccurate(src.url, expectedTitle))
               .map((src: any) => ({
                 url: src.url,
                 quality: src.quality || '1080p',
                 type: src.type === 'hls' ? 'hls' : 'mp4',
                 server: src.server || data.provider || 'FrameX'
               }));
+
+            // Multi-provider alternate stream failover (e.g. executioner)
+            if (Array.isArray(data.alternates) && data.alternates.includes('executioner')) {
+              try {
+                const altSources = await fetchAlternateSources(contentId, effectiveType, 'executioner', season, episode, expectedTitle);
+                if (altSources.length > 0) {
+                  validSources = [...altSources, ...validSources];
+                }
+              } catch {}
+            }
 
             return {
               success: true,
@@ -846,6 +905,26 @@ export const api = {
         console.warn(`[Netflix API] Stream fallback on ${b} failed:`, e?.message);
       }
     }
+
+    // Direct multi-provider failover before embed fallback
+    try {
+      const altSources = await fetchAlternateSources(contentId, effectiveType, 'executioner', season, episode, expectedTitle);
+      if (altSources.length > 0) {
+        return {
+          success: true,
+          contentId: String(contentId),
+          mediaType: effectiveType,
+          season: isEpisodic ? s : undefined,
+          episode: isEpisodic ? e : undefined,
+          provider: 'FrameX Executioner Direct',
+          sources: altSources,
+          subtitles: [],
+          embedUrl: embedServers[0].url,
+          embedServers,
+          alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+        };
+      }
+    } catch {}
 
     return fallbackResolution;
   },

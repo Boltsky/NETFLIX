@@ -21,9 +21,9 @@ export interface AppUpdateManifest {
 }
 
 export const CURRENT_APP_VERSION: AppVersionInfo = {
-  versionCode: 3,
-  versionName: '1.2.0',
-  commitHash: 'a3b8795',
+  versionCode: 4,
+  versionName: '1.2.1',
+  commitHash: 'pending',
   releaseDate: '2026-11-10',
   repo: 'Boltsky/NETFLIX'
 };

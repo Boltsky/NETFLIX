@@ -325,6 +325,11 @@ class MainActivity : AppCompatActivity() {
         if (upstreamPath != null) {
             candidateTargets.add("https://api.framextv.tech$upstreamPath")
             candidateTargets.add("https://api.framextv.cc$upstreamPath")
+            if (upstreamPath.startsWith("/api/stream") && !upstreamPath.contains("provider=")) {
+                val sep = if (upstreamPath.contains("?")) "&" else "?"
+                candidateTargets.add("https://api.framextv.tech$upstreamPath${sep}provider=executioner")
+                candidateTargets.add("https://api.framextv.cc$upstreamPath${sep}provider=executioner")
+            }
             candidateTargets.add("https://api.framextv.pro$upstreamPath")
             candidateTargets.add("https://api.framextv.xyz$upstreamPath")
         }
@@ -476,6 +481,8 @@ class MainActivity : AppCompatActivity() {
 
         // 4. In subframes: only allow navigations to verified streaming hosts; block all external ad redirects
         val isAllowedStreamingHost = host.contains("framextv") ||
+            host.contains("autoembed") ||
+            host.contains("vidlink") ||
             host.contains("smashystream") ||
             host.contains("anyembed") ||
             host.contains("vidsrc") ||
@@ -530,6 +537,8 @@ class MainActivity : AppCompatActivity() {
         // Whitelist app assets, internal endpoints, and verified embed providers
         if (host == "appassets.androidplatform.net" ||
             host.contains("framextv") ||
+            host.contains("autoembed") ||
+            host.contains("vidlink") ||
             host.contains("smashystream") ||
             host.contains("anyembed") ||
             host.contains("vidsrc") ||

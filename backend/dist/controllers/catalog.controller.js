@@ -206,5 +206,29 @@ class CatalogController {
         database_js_1.db.setSetting(key, String(value));
         res.json({ success: true, settings: database_js_1.db.getSettings() });
     }
+    // Subtitle CORS Proxy
+    static async proxySubtitle(req, res) {
+        try {
+            const url = req.query.url;
+            if (!url) {
+                return res.status(400).send('Missing url parameter');
+            }
+            const parsedUrl = new URL(url);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                return res.status(400).send('Invalid protocol');
+            }
+            const response = await fetch(url);
+            if (!response.ok) {
+                return res.status(response.status).send('Failed to fetch upstream subtitle');
+            }
+            const text = await response.text();
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.send(text);
+        }
+        catch (err) {
+            res.status(500).send('Subtitle proxy error: ' + (err?.message || 'unknown error'));
+        }
+    }
 }
 exports.CatalogController = CatalogController;

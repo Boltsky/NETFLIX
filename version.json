@@ -1,17 +1,18 @@
 {
-  "versionCode": 3,
-  "versionName": "1.2.0",
-  "commitHash": "a3b8795",
+  "versionCode": 4,
+  "versionName": "1.2.1",
+  "commitHash": "pending",
   "releaseDate": "2026-11-10",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.2.0",
+  "title": "Netflix TV v1.2.1",
   "changelog": [
-    "Settings Page now directly in primary sidebar navigation with full TV remote D-pad focus and controls",
-    "Completely eliminated playback ads, popups, and robot verification checks (Turnstile gates)",
-    "Replaced broken embed servers with high-speed, ad-free stream servers (SmashyStream & VidSrc PM)",
-    "Hardened Android TV WebView sandbox to block all third-party ad networks and external redirects",
-    "Instant update detection with in-app download and installation"
+    "Eliminated all video playback ads, casino popups, and anti-sandbox iframe warnings",
+    "Eliminated robot verification (reCAPTCHA and Cloudflare Turnstile) challenges on playback fallback",
+    "Enabled multi-provider direct stream failover with high-speed 1080p Executioner HLS streams",
+    "Added automatic direct stream source cycling in video player for uninterrupted playback",
+    "Settings Page prominently placed in sidebar navigation with full TV remote D-pad controls",
+    "Automatic startup update checking with seamless in-app installation"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

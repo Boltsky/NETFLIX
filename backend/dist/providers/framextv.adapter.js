@@ -309,10 +309,10 @@ class FrameXTVAdapter {
     async resolvePlayback(id, type, season, episode) {
         const s = season || 1;
         const e = episode || 1;
-        const embedUrl = type === 'tv'
+        const isEpisodic = type === 'tv' || type === 'anime';
+        const embedUrl = isEpisodic
             ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1`
             : `${this.embedOrigin}/embed/${id}?autoplay=1`;
-        const isEpisodic = type === 'tv';
         const embedServers = [
             {
                 name: 'Server 1 (FrameX)',
@@ -321,16 +321,28 @@ class FrameXTVAdapter {
                     : `https://framextv.cc/embed/${id}?autoplay=1`
             },
             {
-                name: 'Server 2 (VidSrc)',
-                url: isEpisodic
-                    ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
-                    : `https://vidsrc.to/embed/movie/${id}`
-            },
-            {
-                name: 'Server 3 (AutoEmbed)',
+                name: 'Server 2 (AutoEmbed)',
                 url: isEpisodic
                     ? `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`
                     : `https://player.autoembed.cc/embed/movie/${id}`
+            },
+            {
+                name: 'Server 3 (MultiEmbed)',
+                url: isEpisodic
+                    ? `https://vidlink.pro/tv/${id}/${s}/${e}`
+                    : `https://vidlink.pro/movie/${id}`
+            },
+            {
+                name: 'Server 4 (2Embed)',
+                url: isEpisodic
+                    ? `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
+                    : `https://www.2embed.cc/embed/${id}`
+            },
+            {
+                name: 'Server 5 (VidSrc)',
+                url: isEpisodic
+                    ? `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`
+                    : `https://vidsrc.pm/embed/movie/${id}`
             }
         ];
         try {
@@ -341,13 +353,39 @@ class FrameXTVAdapter {
             const res = await this.fetchWithFailover(streamPath);
             const data = await res.json();
             if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
-                const sources = data.sources.map((src) => ({
+                let sources = data.sources
+                    .filter((src) => !src.url?.includes('fprime.at'))
+                    .map((src) => ({
                     url: src.url,
                     quality: src.quality || '1080p',
                     type: src.type === 'hls' ? 'hls' : 'mp4',
                     server: src.server || data.provider || 'FrameX',
                     skipProxy: !!src.skipProxy
                 }));
+                // Failover to alternate executioner provider for reliable 1080p direct streams
+                if (Array.isArray(data.alternates) && data.alternates.includes('executioner')) {
+                    try {
+                        let altPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=executioner`;
+                        if (type === 'tv') {
+                            altPath += `&season=${s}&episode=${e}`;
+                        }
+                        const altRes = await this.fetchWithFailover(altPath);
+                        const altData = await altRes.json();
+                        if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
+                            const altSources = altData.sources
+                                .filter((src) => !src.url?.includes('fprime.at'))
+                                .map((src) => ({
+                                url: src.url,
+                                quality: src.quality || '1080p',
+                                type: src.type === 'hls' ? 'hls' : 'mp4',
+                                server: src.server || 'Executioner',
+                                skipProxy: !!src.skipProxy
+                            }));
+                            sources = [...altSources, ...sources];
+                        }
+                    }
+                    catch { }
+                }
                 const subtitles = Array.isArray(data.subtitles)
                     ? data.subtitles.map((sub) => ({
                         url: sub.url,
@@ -355,7 +393,7 @@ class FrameXTVAdapter {
                         lang: sub.lang || sub.language || 'en',
                         language: sub.language || sub.lang,
                         format: sub.format === 'srt' ? 'srt' : 'vtt',
-                        isDefault: !!sub.isDefault
+                        isDefault: false
                     }))
                     : [];
                 return {
@@ -376,6 +414,40 @@ class FrameXTVAdapter {
         catch (err) {
             console.warn(`[FrameXTV] Direct stream resolution error for ${id}:`, err.message);
         }
+        // Direct alternate provider fallback before embed
+        try {
+            let altPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=executioner`;
+            if (type === 'tv') {
+                altPath += `&season=${s}&episode=${e}`;
+            }
+            const altRes = await this.fetchWithFailover(altPath);
+            const altData = await altRes.json();
+            if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
+                const sources = altData.sources
+                    .filter((src) => !src.url?.includes('fprime.at'))
+                    .map((src) => ({
+                    url: src.url,
+                    quality: src.quality || '1080p',
+                    type: src.type === 'hls' ? 'hls' : 'mp4',
+                    server: src.server || 'Executioner',
+                    skipProxy: !!src.skipProxy
+                }));
+                return {
+                    success: true,
+                    contentId: id,
+                    mediaType: type,
+                    season: type === 'tv' ? s : undefined,
+                    episode: type === 'tv' ? e : undefined,
+                    provider: 'FrameX Executioner',
+                    sources,
+                    subtitles: [],
+                    embedUrl,
+                    embedServers,
+                    alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
+                };
+            }
+        }
+        catch { }
         // Fallback: If external direct extraction failed or has no direct stream, provide FrameXTV Embed.
         // sources is left empty so VideoPlayer activates the verified multi-source FrameXTV player for this exact title!
         return {
@@ -389,7 +461,7 @@ class FrameXTVAdapter {
             subtitles: [],
             embedUrl,
             embedServers,
-            alternates: ['cinejoy', 'titan', 'bowler']
+            alternates: ['framex', 'autoembed', 'multiembed', '2embed', 'vidsrc']
         };
     }
     mapMediaItem(item, defaultType) {

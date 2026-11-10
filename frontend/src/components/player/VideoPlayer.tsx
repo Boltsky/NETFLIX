@@ -62,6 +62,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [duration, setDuration] = useState(savedProgress?.durationMs ? savedProgress.durationMs / 1000 : 0);
   const [showControls, setShowControls] = useState(true);
   const [useIframeFallback, setUseIframeFallback] = useState(false);
+  const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const [selectedServerIndex, setSelectedServerIndex] = useState(() => {
     try {
       return getAppSettings().playback.preferredServerIndex || 0;
@@ -148,8 +149,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://multiembed.mov/?video_id=${item.id}&tmdb=1&s=${s}&e=${e}`
-          : `https://multiembed.mov/?video_id=${item.id}&tmdb=1`
+          ? `https://vidlink.pro/tv/${item.id}/${s}/${e}`
+          : `https://vidlink.pro/movie/${item.id}`
       },
       {
         name: 'Server 4 (2Embed)',
@@ -160,8 +161,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${item.id}`
+          ? `https://vidsrc.pm/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.pm/embed/movie/${item.id}`
       }
     ];
   }, [resolution, item, season, episode]);
@@ -417,6 +418,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!isMounted) return;
         setResolution(res);
         setLoading(false);
+        setCurrentSourceIndex(0);
 
         const hasDirectSource = res.sources && res.sources.length > 0;
         if (!hasDirectSource) {
@@ -442,7 +444,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   useEffect(() => {
     if (!resolution || useIframeFallback) return;
 
-    const source: StreamSource | undefined = resolution.sources?.[0];
+    const source: StreamSource | undefined = resolution.sources?.[currentSourceIndex];
     if (!source || !source.url) {
       if (resolution.embedUrl) {
         setUseIframeFallback(true);
@@ -456,6 +458,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!video) return;
 
     video.autoplay = true;
+
+    const handleDirectStreamFailure = (detail: string) => {
+      console.warn(`[Netflix Player] Direct stream ${currentSourceIndex} failed (${detail})`);
+      if (resolution.sources && currentSourceIndex + 1 < resolution.sources.length) {
+        const nextIndex = currentSourceIndex + 1;
+        const nextServer = resolution.sources[nextIndex]?.server || `Source ${nextIndex + 1}`;
+        console.log(`[Netflix Player] Cycling to next direct stream source ${nextIndex} (${nextServer})`);
+        showPlayerToast(`Stream interrupted, switching to ${nextServer}...`, 'server');
+        setCurrentSourceIndex(nextIndex);
+      } else if (resolution.embedUrl || (resolution.embedServers && resolution.embedServers.length > 0)) {
+        console.warn('[Netflix Player] All direct sources exhausted, switching to clean iframe fallback');
+        setUseIframeFallback(true);
+      } else {
+        setError('Unable to load stream for this title.');
+      }
+    };
 
     if (source.type === 'hls' || source.url.includes('.m3u8')) {
       if (Hls.isSupported()) {
@@ -492,12 +510,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
-            console.warn('[Netflix Player] HLS Fatal Error, falling back to embed:', data);
-            if (resolution.embedUrl) {
-              setUseIframeFallback(true);
-            } else {
-              setError('Unable to load stream for this title.');
-            }
+            handleDirectStreamFailure(`HLS Fatal: ${data.details || 'unknown'}`);
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -567,12 +580,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
     const onError = () => {
-      console.warn('[Netflix Player] Native video error, falling back to embed');
-      if (resolution.embedUrl) {
-        setUseIframeFallback(true);
-      } else {
-        setError('Unable to load stream for this title.');
-      }
+      handleDirectStreamFailure('Native video tag error');
     };
 
     video.addEventListener('timeupdate', onTimeUpdate);
@@ -602,7 +610,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         hlsRef.current = null;
       }
     };
-  }, [resolution, useIframeFallback, applyResumeIfAvailable, saveCurrentProgress]);
+  }, [resolution, useIframeFallback, currentSourceIndex, applyResumeIfAvailable, saveCurrentProgress, showPlayerToast]);
 
   // Automated Fallback Watchdog Timer (10s timeout)
   useEffect(() => {
