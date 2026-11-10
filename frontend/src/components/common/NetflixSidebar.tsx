@@ -17,7 +17,7 @@ import {
 import { NetflixProfile } from '../profile/ProfileSelector';
 import { CURRENT_APP_VERSION } from '../../version';
 
-export type NetflixNavTab = 'search' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories';
+export type NetflixNavTab = 'search' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'settings';
 
 interface NetflixSidebarProps {
   currentTab: NetflixNavTab;
@@ -62,6 +62,9 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
       } else if (tab === 'watchlist') {
         window.scrollTo({ top: 0, behavior: 'auto' });
         setFocusedKey('watch-explore-btn');
+      } else if (tab === 'settings') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        setFocusedKey('settings-tab-updates');
       }
     };
 
@@ -77,7 +80,8 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
     { id: 'movies', label: 'Movies', icon: Film },
     { id: 'popular', label: 'New & Popular', icon: Flame },
     { id: 'watchlist', label: 'My List', icon: Bookmark },
-    { id: 'categories', label: 'Categories', icon: LayoutGrid }
+    { id: 'categories', label: 'Categories', icon: LayoutGrid },
+    { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
   return (
@@ -168,7 +172,7 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
             icon={Settings}
             isActive={isSettingsActive}
             isExpanded={isExpanded}
-            onAction={onOpenSettings || (() => {})}
+            onAction={onOpenSettings || (() => handleSelectTab('settings'))}
           />
 
           {/* Version & Check Updates Action */}

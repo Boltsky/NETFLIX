@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity() {
         settings.builtInZoomControls = false
         settings.displayZoomControls = false
 
-        // Popup & multi-window controls
+        // Popup & multi-window controls: strictly disable popup spawning via onCreateWindow
         settings.javaScriptCanOpenWindowsAutomatically = false
         settings.setSupportMultipleWindows(true)
 
@@ -453,10 +453,11 @@ class MainActivity : AppCompatActivity() {
         if (uri == null) return false
         val urlStr = uri.toString()
         val scheme = uri.scheme?.lowercase()
+        val host = uri.host?.lowercase() ?: ""
 
         // 1. Always allow local app assets
         if (urlStr.startsWith("https://appassets.androidplatform.net/") ||
-            uri.host == "appassets.androidplatform.net"
+            host == "appassets.androidplatform.net"
         ) {
             return false
         }
@@ -473,9 +474,23 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
-        // 4. Block known ad/malware domains in subframes
-        if (isAdOrBlockedUrl(uri)) {
-            Log.w("CineWaveAdBlock", "Blocked subframe ad redirect: $urlStr")
+        // 4. In subframes: only allow navigations to verified streaming hosts; block all external ad redirects
+        val isAllowedStreamingHost = host.contains("framextv") ||
+            host.contains("smashystream") ||
+            host.contains("anyembed") ||
+            host.contains("vidsrc") ||
+            host.contains("2embed") ||
+            host.contains("themoviedb.org") ||
+            host.contains("tmdb.org") ||
+            host.contains("hscow.com") ||
+            host.contains("strem.io") ||
+            host.contains("rezesubs.com") ||
+            host.contains("cloudflare") ||
+            host.contains("gstatic.com") ||
+            host.contains("googleapis.com")
+
+        if (!isAllowedStreamingHost || isAdOrBlockedUrl(uri)) {
+            Log.w("CineWaveAdBlock", "Blocked subframe external/ad redirect: $urlStr")
             return true
         }
 
@@ -504,15 +519,26 @@ class MainActivity : AppCompatActivity() {
         val host = uri.host?.lowercase() ?: return false
         val urlStr = uri.toString().lowercase()
 
-        // Whitelist app assets, internal endpoints, and legitimate embed providers
+        // Explicitly block turnstile challenges and robot verification
+        if (host.contains("turnstile") || urlStr.contains("turnstile") ||
+            urlStr.contains("challenges.cloudflare.com") ||
+            host.contains("streamingnow.mov") || host.contains("multiembed")
+        ) {
+            return true
+        }
+
+        // Whitelist app assets, internal endpoints, and verified embed providers
         if (host == "appassets.androidplatform.net" ||
             host.contains("framextv") ||
-            host.contains("autoembed") ||
-            host.contains("multiembed") ||
-            host.contains("2embed") ||
+            host.contains("smashystream") ||
+            host.contains("anyembed") ||
             host.contains("vidsrc") ||
+            host.contains("2embed") ||
             host.contains("themoviedb.org") ||
-            host.contains("tmdb.org")
+            host.contains("tmdb.org") ||
+            host.contains("hscow.com") ||
+            host.contains("strem.io") ||
+            host.contains("rezesubs.com")
         ) {
             return false
         }
@@ -559,6 +585,31 @@ class MainActivity : AppCompatActivity() {
             "adskeeper",
             "richaudience",
             "teads",
+            "poringasitia",
+            "streamingnow.mov",
+            "multiembed",
+            "histats",
+            "realsrv",
+            "syndication",
+            "serving-sys",
+            "creativecdn",
+            "adroll",
+            "rubiconproject",
+            "pubmatic",
+            "openx",
+            "smartadserver",
+            "casalemedia",
+            "inmobi",
+            "chartboost",
+            "applovin",
+            "unityads",
+            "vungle",
+            "ironsource",
+            "tapjoy",
+            "adcolony",
+            "fyber",
+            "betway",
+            "dafabet",
             "bet365",
             "1xbet",
             "mostbet",
