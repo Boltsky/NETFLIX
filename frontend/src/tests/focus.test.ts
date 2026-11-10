@@ -301,7 +301,7 @@ describe('Netflix TV Navigation & UX Tests', () => {
     expect(res.embedServers![4].name).toContain('VidSrc');
     expect(res.embedServers![0].url).toContain('155');
     expect(res.embedServers![0].url).toContain('framextv.cc/embed/155');
-    expect(res.embedServers![1].url).toContain('player.autoembed.cc/embed/movie/155');
+    expect(res.embedServers![1].url).toMatch(/player\.autoembed\.(me|cc)\/embed\/movie\/155/);
     expect(res.embedUrl).toContain('framextv.cc/embed/155');
   });
 

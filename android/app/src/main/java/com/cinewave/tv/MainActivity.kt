@@ -122,6 +122,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                val js = "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}"
+                view?.evaluateJavascript(js, null)
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
@@ -191,7 +197,7 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val conn = URL(liveUrl).openConnection() as HttpURLConnection
                         conn.requestMethod = "GET"
-                        conn.connectTimeout = 3000
+                        conn.connectTimeout = 4000
                         conn.readTimeout = 8000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
                         val status = conn.responseCode
@@ -201,12 +207,7 @@ class MainActivity : AppCompatActivity() {
                             headers["Access-Control-Allow-Origin"] = "*"
                             val stream = if (mime.contains("html", ignoreCase = true)) {
                                 val rawHtml = conn.inputStream.bufferedReader().use { it.readText() }
-                                val neutralizedHtml = rawHtml
-                                    .replace("try{document.domain=document.domain}catch(t){r();return}", "")
-                                    .replace("if(window.frameElement.hasAttribute(\"sandbox\")){r()}", "")
-                                    .replace("if(window.frameElement.hasAttribute('sandbox')){r()}", "")
-                                    .replace("/asb.html", "/disabled_asb.html")
-                                    .replace("if(s){die();throw'';}", "// neutralized anti-sandbox")
+                                val neutralizedHtml = neutralizeHtml(rawHtml)
                                 neutralizedHtml.byteInputStream(Charsets.UTF_8)
                             } else {
                                 conn.inputStream
@@ -215,6 +216,33 @@ class MainActivity : AppCompatActivity() {
                         }
                     } catch (e: Exception) {
                         Log.w("CineWaveProxy", "Failed to forward autoembed: ${e.message}")
+                    }
+                }
+
+                // 5. Intercept 2embed / framextv / vidsrc embed HTML to neutralize anti-sandbox and suppress ad modals
+                if (url.host?.contains("2embed.cc") == true ||
+                    url.host?.contains("framextv.cc") == true ||
+                    url.host?.contains("vidsrc.to") == true) {
+                    try {
+                        val conn = URL(url.toString()).openConnection() as HttpURLConnection
+                        conn.requestMethod = "GET"
+                        conn.connectTimeout = 4000
+                        conn.readTimeout = 8000
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                        conn.setRequestProperty("Referer", "https://appassets.androidplatform.net/")
+                        val status = conn.responseCode
+                        if (status in 200..399) {
+                            val mime = conn.contentType?.split(";")?.get(0)?.trim() ?: "text/html"
+                            if (mime.contains("html", ignoreCase = true)) {
+                                val rawHtml = conn.inputStream.bufferedReader().use { it.readText() }
+                                val headers = mutableMapOf<String, String>()
+                                headers["Access-Control-Allow-Origin"] = "*"
+                                val neutralizedHtml = neutralizeHtml(rawHtml)
+                                return WebResourceResponse(mime, "UTF-8", status, "OK", headers, neutralizedHtml.byteInputStream(Charsets.UTF_8))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w("CineWaveProxy", "Failed to intercept embed HTML: ${e.message}")
                     }
                 }
 
@@ -541,6 +569,8 @@ class MainActivity : AppCompatActivity() {
             host.contains("anyembed") ||
             host.contains("vidsrc") ||
             host.contains("2embed") ||
+            host.contains("moviesapi") ||
+            host.contains("multiembed") ||
             host.contains("themoviedb.org") ||
             host.contains("tmdb.org") ||
             host.contains("hscow.com") ||
@@ -557,6 +587,20 @@ class MainActivity : AppCompatActivity() {
 
         // Allow legitimate subframe navigations (e.g. video embed players/CDNs)
         return false
+    }
+
+    private fun neutralizeHtml(rawHtml: String): String {
+        val antiSandboxScript = "<script>try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}</script>"
+        val antiAdStyle = "<style>#sbxErr, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; }</style>"
+
+        return rawHtml
+            .replace("<head>", "<head>$antiSandboxScript$antiAdStyle", ignoreCase = true)
+            .replace("try{document.domain=document.domain}catch(t){r();return}", "")
+            .replace("if(window.frameElement.hasAttribute(\"sandbox\")){r()}", "")
+            .replace("if(window.frameElement.hasAttribute('sandbox')){r()}", "")
+            .replace("isReallySandboxed()", "false")
+            .replace("/asb.html", "/disabled_asb.html")
+            .replace("if(s){die();throw'';}", "// neutralized anti-sandbox")
     }
 
     private fun createEmptyResourceResponse(): WebResourceResponse {
@@ -583,7 +627,7 @@ class MainActivity : AppCompatActivity() {
         // Explicitly block turnstile challenges and robot verification
         if (host.contains("turnstile") || urlStr.contains("turnstile") ||
             urlStr.contains("challenges.cloudflare.com") ||
-            host.contains("streamingnow.mov") || host.contains("multiembed")
+            host.contains("streamingnow.mov")
         ) {
             return true
         }
@@ -597,6 +641,8 @@ class MainActivity : AppCompatActivity() {
             host.contains("anyembed") ||
             host.contains("vidsrc") ||
             host.contains("2embed") ||
+            host.contains("moviesapi") ||
+            host.contains("multiembed") ||
             host.contains("themoviedb.org") ||
             host.contains("tmdb.org") ||
             host.contains("hscow.com") ||
@@ -611,6 +657,10 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private val BLOCKED_HOST_PATTERNS = listOf(
+            "adplox",
+            "whos.amung.us",
+            "recaptcha",
+            "google.com/recaptcha",
             "popads",
             "popcash",
             "adsterra",

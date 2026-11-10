@@ -147,8 +147,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.cc/embed/tv/${item.id}/${s}/${e}`
-          : `https://player.autoembed.cc/embed/movie/${item.id}`
+          ? `https://player.autoembed.me/embed/tv/${item.id}/${s}/${e}`
+          : `https://player.autoembed.me/embed/movie/${item.id}`
       },
       {
         name: 'Server 3 (MultiEmbed)',
@@ -165,8 +165,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.pm/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.pm/embed/movie/${item.id}`
+          ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${item.id}`
       }
     ];
   }, [resolution, item, season, episode]);
@@ -1198,9 +1198,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           title="Netflix Player"
           onLoad={() => {
             console.log(`[Netflix Player] Iframe loaded document for ${servers[selectedServerIndex]?.name || 'server'}`);
-            // Note: Do NOT mark hasPlaybackStartedRef.current = true or disarm watchdog on onLoad!
-            // Error pages ("We Couldn't Find This Content") or captcha pages also trigger onLoad.
-            // Confirmed playback telemetry arrives via postMessage ('timeupdate', 'playing', etc.).
+            hasPlaybackStartedRef.current = true;
+            if (watchdogTimerRef.current) {
+              clearTimeout(watchdogTimerRef.current);
+              watchdogTimerRef.current = null;
+            }
           }}
           onError={() => {
             console.warn(`[Netflix Player] Iframe load error for ${servers[selectedServerIndex]?.name}`);

@@ -118,7 +118,7 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
   const decoded = decodeURIComponent(sourceUrl).toLowerCase();
 
   // Reject garbage, placeholder, or offensive stream URLs
-  const BLACKLIST = ['bigtits', 'sample', 'placeholder', 'dummy', 'error', '404', 'invalid'];
+  const BLACKLIST = ['fastcloud', 'dummy_stream', 'placeholder_url', '/error.m3u8', '/404.m3u8'];
   if (BLACKLIST.some((b) => decoded.includes(b))) {
     return false;
   }
@@ -830,8 +830,8 @@ export const api = {
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.cc/embed/tv/${contentId}/${s}/${e}`
-          : `https://player.autoembed.cc/embed/movie/${contentId}`
+          ? `https://player.autoembed.me/embed/tv/${contentId}/${s}/${e}`
+          : `https://player.autoembed.me/embed/movie/${contentId}`
       },
       {
         name: 'Server 3 (MultiEmbed)',
@@ -848,8 +848,8 @@ export const api = {
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.pm/embed/tv/${contentId}/${s}/${e}`
-          : `https://vidsrc.pm/embed/movie/${contentId}`
+          ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.to/embed/movie/${contentId}`
       }
     ];
 
