@@ -352,21 +352,21 @@ export class FrameXTVAdapter implements IContentProvider {
     const e = episode || 1;
     const isEpisodic = type === 'tv' || (type as string) === 'anime';
     const embedUrl = isEpisodic
-      ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1&provider=backup`
-      : `${this.embedOrigin}/embed/${id}?autoplay=1&provider=backup`;
+      ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1&no_ads=1`
+      : `${this.embedOrigin}/embed/${id}?autoplay=1&no_ads=1`;
 
     const embedServers = [
       {
         name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1&provider=backup`
-          : `https://framextv.cc/embed/${id}?autoplay=1&provider=backup`
+          ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1&no_ads=1`
+          : `https://framextv.cc/embed/${id}?autoplay=1&no_ads=1`
       },
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.me/embed/tv/${id}/${s}/${e}`
-          : `https://player.autoembed.me/embed/movie/${id}`
+          ? `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914&autoplay=true`
+          : `https://vidlink.pro/movie/${id}?primaryColor=e50914&autoplay=true`
       },
       {
         name: 'Server 3 (MultiEmbed)',
@@ -377,8 +377,8 @@ export class FrameXTVAdapter implements IContentProvider {
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://vidup.to/tv/${id}/${s}/${e}?autoPlay=1&theme=e50914&nextButton=true&autoNext=true`
-          : `https://vidup.to/movie/${id}?autoPlay=1&theme=e50914`
+          ? `https://vidup.to/tv/${id}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
+          : `https://vidup.to/movie/${id}?autoPlay=true&theme=e50914`
       },
       {
         name: 'Server 5 (VidSrc)',

@@ -141,8 +141,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1&provider=backup`
-          : `https://framextv.cc/embed/${item.id}?autoplay=1&provider=backup`
+          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1&no_ads=1`
+          : `https://framextv.cc/embed/${item.id}?autoplay=1&no_ads=1`
       },
       {
         name: 'Server 2 (AutoEmbed)',
@@ -159,8 +159,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://vidup.to/tv/${item.id}/${s}/${e}?autoPlay=1&theme=e50914&nextButton=true&autoNext=true`
-          : `https://vidup.to/movie/${item.id}?autoPlay=1&theme=e50914`
+          ? `https://vidup.to/tv/${item.id}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
+          : `https://vidup.to/movie/${item.id}?autoPlay=true&theme=e50914`
       },
       {
         name: 'Server 5 (VidSrc)',
@@ -200,6 +200,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const nextIndex = ((targetIndex % servers.length) + servers.length) % servers.length;
     setSelectedServerIndex(nextIndex);
     setUseIframeFallback(true);
+    setIsPlaying(true);
     setError(null);
 
     // Disarm current watchdog and reset confirmed playback flag
@@ -436,6 +437,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!hasDirectSource) {
           if (res.embedUrl || (res.embedServers && res.embedServers.length > 0)) {
             setUseIframeFallback(true);
+            setIsPlaying(true);
           } else {
             setError('This title is currently unavailable for streaming.');
           }
@@ -446,6 +448,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (isMounted) {
           setLoading(false);
           setUseIframeFallback(true);
+          setIsPlaying(true);
         }
       });
 
@@ -482,6 +485,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       } else if (resolution.embedUrl || (resolution.embedServers && resolution.embedServers.length > 0)) {
         console.warn('[Netflix Player] All direct sources exhausted, switching to clean iframe fallback');
         setUseIframeFallback(true);
+        setIsPlaying(true);
       } else {
         setError('Unable to load stream for this title.');
       }
@@ -520,6 +524,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         });
 
+        hls.on(Hls.Events.FRAG_LOADED, (_event: any, data: any) => {
+          const fragUrl = data?.frag?.url || '';
+          if (fragUrl.includes('atlantic.st') || fragUrl.includes('classroom.best') || fragUrl.includes('dummy_stream')) {
+            console.warn('[Netflix Player] Dummy warning slide fragment detected in direct HLS stream');
+            try { hls.destroy(); } catch {}
+            hlsRef.current = null;
+            handleDirectStreamFailure('Dummy warning slide fragment detected');
+          }
+        });
+
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
             handleDirectStreamFailure(`HLS Fatal: ${data.details || 'unknown'}`);
@@ -554,6 +568,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     enforceSubtitles();
 
     const onTimeUpdate = () => {
+      const src = video.currentSrc || video.src || '';
+      if (src.includes('atlantic.st') || src.includes('classroom.best') || src.includes('dummy_stream')) {
+        console.warn('[Netflix Player] Warning slide source detected on video tag');
+        if (hlsRef.current) {
+          try { hlsRef.current.destroy(); } catch {}
+          hlsRef.current = null;
+        }
+        handleDirectStreamFailure('Warning slide source detected');
+        return;
+      }
       if (!isScrubbingRef.current) {
         setCurrentTime(video.currentTime);
         setDuration(video.duration || 0);
@@ -648,7 +672,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       watchdogTimerRef.current = null;
     }
 
-    const WATCHDOG_TIMEOUT_MS = 10000; // 10 seconds
+    const WATCHDOG_TIMEOUT_MS = 10000; // 10 seconds for embed players to load and start
+
+    // External embed players (such as FrameX performing multi-stage provider failover to backup or VidUp)
+    // require sufficient time (38s for FrameX natural two-stage token failover to backup; 20s for fallbacks) on Android TV
+    const effectiveWatchdogMs = selectedServerIndex === 0 ? 38000 : 20000;
 
     watchdogTimerRef.current = setTimeout(() => {
       if (!hasPlaybackStartedRef.current) {
@@ -671,7 +699,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const nextIndex = (selectedServerIndex + 1) % servers.length;
         handleSwitchServer(nextIndex, false);
       }
-    }, WATCHDOG_TIMEOUT_MS);
+    }, effectiveWatchdogMs);
 
     return () => {
       if (watchdogTimerRef.current) {
@@ -691,7 +719,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       // Detect and block dummy warning slide from atlantic.st
       const rawMsg = typeof data === 'string' ? data : (typeof data === 'object' ? JSON.stringify(data) : '');
-      if (rawMsg.includes('atlantic.st') || rawMsg.includes('totallyacdn') || rawMsg.includes('classroom.best') || rawMsg.includes('Cloudflare Warp')) {
+      const isWarning =
+        data.type === 'warning_slide' ||
+        data.event === 'warning_slide' ||
+        rawMsg.includes('Cloudflare Warp') ||
+        rawMsg.includes('classroom.best') ||
+        rawMsg.includes('atlantic.st') ||
+        (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best')));
+
+      if (isWarning) {
         console.warn('[Netflix Player] Dummy warning slide detected in telemetry, failing over immediately');
         handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
         return;
@@ -700,13 +736,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const isTimeUpdate =
         data.event === 'frameXTV:timeupdate' ||
         data.event === 'timeupdate' ||
-        data.type === 'timeupdate';
+        data.type === 'timeupdate' ||
+        (data.type === 'PLAYER_EVENT' && data.data?.event === 'timeupdate');
 
       const isPlayingEvent =
         data.event === 'playing' ||
         data.event === 'play' ||
         data.type === 'playing' ||
-        data.type === 'play';
+        data.type === 'play' ||
+        data.event === 'frameXTV:play' ||
+        (data.type === 'PLAYER_EVENT' && (data.data?.event === 'play' || data.data?.event === 'playing'));
 
       if (isTimeUpdate) {
         const cur = Number(data.currentTime || 0);
@@ -1215,11 +1254,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           title="Netflix Player"
           onLoad={() => {
             console.log(`[Netflix Player] Iframe loaded document for ${servers[selectedServerIndex]?.name || 'server'}`);
-            hasPlaybackStartedRef.current = true;
-            if (watchdogTimerRef.current) {
-              clearTimeout(watchdogTimerRef.current);
-              watchdogTimerRef.current = null;
-            }
+            // Keep watchdog running until verified playback starts via telemetry or user action
+            setError(null);
           }}
           onError={() => {
             console.warn(`[Netflix Player] Iframe load error for ${servers[selectedServerIndex]?.name}`);
@@ -1280,12 +1316,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
 
-        {/* Center Play / Pause Indicator */}
-        {!isPlaying && (
-          <div className="self-center p-6 rounded-full bg-black/60 border border-white/20 backdrop-blur-md">
-            <Pause className="w-14 h-14 text-white fill-white" />
-          </div>
-        )}
+
 
         {/* Bottom Timeline & Netflix TV Controls */}
         <div className="space-y-4 pointer-events-auto max-w-5xl mx-auto w-full">

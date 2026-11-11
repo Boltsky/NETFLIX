@@ -311,32 +311,32 @@ class FrameXTVAdapter {
         const e = episode || 1;
         const isEpisodic = type === 'tv' || type === 'anime';
         const embedUrl = isEpisodic
-            ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1`
-            : `${this.embedOrigin}/embed/${id}?autoplay=1`;
+            ? `${this.embedOrigin}/embed/${id}/${s}/${e}?autoplay=1&no_ads=1`
+            : `${this.embedOrigin}/embed/${id}?autoplay=1&no_ads=1`;
         const embedServers = [
             {
                 name: 'Server 1 (FrameX)',
                 url: isEpisodic
-                    ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1`
-                    : `https://framextv.cc/embed/${id}?autoplay=1`
+                    ? `https://framextv.cc/embed/${id}/${s}/${e}?autoplay=1&no_ads=1`
+                    : `https://framextv.cc/embed/${id}?autoplay=1&no_ads=1`
             },
             {
                 name: 'Server 2 (AutoEmbed)',
                 url: isEpisodic
-                    ? `https://player.autoembed.me/embed/tv/${id}/${s}/${e}`
-                    : `https://player.autoembed.me/embed/movie/${id}`
+                    ? `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914&autoplay=true`
+                    : `https://vidlink.pro/movie/${id}?primaryColor=e50914&autoplay=true`
             },
             {
                 name: 'Server 3 (MultiEmbed)',
                 url: isEpisodic
-                    ? `https://vidlink.pro/tv/${id}/${s}/${e}`
-                    : `https://vidlink.pro/movie/${id}`
+                    ? `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
+                    : `https://multiembed.mov/?video_id=${id}&tmdb=1`
             },
             {
                 name: 'Server 4 (2Embed)',
                 url: isEpisodic
-                    ? `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
-                    : `https://www.2embed.cc/embed/${id}`
+                    ? `https://vidup.to/tv/${id}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
+                    : `https://vidup.to/movie/${id}?autoPlay=true&theme=e50914`
             },
             {
                 name: 'Server 5 (VidSrc)',
@@ -361,6 +361,12 @@ class FrameXTVAdapter {
             }
             return rawUrl;
         };
+        const isBlacklisted = (rawUrl) => {
+            if (!rawUrl)
+                return true;
+            const lower = rawUrl.toLowerCase();
+            return lower.includes('atlantic.st') || lower.includes('totallyacdn.cc') || lower.includes('amnestyinternational.dev') || lower.includes('dummy_stream') || lower.includes('/error.m3u8');
+        };
         try {
             let streamPath = `/api/stream?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}`;
             if (type === 'tv') {
@@ -376,7 +382,8 @@ class FrameXTVAdapter {
                     type: src.type === 'hls' ? 'hls' : 'mp4',
                     server: src.server || data.provider || 'FrameX',
                     skipProxy: !!src.skipProxy
-                }));
+                }))
+                    .filter((src) => src.url && !isBlacklisted(src.url));
                 // Failover across alternate providers for reliable 1080p direct streams
                 const alternates = ['bowler', 'giant', 'executioner', 'grand_warden'];
                 if (sources.length === 0) {
@@ -396,7 +403,8 @@ class FrameXTVAdapter {
                                     type: src.type === 'hls' ? 'hls' : 'mp4',
                                     server: src.server || alt,
                                     skipProxy: !!src.skipProxy
-                                }));
+                                }))
+                                    .filter((src) => src.url && !isBlacklisted(src.url));
                                 if (altSources.length > 0) {
                                     sources = altSources;
                                     break;
@@ -452,7 +460,8 @@ class FrameXTVAdapter {
                         type: src.type === 'hls' ? 'hls' : 'mp4',
                         server: src.server || alt,
                         skipProxy: !!src.skipProxy
-                    }));
+                    }))
+                        .filter((src) => src.url && !isBlacklisted(src.url));
                     if (sources.length > 0) {
                         return {
                             success: true,
@@ -465,7 +474,7 @@ class FrameXTVAdapter {
                             subtitles: [],
                             embedUrl,
                             embedServers,
-                            alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+                            alternates: ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
                         };
                     }
                 }

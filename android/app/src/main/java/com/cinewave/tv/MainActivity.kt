@@ -3,6 +3,7 @@ package com.cinewave.tv
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Message
@@ -17,6 +18,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -116,6 +118,8 @@ class MainActivity : AppCompatActivity() {
         settings.userAgentString = sanitizedUa
         Log.i("CineWaveWebView", "Sanitized User-Agent: $sanitizedUa")
 
+        WebView.setWebContentsDebuggingEnabled(true)
+
         android.webkit.CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
@@ -124,7 +128,9 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                val js = "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}"
+                val js = "try{Object.defineProperty(window,'top',{get:function(){return window.self;},configurable:true});}catch(e){}" +
+                    "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
+                    "try{if(window.PluginArray&&window.PluginArray.prototype)PluginArray.prototype.namedItem=function(){return null;};}catch(e){}"
                 view?.evaluateJavascript(js, null)
             }
 
@@ -181,20 +187,58 @@ class MainActivity : AppCompatActivity() {
                 Log.w("NetflixTV", "WebView client error: $errorCode - $description for $failingUrl")
             }
 
+            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                Log.w("CineWaveSSL", "Bypassing SSL error (${error?.primaryError}) for ${error?.url}")
+                handler?.proceed()
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
                 val url = request.url
+                val isLocalApp = url.host == "appassets.androidplatform.net"
 
                 // 1. Local HTML / JS / CSS assets
-                if (url.path?.startsWith("/assets/") == true) {
+                if (isLocalApp && url.path?.startsWith("/assets/") == true) {
                     return assetLoader.shouldInterceptRequest(url)
                 }
 
                 // 2. Intercept API calls to eliminate CORS & Mixed Content
-                if (url.path?.startsWith("/api/") == true) {
+                if (isLocalApp && url.path?.startsWith("/api/") == true) {
                     return proxyApiRequest(request)
+                }
+
+                // 2b. Intercept FrameX API calls natively to bypass CORS
+                if (url.host?.contains("framextv") == true && url.path?.startsWith("/api/") == true) {
+                    try {
+                        val conn = URL(url.toString()).openConnection() as HttpURLConnection
+                        conn.requestMethod = request.method ?: "GET"
+                        conn.connectTimeout = 4000
+                        conn.readTimeout = 6000
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                        conn.setRequestProperty("Accept", "application/json")
+                        conn.setRequestProperty("Accept-Encoding", "gzip, deflate")
+                        val status = conn.responseCode
+                        val rawStream = try {
+                            if (status in 200..399) conn.inputStream else (conn.errorStream ?: ByteArrayInputStream(ByteArray(0)))
+                        } catch (_: Exception) {
+                            conn.errorStream ?: ByteArrayInputStream(ByteArray(0))
+                        }
+                        val encoding = conn.contentEncoding?.lowercase() ?: ""
+                        val stream = if (encoding.contains("gzip")) {
+                            java.util.zip.GZIPInputStream(rawStream)
+                        } else {
+                            rawStream
+                        }
+                        val headers = mutableMapOf<String, String>()
+                        headers["Access-Control-Allow-Origin"] = "*"
+                        headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+                        headers["Access-Control-Allow-Headers"] = "*"
+                        return WebResourceResponse("application/json", "UTF-8", status, "OK", headers, stream)
+                    } catch (e: Exception) {
+                        Log.w("CineWaveProxy", "Failed to proxy FrameX API: ${e.message}")
+                    }
                 }
 
                 // 3. Intercept and block ad networks, tracking scripts, popunders, and dummy warning streams (atlantic.st, totallyacdn, etc.)
@@ -250,75 +294,102 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 5. Map dead player.autoembed.cc / player.moviesapi.vip to live player.autoembed.me, neutralizing anti-sandbox redirections
+                // 5. Map dead player.autoembed.cc / player.moviesapi.vip / player.autoembed.me to live vidlink.pro, neutralizing anti-sandbox redirections
                 if (url.host?.contains("player.autoembed.cc") == true ||
                     url.host?.contains("player.moviesapi.vip") == true ||
                     url.host?.contains("player.autoembed.me") == true) {
-                    var path = url.path ?: ""
-                    if (path.startsWith("/movie/") || path.startsWith("/tv/")) {
-                        path = "/embed$path"
-                    }
-                    if (path.contains("asb.html")) {
-                        return createEmptyResourceResponse()
-                    }
-                    val pathAndQuery = path + if (url.query != null) "?${url.query}" else ""
-                    val liveUrl = "https://player.autoembed.me$pathAndQuery"
-                    try {
-                        val conn = URL(liveUrl).openConnection() as HttpURLConnection
-                        conn.requestMethod = "GET"
-                        conn.connectTimeout = 4000
-                        conn.readTimeout = 8000
-                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                        val status = conn.responseCode
-                        if (status in 200..399) {
-                            val mime = conn.contentType?.split(";")?.get(0)?.trim() ?: "text/html"
-                            val headers = mutableMapOf<String, String>()
-                            headers["Access-Control-Allow-Origin"] = "*"
-                            val stream = if (mime.contains("html", ignoreCase = true)) {
-                                val rawHtml = conn.inputStream.bufferedReader().use { it.readText() }
-                                val neutralizedHtml = neutralizeHtml(rawHtml)
-                                neutralizedHtml.byteInputStream(Charsets.UTF_8)
-                            } else {
-                                conn.inputStream
-                            }
-                            return WebResourceResponse(mime, "UTF-8", status, "OK", headers, stream)
+                    val path = url.path ?: ""
+                    val isTv = path.contains("/tv/")
+                    val idMatch = Regex(".*/(?:movie|tv)/([^/?]+).*").find(path)
+                    val id = idMatch?.groupValues?.get(1) ?: ""
+                    if (id.isNotEmpty()) {
+                        val targetUrl = if (isTv) {
+                            val seasonMatch = Regex(".*/tv/[^/?]+/([^/?]+)/([^/?]+).*").find(path)
+                            val s = seasonMatch?.groupValues?.get(1) ?: "1"
+                            val ep = seasonMatch?.groupValues?.get(2) ?: "1"
+                            "https://vidlink.pro/tv/$id/$s/$ep?primaryColor=e50914&autoplay=true"
+                        } else {
+                            "https://vidlink.pro/movie/$id?primaryColor=e50914&autoplay=true"
                         }
-                    } catch (e: Exception) {
-                        Log.w("CineWaveProxy", "Failed to forward autoembed: ${e.message}")
+                        val redirectHtml = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=$targetUrl\"></head><body style=\"margin:0;background:#000\"><script>window.location.replace('$targetUrl');</script></body></html>"
+                        val headers = mutableMapOf<String, String>()
+                        headers["Access-Control-Allow-Origin"] = "*"
+                        return WebResourceResponse("text/html", "UTF-8", 200, "OK", headers, redirectHtml.byteInputStream(Charsets.UTF_8))
                     }
+                    return createEmptyResourceResponse()
                 }
 
-                // 6. Intercept 2embed / framextv / vidsrc / vidbolt / vidup embed HTML to neutralize anti-sandbox and suppress ad modals
-                if (url.host?.contains("2embed.cc") == true ||
-                    url.host?.contains("framextv.cc") == true ||
-                    url.host?.contains("vidsrc.to") == true ||
-                    url.host?.contains("vidbolt.xyz") == true ||
-                    url.host?.contains("vidup.to") == true) {
+                // 6. Intercept 2embed / framextv / vidsrc / vidbolt / vidup / multiembed / streamingnow embed HTML and JS to neutralize anti-sandbox and suppress ad modals
+                val path = url.path?.lowercase() ?: ""
+                val host = url.host?.lowercase() ?: ""
+                val isVidupOrSimilar = host.contains("vidup") || host.contains("vidbolt") || host.contains("2embed")
+                val isJs = path.endsWith(".js")
+                val isAsset = (isJs && !isVidupOrSimilar) || path.endsWith(".css") || path.endsWith(".png") ||
+                    path.endsWith(".jpg") || path.endsWith(".svg") || path.endsWith(".ico") ||
+                    path.endsWith(".woff") || path.endsWith(".woff2") || path.endsWith(".json") ||
+                    (path.contains("/assets/") && !isVidupOrSimilar) || path.contains("/api/")
+
+                if (!isAsset && (
+                    host.contains("2embed") ||
+                    host.contains("framextv.cc") ||
+                    host.contains("vidsrc.to") ||
+                    host.contains("vidbolt") ||
+                    host.contains("vidup") ||
+                    host.contains("multiembed.mov") ||
+                    host.contains("streamingnow.mov"))) {
                     try {
                         val conn = URL(url.toString()).openConnection() as HttpURLConnection
                         conn.requestMethod = "GET"
-                        conn.connectTimeout = 4000
-                        conn.readTimeout = 8000
+                        conn.connectTimeout = 8000
+                        conn.readTimeout = 15000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                        if (url.host?.contains("vidbolt") == true || url.host?.contains("vidup") == true) {
+                        conn.setRequestProperty("Accept-Encoding", "gzip, deflate")
+                        if (host.contains("vidbolt")) {
                             conn.setRequestProperty("Referer", "https://framextv.cc/")
                             conn.setRequestProperty("Origin", "https://framextv.cc")
+                        } else if (host.contains("vidup")) {
+                            conn.setRequestProperty("Referer", "https://framextv.cc/")
+                            conn.setRequestProperty("Origin", "https://framextv.cc")
+                        } else if (host.contains("streamingnow.mov") || host.contains("multiembed.mov")) {
+                            conn.setRequestProperty("Referer", "https://multiembed.mov/")
+                            conn.setRequestProperty("Origin", "https://multiembed.mov")
                         } else {
                             conn.setRequestProperty("Referer", "https://appassets.androidplatform.net/")
                         }
                         val status = conn.responseCode
                         if (status in 200..399) {
-                            val mime = conn.contentType?.split(";")?.get(0)?.trim() ?: "text/html"
-                            if (mime.contains("html", ignoreCase = true)) {
-                                val rawHtml = conn.inputStream.bufferedReader().use { it.readText() }
+                            val contentType = conn.contentType ?: "text/html"
+                            val isJsContent = isJs || contentType.contains("javascript", ignoreCase = true)
+                            val isHtmlContent = contentType.contains("html", ignoreCase = true) || (!isJsContent && !path.contains("."))
+
+                            val rawStream = if (status in 200..399) conn.inputStream else (conn.errorStream ?: conn.inputStream)
+                            val encoding = conn.contentEncoding?.lowercase() ?: ""
+                            val stream = if (encoding.contains("gzip")) {
+                                java.util.zip.GZIPInputStream(rawStream)
+                            } else {
+                                rawStream
+                            }
+
+                            if (isHtmlContent) {
+                                val rawHtml = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                                 val headers = mutableMapOf<String, String>()
                                 headers["Access-Control-Allow-Origin"] = "*"
                                 val neutralizedHtml = neutralizeHtml(rawHtml)
-                                return WebResourceResponse(mime, "UTF-8", status, "OK", headers, neutralizedHtml.byteInputStream(Charsets.UTF_8))
+                                return WebResourceResponse("text/html", "UTF-8", status, "OK", headers, neutralizedHtml.byteInputStream(Charsets.UTF_8))
+                            } else if (isJsContent) {
+                                val rawJs = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                                val headers = mutableMapOf<String, String>()
+                                headers["Access-Control-Allow-Origin"] = "*"
+                                headers["Content-Type"] = "application/javascript; charset=UTF-8"
+                                val neutralizedJs = neutralizeJs(rawJs)
+                                return WebResourceResponse("application/javascript", "UTF-8", status, "OK", headers, neutralizedJs.byteInputStream(Charsets.UTF_8))
+                            } else {
+                                val mime = contentType.split(";")[0].trim()
+                                return WebResourceResponse(mime, "UTF-8", status, "OK", emptyMap(), stream)
                             }
                         }
                     } catch (e: Exception) {
-                        Log.w("CineWaveProxy", "Failed to intercept embed HTML: ${e.message}")
+                        Log.w("CineWaveProxy", "Failed to intercept embed HTML/JS for $url: ${e.message}")
                     }
                 }
 
@@ -651,6 +722,14 @@ class MainActivity : AppCompatActivity() {
             host.contains("2embed") ||
             host.contains("moviesapi") ||
             host.contains("multiembed") ||
+            host.contains("streamingnow.mov") ||
+            host.contains("enc-dec.app") ||
+            host.contains("totallyacdn.cc") ||
+            host.contains("fprime.at") ||
+            host.contains("cinejoy.pk") ||
+            host.contains("movy.sx") ||
+            host.contains("videasy.to") ||
+            host.contains("filmboom.top") ||
             host.contains("themoviedb.org") ||
             host.contains("tmdb.org") ||
             host.contains("hscow.com") ||
@@ -672,23 +751,129 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    private fun neutralizeJs(rawJs: String): String {
+        return rawJs
+            .replace(Regex("let\\s+t\\s*=\\s*\\(\\)\\s*=>\\s*\\{[\\s\\S]*?Please Disable Sandbox[\\s\\S]*?\\};?"), "let t=()=>{return;};")
+            .replace("document.body.innerHTML='<div style=\"display:flex;justify-content:center;align-items:center;height:100vh\"><h1>Please Disable Sandbox</h1></div>'", "/*noop*/")
+            .replace("document.body.innerHTML='<div style=\"display:flex;justify-content:center;align-items:center;height:100vh;\"><h1>Please Disable Sandbox</h1></div>'", "/*noop*/")
+            .replace("0,window.self!==window.top", "0,false")
+            .replace("window.self!==window.top", "false")
+            .replace("window.self !== window.top", "false")
+            .replace("window.self!=window.top", "false")
+            .replace("document.domain=document.domain", "/*domain*/")
+            .replace("e.toString().toLowerCase().includes(\"sandbox\")", "false")
+            .replace("e.toString().toLowerCase().includes('sandbox')", "false")
+            .replace("return void t()", "return")
+            .replace("return void t();", "return;")
+            .replace("void t()", "void 0")
+            .replace("e.onerror=()=>(t(),!0)", "e.onerror=()=>true")
+            .replace("e.onerror=()=>t()", "e.onerror=()=>true")
+            .replace("e.onerror=()=>{t()}", "e.onerror=()=>{}")
+            .replace("e.onerror=function(){t()}", "e.onerror=function(){}")
+            .replace("!window.navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "true")
+            .replace("!window.navigator.plugins.namedItem('Chrome PDF Viewer')", "true")
+            .replace("!navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "true")
+            .replace("!navigator.plugins.namedItem('Chrome PDF Viewer')", "true")
+            .replace("window.navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "null")
+            .replace("window.navigator.plugins.namedItem('Chrome PDF Viewer')", "null")
+            .replace("navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "null")
+            .replace("navigator.plugins.namedItem('Chrome PDF Viewer')", "null")
+            .replace("data:application/pdf;base64,aG1t", "data:text/plain;base64,aG1t")
+            .replace("Please Disable Sandbox", "")
+            .replace("<h1>Please Disable Sandbox</h1>", "")
+    }
+
     private fun neutralizeHtml(rawHtml: String): String {
-        val antiSandboxScript = "<script>try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}</script>"
-        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"], div[class*=\"bonus\"], div[id*=\"bonus\"], [class*=\"casino\"], [id*=\"casino\"], [class*=\"claim\"], [id*=\"claim\"], [class*=\"wheel\"], [id*=\"wheel\"], [class*=\"reward\"], [id*=\"reward\"], div[class*=\"recaptcha\"], iframe[src*=\"recaptcha\"], div[class*=\"cf-turnstile\"], iframe[src*=\"turnstile\"], div[id*=\"turnstile\"], div[class*=\"atlantic\"], div[id*=\"atlantic\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
+        val antiSandboxScript = "<script>" +
+            "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
+            "try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}" +
+            "try{" +
+            "if(window.navigator){" +
+            "var _emptyPlugins={0:null,length:0,item:function(){return null;},namedItem:function(){return null;},refresh:function(){}};" +
+            "try{Object.defineProperty(Navigator.prototype,'plugins',{get:function(){return _emptyPlugins;},configurable:true});}catch(e){}" +
+            "try{Object.defineProperty(navigator,'plugins',{get:function(){return _emptyPlugins;},configurable:true});}catch(e){}" +
+            "}" +
+            "if(window.PluginArray&&window.PluginArray.prototype){" +
+            "PluginArray.prototype.namedItem=function(){return null;};" +
+            "PluginArray.prototype.item=function(){return null;};" +
+            "}" +
+            "}catch(e){}" +
+            "try{" +
+            "var _origAppend=Node.prototype.appendChild;" +
+            "Node.prototype.appendChild=function(child){" +
+            "if(child&&child.nodeName==='OBJECT'){" +
+            "var d=child.getAttribute('data')||child.data||'';" +
+            "if(d.indexOf('application/pdf')!==-1||d.indexOf('aG1t')!==-1){" +
+            "setTimeout(function(){try{if(typeof child.onload==='function')child.onload();}catch(e){}},0);" +
+            "return child;" +
+            "}" +
+            "}" +
+            "return _origAppend.call(this,child);" +
+            "};" +
+            "}catch(e){}" +
+            "try{" +
+            "var _origInnerDesc=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');" +
+            "if(_origInnerDesc&&_origInnerDesc.set){" +
+            "var _origSetInner=_origInnerDesc.set;" +
+            "Object.defineProperty(Element.prototype,'innerHTML',{" +
+            "set:function(val){" +
+            "if(typeof val==='string'&&(val.indexOf('Please Disable Sandbox')!==-1||val.indexOf('Disable Sandbox')!==-1)){" +
+            "console.warn('[CineWave] Suppressed Please Disable Sandbox innerHTML overwrite');" +
+            "return;" +
+            "}" +
+            "return _origSetInner.call(this,val);" +
+            "}," +
+            "get:_origInnerDesc.get," +
+            "configurable:true" +
+            "});" +
+            "}" +
+            "}catch(e){}" +
+            "</script>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"], div[class*=\"bonus\"], div[id*=\"bonus\"], [class*=\"casino\"], [id*=\"casino\"], [class*=\"claim\"], [id*=\"claim\"], [class*=\"wheel\"], [id*=\"wheel\"], [class*=\"reward\"], [id*=\"reward\"], [class*=\"badge\"], [id*=\"badge\"], div[class*=\"recaptcha\"], iframe[src*=\"recaptcha\"], div[class*=\"cf-turnstile\"], iframe[src*=\"turnstile\"], div[id*=\"turnstile\"], div[class*=\"atlantic\"], div[id*=\"atlantic\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
+        val telemetryScript = "<script>(function(){function s(t,c,d,src){try{var p={type:t,event:t,currentTime:c||0,duration:d||0,playing:true,src:src||''};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}catch(e){}}window.addEventListener('message',function(ev){if(ev.data&&(ev.data.type==='timeupdate'||ev.data.event==='timeupdate'||ev.data.event==='playing'||ev.data.type==='playing'||ev.data.event==='play'||ev.data.type==='play'||ev.data.event==='frameXTV:timeupdate'||ev.data.type==='warning_slide'||ev.data.type==='PLAYER_EVENT')){try{if(window.parent&&window.parent!==window)window.parent.postMessage(ev.data,'*');}catch(e){}try{if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(ev.data,'*');}catch(e){}}});var hasReportedWarning=false;function cwCheckText(){try{if(hasReportedWarning)return;var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){if(vs[i].currentTime>0||!vs[i].paused)return;}var txt=(document.body&&document.body.innerText)?document.body.innerText:'';if(txt.indexOf('Cloudflare Warp')!==-1||txt.indexOf('atlantic.st')!==-1||txt.indexOf('classroom.best')!==-1){hasReportedWarning=true;var p={type:'warning_slide',event:'warning_slide',currentTime:0,duration:0,playing:false,src:window.location.href};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}}catch(e){}}setInterval(cwCheckText,1000);function a(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){var v=vs[i];if(v._cwAtt)continue;v._cwAtt=true;v.addEventListener('play',function(){s('play',this.currentTime,this.duration,this.currentSrc||this.src);});v.addEventListener('playing',function(){s('playing',this.currentTime,this.duration,this.currentSrc||this.src);});v.addEventListener('timeupdate',function(){if(this.currentTime>0)s('timeupdate',this.currentTime,this.duration,this.currentSrc||this.src);});}}setInterval(a,500);if(document.readyState==='complete'||document.readyState==='interactive'){a();cwCheckText();}else{document.addEventListener('DOMContentLoaded',function(){a();cwCheckText();});window.addEventListener('load',function(){a();cwCheckText();});}})();</script>"
 
         var result = rawHtml
-            .replace("<head>", "<head>$antiSandboxScript$antiAdStyle", ignoreCase = true)
+        val headIdx = result.indexOf("<head>", ignoreCase = true)
+        if (headIdx != -1) {
+            result = result.substring(0, headIdx + 6) + antiSandboxScript + antiAdStyle + telemetryScript + result.substring(headIdx + 6)
+        } else {
+            val htmlIdx = result.indexOf("<html>", ignoreCase = true)
+            if (htmlIdx != -1) {
+                result = result.substring(0, htmlIdx + 6) + "<head>" + antiSandboxScript + antiAdStyle + telemetryScript + "</head>" + result.substring(htmlIdx + 6)
+            } else {
+                result = antiSandboxScript + antiAdStyle + telemetryScript + result
+            }
+        }
+
+        result = result
             .replace("try{document.domain=document.domain}catch(t){r();return}", "")
             .replace("if(window.frameElement.hasAttribute(\"sandbox\")){r()}", "")
             .replace("if(window.frameElement.hasAttribute('sandbox')){r()}", "")
             .replace("isReallySandboxed()", "false")
             .replace("/asb.html", "/disabled_asb.html")
+            .replace("/sandbox.php", "/disabled_sandbox.php")
+            .replace("/embedblocked", "/disabled_embedblocked")
             .replace("if(s){die();throw'';}", "// neutralized anti-sandbox")
             .replace("sandboxed=true", "sandboxed=false")
             .replace("sandboxed=e&&e.name==='SecurityError'", "sandboxed=false")
             .replace("if((framed||dev)&&!sandboxed)return;", "/* bypass sandbox gate */")
             .replace("if((framed||dev)&&!sandboxed)", "if(true)")
             .replace("document.domain=document.domain", "// neutralized domain")
+            .replace("Please Disable Sandbox", "")
+            .replace("<h1>Please Disable Sandbox</h1>", "")
+            .replace("return void t()", "return")
+            .replace("return void t();", "return;")
+            .replace("e.onerror=()=>(t(),!0)", "e.onerror=()=>true")
+            .replace("e.onerror=()=>t()", "e.onerror=()=>{}")
+            .replace("e.onerror=()=>{t()}", "e.onerror=()=>{}")
+            .replace("e.onerror=function(){t()}", "e.onerror=function(){}")
+            .replace("window.self!==window.top", "false")
+            .replace("window.self!=window.top", "false")
+            .replace("window.navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "null")
+            .replace("window.navigator.plugins.namedItem('Chrome PDF Viewer')", "null")
+            .replace("navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "null")
+            .replace("navigator.plugins.namedItem('Chrome PDF Viewer')", "null")
+            .replace("data:application/pdf;base64,aG1t", "data:text/plain;base64,aG1t")
 
         // Strip autoembed and vidbolt anti-sandbox scripts and casino ad generation scripts
         result = result.replace(Regex("<script[^>]*>[\\s\\S]*?asb\\.html[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
@@ -735,9 +920,7 @@ class MainActivity : AppCompatActivity() {
         if (host.contains("turnstile") || urlStr.contains("turnstile") ||
             urlStr.contains("challenges.cloudflare.com") ||
             urlStr.contains("recaptcha") || host.contains("recaptcha") ||
-            host.contains("streamingnow.mov") ||
             host.contains("atlantic.st") || urlStr.contains("atlantic.st") ||
-            host.contains("totallyacdn.cc") || urlStr.contains("totallyacdn.cc") ||
             host.contains("amnestyinternational.dev") || urlStr.contains("amnestyinternational.dev") ||
             host.contains("classroom.best") || urlStr.contains("classroom.best") ||
             path.contains("asb.html") ||
@@ -746,23 +929,9 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
-        // Explicitly block ad injection scripts, soycdn, and popup widgets
-        if (host.contains("soycdn") ||
-            host.contains("createlouisville") ||
-            host.contains("tagivi") ||
-            host.contains("histats") ||
-            host.contains("profiton") ||
-            path.contains("/__ads") ||
-            path.contains("/ads/") ||
-            urlStr.contains("/__ads/") ||
-            urlStr.contains("vidsrcto.js") ||
-            urlStr.contains("ad.js")
-        ) {
-            return true
-        }
-
-        // Whitelist app assets, internal endpoints, and verified embed & streaming providers
-        if (host == "appassets.androidplatform.net" ||
+        // Whitelist app assets, internal endpoints, and verified embed & streaming providers FIRST
+        // so that their hashed webpack chunks (e.g. ending in *ad.js) or benign parameters are never blocked
+        val isWhitelistedHost = host == "appassets.androidplatform.net" ||
             host.contains("framextv") ||
             host.contains("autoembed") ||
             host.contains("vidbolt") ||
@@ -776,6 +945,14 @@ class MainActivity : AppCompatActivity() {
             host.contains("2embed") ||
             host.contains("moviesapi") ||
             host.contains("multiembed") ||
+            host.contains("streamingnow.mov") ||
+            host.contains("enc-dec.app") ||
+            host.contains("totallyacdn.cc") ||
+            host.contains("fprime.at") ||
+            host.contains("cinejoy.pk") ||
+            host.contains("movy.sx") ||
+            host.contains("videasy.to") ||
+            host.contains("filmboom.top") ||
             host.contains("themoviedb.org") ||
             host.contains("tmdb.org") ||
             host.contains("hscow.com") ||
@@ -784,8 +961,34 @@ class MainActivity : AppCompatActivity() {
             host.contains("slowcloud.live") ||
             host.contains("hybrows.workers.dev") ||
             host.contains("wsrv.nl")
-        ) {
+
+        if (isWhitelistedHost) {
+            // Even on whitelisted hosts, block known ad routes or sandbox redirect traps
+            if (path.contains("/__ads") || path.contains("/ads/") || urlStr.contains("/__ads/") ||
+                path.endsWith("/ad.js") || path.endsWith("/ads.js") || path.endsWith("/popad.js")) {
+                return true
+            }
             return false
+        }
+
+        // Explicitly block ad injection scripts, soycdn, and popup widgets on non-whitelisted hosts
+        if (host.contains("soycdn") ||
+            host.contains("createlouisville") ||
+            host.contains("tagivi") ||
+            host.contains("histats") ||
+            host.contains("profiton") ||
+            path.contains("/__ads") ||
+            path.contains("/ads/") ||
+            urlStr.contains("/__ads/") ||
+            urlStr.contains("vidsrcto.js") ||
+            path.endsWith("/ad.js") ||
+            path.endsWith("/ads.js") ||
+            urlStr.contains("/ad.js?") ||
+            urlStr.contains("gift") ||
+            urlStr.contains("bonus") ||
+            urlStr.contains("wheel")
+        ) {
+            return true
         }
 
         return BLOCKED_HOST_PATTERNS.any { pattern -> host.contains(pattern) || urlStr.contains(pattern) }

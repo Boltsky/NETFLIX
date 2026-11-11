@@ -141,6 +141,9 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
     '/error.m3u8',
     '/404.m3u8',
     'atlantic.st',
+    'classroom.best',
+    'fprime.at',
+    'transcode.cfd',
     'totallyacdn.cc',
     'amnestyinternational.dev'
   ];
@@ -150,10 +153,15 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
 
   if (!expectedTitle) return true;
 
-  // Check if the stream URL includes a movie/tv title slug
+  // Check if the stream URL includes a movie/tv title slug (ignore raw playlist/segment filenames)
   const slugMatch = decoded.match(/\/(?:movie|tv)\/[a-f0-9-]+\/([^/?&#]+)/i);
   if (slugMatch && slugMatch[1]) {
-    const streamTitleSlug = slugMatch[1].replace(/[+_.-]+/g, ' ').trim().toLowerCase();
+    const rawSlug = slugMatch[1].toLowerCase();
+    // Do not treat playlist/segment media files as movie title slugs
+    if (rawSlug.endsWith('.m3u8') || rawSlug.endsWith('.mp4') || rawSlug.endsWith('.ts') || rawSlug.endsWith('.mkv')) {
+      return true;
+    }
+    const streamTitleSlug = rawSlug.replace(/[+_.-]+/g, ' ').trim();
     const cleanExpected = expectedTitle.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
     const cleanStream = streamTitleSlug.replace(/[^a-z0-9 ]/g, '').trim();
 
@@ -916,13 +924,13 @@ export const api = {
     const expectedTitle = title || cached?.title || '';
     const isEpisodic = effectiveType === 'tv' || effectiveType === 'anime';
 
-    // Prioritize clean, ad-free embed servers (FrameX and AutoEmbed) without robot verification prompts
+    // Prioritize clean, ad-free embed servers: FrameX and AutoEmbed (VidLink) without robot verification prompts
     const embedServers = [
       {
         name: 'Server 1 (FrameX)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1&provider=backup`
-          : `https://framextv.cc/embed/${contentId}?autoplay=1&provider=backup`
+          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1&no_ads=1`
+          : `https://framextv.cc/embed/${contentId}?autoplay=1&no_ads=1`
       },
       {
         name: 'Server 2 (AutoEmbed)',
@@ -939,8 +947,8 @@ export const api = {
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://vidup.to/tv/${contentId}/${s}/${e}?autoPlay=1&theme=e50914&nextButton=true&autoNext=true`
-          : `https://vidup.to/movie/${contentId}?autoPlay=1&theme=e50914`
+          ? `https://vidup.to/tv/${contentId}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
+          : `https://vidup.to/movie/${contentId}?autoPlay=true&theme=e50914`
       },
       {
         name: 'Server 5 (VidSrc)',
@@ -996,7 +1004,7 @@ export const api = {
         // Multi-provider alternate stream resolution for instant 1080p playback
         const candidateAlternates = Array.isArray(res.alternates) && res.alternates.length > 0
           ? res.alternates
-          : ['bowler', 'giant', 'executioner', 'grand_warden'];
+          : ['bowler', 'super_pekka', 'miner', 'headhunter', 'super_barbarian', 'giant'];
 
         if (validSources.length === 0) {
           for (const altProvider of candidateAlternates) {
