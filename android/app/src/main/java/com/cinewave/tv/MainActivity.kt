@@ -197,16 +197,19 @@ class MainActivity : AppCompatActivity() {
                     return proxyApiRequest(request)
                 }
 
-                // 3. Direct HLS media stream proxying for fprime (amnestyinternational / totallyacdn) and vidrock (concretemiracle / slowcloud / vercetti)
+                // 3. Intercept and block ad networks, tracking scripts, popunders, and dummy warning streams (atlantic.st, totallyacdn, etc.)
+                if (isAdOrBlockedUrl(url)) {
+                    Log.d("CineWaveAdBlock", "Blocked ad or dummy warning resource request: $url")
+                    return createEmptyResourceResponse()
+                }
+
+                // 4. Direct HLS media stream proxying for legitimate providers (vidrock: concretemiracle / slowcloud / vercetti)
                 val streamHost = url.host?.lowercase() ?: ""
-                val isAmnestyStream = streamHost.contains("amnestyinternational.dev") ||
-                    streamHost.contains("totallyacdn.cc") ||
-                    (streamHost.contains("hybrows.workers.dev") && url.query?.contains("amnestyinternational.dev") == true)
                 val isVidrockStream = streamHost.contains("concretemiracle.lol") ||
                     streamHost.contains("slowcloud.live") ||
                     streamHost.contains("vercetti.org")
 
-                if (isAmnestyStream || isVidrockStream) {
+                if (isVidrockStream) {
                     if (request.method.equals("OPTIONS", ignoreCase = true)) {
                         val headers = mutableMapOf<String, String>()
                         headers["Access-Control-Allow-Origin"] = "*"
@@ -215,24 +218,15 @@ class MainActivity : AppCompatActivity() {
                         return WebResourceResponse("text/plain", "UTF-8", 200, "OK", headers, ByteArrayInputStream(ByteArray(0)))
                     }
 
-                    val rawTarget = if (url.query?.contains("url=") == true && url.query?.contains("amnestyinternational.dev") == true) {
-                        url.getQueryParameter("url") ?: url.toString()
-                    } else {
-                        url.toString()
-                    }
+                    val rawTarget = url.toString()
                     try {
                         val conn = URL(rawTarget).openConnection() as HttpURLConnection
                         conn.requestMethod = "GET"
                         conn.connectTimeout = 6000
                         conn.readTimeout = 12000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                        if (isAmnestyStream) {
-                            conn.setRequestProperty("Referer", "https://fprime.at/")
-                            conn.setRequestProperty("Origin", "https://fprime.at")
-                        } else {
-                            conn.setRequestProperty("Referer", "https://vidrock.to/")
-                            conn.setRequestProperty("Origin", "https://vidrock.to")
-                        }
+                        conn.setRequestProperty("Referer", "https://vidrock.to/")
+                        conn.setRequestProperty("Origin", "https://vidrock.to")
                         val range = request.requestHeaders["Range"]
                         if (range != null) {
                             conn.setRequestProperty("Range", range)
@@ -254,12 +248,6 @@ class MainActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         Log.w("CineWaveProxy", "Failed to proxy stream ($streamHost): ${e.message}")
                     }
-                }
-
-                // 4. Intercept and block ad networks, tracking scripts, and popunders
-                if (isAdOrBlockedUrl(url)) {
-                    Log.d("CineWaveAdBlock", "Blocked ad resource request: $url")
-                    return createEmptyResourceResponse()
                 }
 
                 // 5. Map dead player.autoembed.cc / player.moviesapi.vip to live player.autoembed.me, neutralizing anti-sandbox redirections
@@ -686,7 +674,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun neutralizeHtml(rawHtml: String): String {
         val antiSandboxScript = "<script>try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}</script>"
-        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"], div[class*=\"bonus\"], div[id*=\"bonus\"], [class*=\"casino\"], [id*=\"casino\"], [class*=\"claim\"], [id*=\"claim\"], [class*=\"wheel\"], [id*=\"wheel\"], [class*=\"reward\"], [id*=\"reward\"], div[class*=\"recaptcha\"], iframe[src*=\"recaptcha\"], div[class*=\"cf-turnstile\"], iframe[src*=\"turnstile\"], div[id*=\"turnstile\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"], div[class*=\"bonus\"], div[id*=\"bonus\"], [class*=\"casino\"], [id*=\"casino\"], [class*=\"claim\"], [id*=\"claim\"], [class*=\"wheel\"], [id*=\"wheel\"], [class*=\"reward\"], [id*=\"reward\"], div[class*=\"recaptcha\"], iframe[src*=\"recaptcha\"], div[class*=\"cf-turnstile\"], iframe[src*=\"turnstile\"], div[id*=\"turnstile\"], div[class*=\"atlantic\"], div[id*=\"atlantic\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
 
         var result = rawHtml
             .replace("<head>", "<head>$antiSandboxScript$antiAdStyle", ignoreCase = true)
@@ -748,9 +736,10 @@ class MainActivity : AppCompatActivity() {
             urlStr.contains("challenges.cloudflare.com") ||
             urlStr.contains("recaptcha") || host.contains("recaptcha") ||
             host.contains("streamingnow.mov") ||
-            host.contains("atlantic.st") ||
-            host.contains("totallyacdn.cc") ||
-            host.contains("amnestyinternational.dev") ||
+            host.contains("atlantic.st") || urlStr.contains("atlantic.st") ||
+            host.contains("totallyacdn.cc") || urlStr.contains("totallyacdn.cc") ||
+            host.contains("amnestyinternational.dev") || urlStr.contains("amnestyinternational.dev") ||
+            host.contains("classroom.best") || urlStr.contains("classroom.best") ||
             path.contains("asb.html") ||
             urlStr.contains("asb.html")
         ) {
@@ -849,7 +838,7 @@ class MainActivity : AppCompatActivity() {
             "streamingnow.mov",
             "atlantic.st",
             "totallyacdn.cc",
-            "multiembed",
+            "classroom.best",
             "histats",
             "soycdn",
             "createlouisville",

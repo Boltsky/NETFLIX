@@ -153,8 +153,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${item.id}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${item.id}?autoplay=1`
+          ? `https://multiembed.mov/?video_id=${item.id}&tmdb=1&s=${s}&e=${e}`
+          : `https://multiembed.mov/?video_id=${item.id}&tmdb=1`
       },
       {
         name: 'Server 4 (2Embed)',
@@ -688,6 +688,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const handleMessage = (event: MessageEvent) => {
       const data = event.data;
       if (!data) return;
+
+      // Detect and block dummy warning slide from atlantic.st
+      const rawMsg = typeof data === 'string' ? data : (typeof data === 'object' ? JSON.stringify(data) : '');
+      if (rawMsg.includes('atlantic.st') || rawMsg.includes('totallyacdn') || rawMsg.includes('classroom.best') || rawMsg.includes('Cloudflare Warp')) {
+        console.warn('[Netflix Player] Dummy warning slide detected in telemetry, failing over immediately');
+        handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
+        return;
+      }
 
       const isTimeUpdate =
         data.event === 'frameXTV:timeupdate' ||

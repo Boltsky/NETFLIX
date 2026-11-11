@@ -933,8 +933,8 @@ export const api = {
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://framextv.cc/embed/${contentId}/${s}/${e}?autoplay=1`
-          : `https://framextv.cc/embed/${contentId}?autoplay=1`
+          ? `https://multiembed.mov/?video_id=${contentId}&tmdb=1&s=${s}&e=${e}`
+          : `https://multiembed.mov/?video_id=${contentId}&tmdb=1`
       },
       {
         name: 'Server 4 (2Embed)',
