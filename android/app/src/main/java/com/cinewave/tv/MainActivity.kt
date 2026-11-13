@@ -271,13 +271,21 @@ class MainActivity : AppCompatActivity() {
                     return createEmptyResourceResponse()
                 }
 
-                // 4. Direct HLS media stream proxying for legitimate providers (vidrock: concretemiracle / slowcloud / vercetti)
+                // 5. Direct media stream proxying with CORS unblocking (vidrock, themoviebox proxy unwrapping, bcdnw, hakunaymatata, slowcloud)
                 val streamHost = url.host?.lowercase() ?: ""
-                val isVidrockStream = streamHost.contains("concretemiracle.lol") ||
+                val streamPath = url.path?.lowercase() ?: ""
+                val isTheMovieBoxProxy = streamHost.contains("themoviebox.uk") && streamPath.contains("/proxy")
+                val isMediaStream = streamHost.contains("concretemiracle.lol") ||
                     streamHost.contains("slowcloud.live") ||
-                    streamHost.contains("vercetti.org")
+                    streamHost.contains("vercetti.org") ||
+                    streamHost.contains("hakunaymatata.com") ||
+                    streamHost.contains("videodownloader.site") ||
+                    isTheMovieBoxProxy ||
+                    streamPath.endsWith(".mp4") ||
+                    streamPath.endsWith(".m3u8") ||
+                    streamPath.endsWith(".ts")
 
-                if (isVidrockStream) {
+                if (isMediaStream) {
                     if (request.method.equals("OPTIONS", ignoreCase = true)) {
                         val headers = mutableMapOf<String, String>()
                         headers["Access-Control-Allow-Origin"] = "*"
@@ -286,43 +294,70 @@ class MainActivity : AppCompatActivity() {
                         return WebResourceResponse("text/plain", "UTF-8", 200, "OK", headers, ByteArrayInputStream(ByteArray(0)))
                     }
 
-                    val rawTarget = url.toString()
+                    // For themoviebox.uk/proxy?url=...&referer=..., unwrap directly to the underlying CDN stream
+                    val effectiveTarget = if (isTheMovieBoxProxy && !url.getQueryParameter("url").isNullOrEmpty()) {
+                        url.getQueryParameter("url")!!
+                    } else {
+                        url.toString()
+                    }
+
+                    val queryReferer = if (isTheMovieBoxProxy) url.getQueryParameter("referer") else null
+
+                    val isHead = request.method.equals("HEAD", ignoreCase = true)
                     try {
-                        val conn = URL(rawTarget).openConnection() as HttpURLConnection
-                        conn.requestMethod = "GET"
-                        conn.connectTimeout = 6000
-                        conn.readTimeout = 12000
+                        val conn = URL(effectiveTarget).openConnection() as HttpURLConnection
+                        conn.requestMethod = if (isHead) "HEAD" else "GET"
+                        conn.connectTimeout = 8000
+                        conn.readTimeout = 15000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                        conn.setRequestProperty("Referer", "https://vidrock.to/")
-                        conn.setRequestProperty("Origin", "https://vidrock.to")
-                        val range = request.requestHeaders["Range"]
+
+                        val clientReferer = request.requestHeaders?.entries?.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value
+                        val streamReferer = when {
+                            !queryReferer.isNullOrEmpty() -> queryReferer
+                            effectiveTarget.contains("hakunaymatata.com") -> "https://videodownloader.site/"
+                            effectiveTarget.contains("vidrock.to") || streamHost.contains("concretemiracle.lol") || streamHost.contains("slowcloud.live") || streamHost.contains("vercetti.org") -> "https://vidrock.to/"
+                            !clientReferer.isNullOrEmpty() && !clientReferer.contains("androidplatform.net") -> clientReferer
+                            else -> "https://${URL(effectiveTarget).host}/"
+                        }
+                        conn.setRequestProperty("Referer", streamReferer)
+
+                        val range = request.requestHeaders?.get("Range") ?: request.requestHeaders?.entries?.firstOrNull { it.key.equals("Range", ignoreCase = true) }?.value
                         if (range != null) {
                             conn.setRequestProperty("Range", range)
                         }
+
                         val status = conn.responseCode
                         if (status in 200..399) {
                             val mime = conn.contentType?.split(";")?.get(0)?.trim()
-                                ?: if (rawTarget.contains(".m3u8")) "application/vnd.apple.mpegurl" else "video/mp2t"
+                                ?: if (effectiveTarget.contains(".m3u8")) "application/vnd.apple.mpegurl" else if (effectiveTarget.contains(".mp4")) "video/mp4" else "video/mp2t"
+                            val clientOrigin = request.requestHeaders?.entries?.firstOrNull { it.key.equals("Origin", ignoreCase = true) }?.value ?: "*"
                             val headers = mutableMapOf<String, String>()
-                            headers["Access-Control-Allow-Origin"] = "*"
+                            headers["Access-Control-Allow-Origin"] = clientOrigin
+                            headers["Access-Control-Allow-Credentials"] = "true"
                             headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
                             headers["Access-Control-Allow-Headers"] = "*"
+                            headers["Access-Control-Expose-Headers"] = "Content-Range, Accept-Ranges, Content-Length, Content-Type, Date, Server"
                             val contentRange = conn.getHeaderField("Content-Range")
                             if (contentRange != null) headers["Content-Range"] = contentRange
                             val acceptRanges = conn.getHeaderField("Accept-Ranges")
                             if (acceptRanges != null) headers["Accept-Ranges"] = acceptRanges
-                            return WebResourceResponse(mime, "UTF-8", status, if (status == 206) "Partial Content" else "OK", headers, conn.inputStream)
+                            val contentLength = conn.getHeaderField("Content-Length")
+                            if (contentLength != null) headers["Content-Length"] = contentLength
+
+                            val bodyStream = if (isHead) ByteArrayInputStream(ByteArray(0)) else conn.inputStream
+                            // Crucial: encoding MUST be null for binary video/audio streams so Chromium avoids UTF-8 corruption
+                            return WebResourceResponse(mime, null, status, if (status == 206) "Partial Content" else "OK", headers, bodyStream)
                         }
                     } catch (e: Exception) {
-                        Log.w("CineWaveProxy", "Failed to proxy stream ($streamHost): ${e.message}")
+                        Log.w("CineWaveProxy", "Direct media proxy failed for $effectiveTarget: ${e.message}")
                     }
+                    return createEmptyResourceResponse()
                 }
 
-                // 5. Map dead player.autoembed.cc / player.moviesapi.vip / player.autoembed.me to live vidlink.pro, neutralizing anti-sandbox redirections
+                // 6. Map dead player.autoembed.cc / player.moviesapi.vip / player.autoembed.me to live vidlink.pro, neutralizing anti-sandbox redirections
                 if (url.host?.contains("player.autoembed.cc") == true ||
                     url.host?.contains("player.moviesapi.vip") == true ||
                     url.host?.contains("player.autoembed.me") == true) {
-                    val path = url.path ?: ""
                     val isTv = path.contains("/tv/")
                     val idMatch = Regex(".*/(?:movie|tv)/([^/?]+).*").find(path)
                     val id = idMatch?.groupValues?.get(1) ?: ""
@@ -343,17 +378,15 @@ class MainActivity : AppCompatActivity() {
                     return createEmptyResourceResponse()
                 }
 
-                // 6. Universal Interception of external HTML embed documents and subframes to neutralize anti-sandbox and inject telemetry
+                // 7. Universal Interception of external HTML embed documents and subframes to neutralize anti-sandbox and inject telemetry
                 val isLocalHost = host.contains("androidplatform.net") || host.contains("localhost") || host == "127.0.0.1"
                 val isStaticMedia = path.endsWith(".css") || path.endsWith(".png") || path.endsWith(".jpg") ||
                     path.endsWith(".jpeg") || path.endsWith(".gif") || path.endsWith(".webp") || path.endsWith(".svg") ||
                     path.endsWith(".ico") || path.endsWith(".woff") || path.endsWith(".woff2") || path.endsWith(".ttf") ||
                     path.endsWith(".mp4") || path.endsWith(".m3u8") || path.endsWith(".ts") || path.endsWith(".mpd") ||
                     path.endsWith(".key") || path.endsWith(".json")
-                val isVidupOrSimilar = host.contains("vidup") || host.contains("vidbolt") || host.contains("2embed")
                 val isJs = path.endsWith(".js")
-                val isAsset = (isJs && !isVidupOrSimilar) || isStaticMedia ||
-                    (path.contains("/assets/") && !isVidupOrSimilar) || path.contains("/api/")
+                val isAsset = isJs || isStaticMedia || path.contains("/assets/") || path.contains("/_next/") || path.contains("/api/")
 
                 val isExplicitHtml = path.endsWith(".html") || path.endsWith(".htm") || path.endsWith(".php")
                 val acceptsHtml = request.requestHeaders?.get("Accept")?.contains("text/html", ignoreCase = true) == true
@@ -361,7 +394,9 @@ class MainActivity : AppCompatActivity() {
                     host.contains("multiembed") || host.contains("streamingnow") || host.contains("vidsrc") ||
                     host.contains("2embed") || host.contains("autoembed") || host.contains("vidlink")
 
-                val shouldInterceptHtml = !isLocalHost && (!isAsset || isVidupOrSimilar) && (
+                val isNextJsEmbed = host.contains("vidup") || host.contains("vidlink")
+
+                val shouldInterceptHtml = !isLocalHost && !isAsset && !isMediaStream && !isNextJsEmbed && (
                     isExplicitHtml || acceptsHtml || isEmbedHost || !path.contains(".")
                 )
 
@@ -816,12 +851,16 @@ class MainActivity : AppCompatActivity() {
         val antiSandboxScript = "<script>" +
             "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
             "try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}" +
-            "try{window.DisableDevtool={isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};Object.defineProperty(window,'DisableDevtool',{get:function(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};},configurable:true});}catch(e){}" +
             "try{" +
-            "var _origAssign=window.location.assign;" +
-            "var _origReplace=window.location.replace;" +
-            "window.location.replace=function(u){if(typeof u==='string'&&(u.indexOf('disable-devtool')!==-1||u.indexOf('theajack')!==-1||u.indexOf('404.html')!==-1))return;return _origReplace?_origReplace.call(window.location,u):null;};" +
-            "window.location.assign=function(u){if(typeof u==='string'&&(u.indexOf('disable-devtool')!==-1||u.indexOf('theajack')!==-1||u.indexOf('404.html')!==-1))return;return _origAssign?_origAssign.call(window.location,u):null;};" +
+            "function _noopDevtool(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}}};" +
+            "_noopDevtool.isRunning=false;" +
+            "_noopDevtool.isDevToolOpened=function(){return false;};" +
+            "_noopDevtool.stop=function(){};" +
+            "_noopDevtool.md5=function(){return '';};" +
+            "window.DisableDevtool=_noopDevtool;" +
+            "window.NeutralizedDevtool=_noopDevtool;" +
+            "try{Object.defineProperty(window,'DisableDevtool',{get:function(){return _noopDevtool;},set:function(){},configurable:true});}catch(e){}" +
+            "try{Object.defineProperty(window,'NeutralizedDevtool',{get:function(){return _noopDevtool;},set:function(){},configurable:true});}catch(e){}" +
             "}catch(e){}" +
             "try{" +
             "if(window.navigator){" +
@@ -834,38 +873,8 @@ class MainActivity : AppCompatActivity() {
             "PluginArray.prototype.item=function(){return null;};" +
             "}" +
             "}catch(e){}" +
-            "try{" +
-            "var _origAppend=Node.prototype.appendChild;" +
-            "Node.prototype.appendChild=function(child){" +
-            "if(child&&child.nodeName==='OBJECT'){" +
-            "var d=child.getAttribute('data')||child.data||'';" +
-            "if(d.indexOf('application/pdf')!==-1||d.indexOf('aG1t')!==-1){" +
-            "setTimeout(function(){try{if(typeof child.onload==='function')child.onload();}catch(e){}},0);" +
-            "return child;" +
-            "}" +
-            "}" +
-            "return _origAppend.call(this,child);" +
-            "};" +
-            "}catch(e){}" +
-            "try{" +
-            "var _origInnerDesc=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');" +
-            "if(_origInnerDesc&&_origInnerDesc.set){" +
-            "var _origSetInner=_origInnerDesc.set;" +
-            "Object.defineProperty(Element.prototype,'innerHTML',{" +
-            "set:function(val){" +
-            "if(typeof val==='string'&&(val.indexOf('Please Disable Sandbox')!==-1||val.indexOf('Disable Sandbox')!==-1)){" +
-            "console.warn('[CineWave] Suppressed Please Disable Sandbox innerHTML overwrite');" +
-            "return;" +
-            "}" +
-            "return _origSetInner.call(this,val);" +
-            "}," +
-            "get:_origInnerDesc.get," +
-            "configurable:true" +
-            "});" +
-            "}" +
-            "}catch(e){}" +
             "</script>"
-        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\" i], [id*=\"advertisement\" i], a[href*=\"adplox.com\"], a[href*=\"bet\" i], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\" i], div[class*=\"gift\" i], img[src*=\"gift\" i], a[href*=\"gift\" i], div[class*=\"floating-ad\" i], div[id*=\"floating-ad\" i], [class*=\"floating\" i]:not(#vidup-player):not(.player-container), div[class*=\"bonus\" i], div[id*=\"bonus\" i], [class*=\"casino\" i], [id*=\"casino\" i], [class*=\"claim\" i], [id*=\"claim\" i], [class*=\"wheel\" i], [id*=\"wheel\" i], [class*=\"reward\" i], [id*=\"reward\" i], [class*=\"badge\" i]:not(.quality-badge), [id*=\"badge\" i], div[class*=\"recaptcha\" i], iframe[src*=\"recaptcha\" i], div[class*=\"cf-turnstile\" i], iframe[src*=\"turnstile\" i], div[id*=\"turnstile\" i], div[class*=\"atlantic\" i], div[id*=\"atlantic\" i], [class*=\"vjs-ad\" i], .video-ads, .ytp-ad-module { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\" i], [id*=\"advertisement\" i], a[href*=\"adplox.com\"], a[href*=\"bet\" i], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\" i], div[class*=\"gift\" i], img[src*=\"gift\" i], a[href*=\"gift\" i], div[class*=\"floating-ad\" i], div[id*=\"floating-ad\" i], [class*=\"floating\" i]:not(#vidup-player):not(.player-container), div[class*=\"bonus\" i], div[id*=\"bonus\" i], [class*=\"casino\" i], [id*=\"casino\" i], [class*=\"claim\" i], [id*=\"claim\" i], [class*=\"wheel\" i], [id*=\"wheel\" i], [class*=\"reward\" i], [id*=\"reward\" i], [class*=\"badge\" i]:not(.quality-badge), [id*=\"badge\" i], [class*=\"spin\" i], [id*=\"spin\" i], [class*=\"lucky\" i], [id*=\"lucky\" i], [class*=\"promo\" i], [id*=\"promo\" i], [class*=\"present\" i], [id*=\"present\" i], a[href*=\"gift\" i], a[href*=\"bonus\" i], div[style*=\"position: fixed\"][style*=\"bottom:\"], div[style*=\"position: absolute\"][style*=\"bottom:\"][style*=\"right:\"], div[class*=\"recaptcha\" i], iframe[src*=\"recaptcha\" i], div[class*=\"cf-turnstile\" i], iframe[src*=\"turnstile\" i], div[id*=\"turnstile\" i], div[class*=\"atlantic\" i], div[id*=\"atlantic\" i], [class*=\"vjs-ad\" i], .video-ads, .ytp-ad-module { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
         val telemetryScript = "<script>(function(){" +
             "function s(t,c,d,src){try{var p={type:t,event:t,currentTime:c||0,duration:d||0,playing:true,src:src||''};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}catch(e){}}" +
             "window.addEventListener('message',function(ev){if(ev.data&&(ev.data.type==='timeupdate'||ev.data.event==='timeupdate'||ev.data.event==='playing'||ev.data.type==='playing'||ev.data.event==='play'||ev.data.type==='play'||ev.data.event==='frameXTV:timeupdate'||ev.data.type==='warning_slide'||ev.data.type==='PLAYER_EVENT'||ev.data.type==='ad_video_detected')){try{if(window.parent&&window.parent!==window)window.parent.postMessage(ev.data,'*');}catch(e){}try{if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(ev.data,'*');}catch(e){}}});" +
@@ -890,6 +899,8 @@ class MainActivity : AppCompatActivity() {
                         "low.indexOf('disable-devtool')!==-1||" +
                         "low.indexOf('no streams found')!==-1||" +
                         "low.indexOf('playback crashed')!==-1||" +
+                        "low.indexOf('application error: a client-side exception has occurred')!==-1||" +
+                        "low.indexOf('a client-side exception has occurred')!==-1||" +
                         "low.indexOf('we couldn\\'t find this content')!==-1;" +
                     "if(isDead){" +
                         "hasReportedWarning=true;" +
@@ -907,8 +918,8 @@ class MainActivity : AppCompatActivity() {
                     "for(var j=0;j<skipBtns.length;j++){try{skipBtns[j].click();}catch(e){}}" +
                     "var backupBtns=document.querySelectorAll('button[aria-label*=\"Backup\" i],.backup-server-btn,button[class*=\"backup\" i]');" +
                     "for(var b=0;b<backupBtns.length;b++){try{backupBtns[b].click();}catch(e){}}" +
-                    "var gifts=document.querySelectorAll('div[class*=\"gift\" i],div[id*=\"gift\" i],img[src*=\"gift\" i],div[class*=\"bonus\" i],div[id*=\"bonus\" i],div[class*=\"reward\" i]');" +
-                    "for(var g=0;g<gifts.length;g++){try{gifts[g].remove();}catch(e){}}" +
+                    "var gifts=document.querySelectorAll('div[class*=\"gift\" i],div[id*=\"gift\" i],img[src*=\"gift\" i],div[class*=\"bonus\" i],div[id*=\"bonus\" i],div[class*=\"reward\" i],div[class*=\"spin\" i],div[id*=\"spin\" i],div[class*=\"lucky\" i],div[id*=\"lucky\" i],div[class*=\"promo\" i],div[id*=\"promo\" i],div[class*=\"present\" i],a[href*=\"gift\" i],a[href*=\"bonus\" i],div[style*=\"bottom:\"][style*=\"right:\"]');" +
+                    "for(var g=0;g<gifts.length;g++){try{gifts[g].style.display='none';gifts[g].style.visibility='hidden';}catch(e){}}" +
                 "}catch(e){}" +
             "}" +
             "setInterval(cwHandleAds,350);" +
@@ -916,23 +927,35 @@ class MainActivity : AppCompatActivity() {
                 "var vs=document.querySelectorAll('video');" +
                 "for(var i=0;i<vs.length;i++){" +
                     "var v=vs[i];" +
+                    "var vsrc=(v.currentSrc||v.src||'').toLowerCase();" +
+                    "if(vsrc.indexOf('atlantic.st')!==-1||vsrc.indexOf('classroom.best')!==-1||vsrc.indexOf('dummy')!==-1||vsrc.indexOf('notfound')!==-1||vsrc.indexOf('media_not_found')!==-1){" +
+                        "s('warning_slide',0,0,vsrc);" +
+                        "try{v.pause();v.src='';}catch(e){}" +
+                        "continue;" +
+                    "}" +
                     "if(v.duration>0&&v.duration<=210){" +
-                        "s('ad_video_detected',v.currentTime,v.duration,v.currentSrc||v.src);" +
-                        "try{if(v.currentTime<v.duration-0.2){v.currentTime=v.duration;}}catch(e){}" +
+                        "s('ad_video_detected',v.currentTime,v.duration,vsrc);" +
+                        "try{v.playbackRate=16.0;if(v.currentTime<v.duration-0.2){v.currentTime=v.duration;}}catch(e){}" +
                     "}" +
                     "if(v._cwAtt)continue;" +
                     "v._cwAtt=true;" +
                     "v.addEventListener('play',function(){" +
-                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,this.currentSrc||this.src);try{if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
-                        "s('play',this.currentTime,this.duration,this.currentSrc||this.src);" +
+                        "var s1=(this.currentSrc||this.src||'').toLowerCase();" +
+                        "if(s1.indexOf('atlantic.st')!==-1||s1.indexOf('classroom.best')!==-1){s('warning_slide',0,0,s1);try{this.pause();this.src='';}catch(e){}return;}" +
+                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,s1);try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "s('play',this.currentTime,this.duration,s1);" +
                     "});" +
                     "v.addEventListener('playing',function(){" +
-                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,this.currentSrc||this.src);try{if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
-                        "s('playing',this.currentTime,this.duration,this.currentSrc||this.src);" +
+                        "var s2=(this.currentSrc||this.src||'').toLowerCase();" +
+                        "if(s2.indexOf('atlantic.st')!==-1||s2.indexOf('classroom.best')!==-1){s('warning_slide',0,0,s2);try{this.pause();this.src='';}catch(e){}return;}" +
+                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,s2);try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "s('playing',this.currentTime,this.duration,s2);" +
                     "});" +
                     "v.addEventListener('timeupdate',function(){" +
-                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,this.currentSrc||this.src);try{if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
-                        "if(this.currentTime>0)s('timeupdate',this.currentTime,this.duration,this.currentSrc||this.src);" +
+                        "var s3=(this.currentSrc||this.src||'').toLowerCase();" +
+                        "if(s3.indexOf('atlantic.st')!==-1||s3.indexOf('classroom.best')!==-1){s('warning_slide',0,0,s3);try{this.pause();this.src='';}catch(e){}return;}" +
+                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,s3);try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "if(this.currentTime>0)s('timeupdate',this.currentTime,this.duration,s3);" +
                     "});" +
                 "}" +
             "}" +

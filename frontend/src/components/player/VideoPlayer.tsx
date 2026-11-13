@@ -692,8 +692,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const WATCHDOG_TIMEOUT_MS = 10000; // 10 seconds for embed players to load and start
 
     // External embed players (such as FrameX performing multi-stage provider failover to backup or VidUp)
-    // require sufficient time (38s for FrameX natural two-stage token failover to backup; 20s for fallbacks) on Android TV
-    const effectiveWatchdogMs = selectedServerIndex === 0 ? 38000 : 20000;
+    // require sufficient time (55s for FrameX natural failover to backup; 20s for fallbacks) on Android TV
+    const effectiveWatchdogMs = selectedServerIndex === 0 ? 55000 : 20000;
 
     watchdogTimerRef.current = setTimeout(() => {
       if (!hasPlaybackStartedRef.current) {
@@ -744,11 +744,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         rawMsg.includes('atlantic.st') ||
         rawMsg.includes("Couldn't Find This Content") ||
         rawMsg.includes('could not find this content') ||
+        rawMsg.includes("we couldn't find this content") ||
         rawMsg.includes('MEDIA NOT FOUND') ||
         rawMsg.includes('media not found') ||
         rawMsg.includes('404 Not Found') ||
         rawMsg.includes('404 not found') ||
         rawMsg.includes('disable-devtool') ||
+        rawMsg.includes('a client-side exception has occurred') ||
+        rawMsg.includes('application error') ||
+        rawMsg.includes('no streams found') ||
+        rawMsg.includes('playback crashed') ||
+        rawMsg.includes('video could not be loaded') ||
+        rawMsg.includes('file was deleted') ||
         (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best') || data.src.includes('disable-devtool')));
 
       if (isWarning) {
@@ -832,6 +839,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
       } else if (isPlayingEvent) {
+        const reportedDur = Number(data.duration || 0);
+        if (reportedDur > 0 && reportedDur <= 210 && item.type === 'movie') {
+          return;
+        }
         if (!hasPlaybackStartedRef.current) {
           hasPlaybackStartedRef.current = true;
           if (watchdogTimerRef.current) {

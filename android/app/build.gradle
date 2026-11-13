@@ -10,8 +10,8 @@ android {
         applicationId "com.cinewave.tv"
         minSdk 24
         targetSdk 35
-        versionCode 23
-        versionName "1.4.0"
+        versionCode 25
+        versionName "1.4.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

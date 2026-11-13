@@ -1,16 +1,16 @@
 {
-  "versionCode": 23,
-  "versionName": "1.4.0",
+  "versionCode": 25,
+  "versionName": "1.4.2",
   "commitHash": "latest",
   "releaseDate": "2026-11-13",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.0",
+  "title": "Netflix TV v1.4.2",
   "changelog": [
-    "Universal embed and subframe HTML interception with automated ad-video fast forwarding",
-    "Instant 5ms failover for atlantic.st, classroom.best, and disable-devtool error loops",
-    "Auto-triggering of FrameX backup provider and prioritized VidUp clean streaming server",
-    "Complete suppression of floating gift box and promotional reward badges"
+    "Fixed binary media stream corruption by removing UTF-8 encoding in WebResourceResponse",
+    "Enabled CORS credentials and exposed range headers for direct MP4 playback",
+    "Added instant detection and skip for dead video slides (atlantic.st, classroom.best)",
+    "Suppressed floating ad badges and enhanced ad video skip automation"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",
