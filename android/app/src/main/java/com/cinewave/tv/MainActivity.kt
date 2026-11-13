@@ -118,7 +118,7 @@ class MainActivity : AppCompatActivity() {
         settings.userAgentString = sanitizedUa
         Log.i("CineWaveWebView", "Sanitized User-Agent: $sanitizedUa")
 
-        WebView.setWebContentsDebuggingEnabled(true)
+        WebView.setWebContentsDebuggingEnabled(false)
 
         android.webkit.CookieManager.getInstance().apply {
             setAcceptCookie(true)
@@ -130,7 +130,8 @@ class MainActivity : AppCompatActivity() {
                 super.onPageStarted(view, url, favicon)
                 val js = "try{Object.defineProperty(window,'top',{get:function(){return window.self;},configurable:true});}catch(e){}" +
                     "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
-                    "try{if(window.PluginArray&&window.PluginArray.prototype)PluginArray.prototype.namedItem=function(){return null;};}catch(e){}"
+                    "try{if(window.PluginArray&&window.PluginArray.prototype)PluginArray.prototype.namedItem=function(){return null;};}catch(e){}" +
+                    "try{window.DisableDevtool={isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};Object.defineProperty(window,'DisableDevtool',{get:function(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};},configurable:true});}catch(e){}"
                 view?.evaluateJavascript(js, null)
             }
 
@@ -214,10 +215,12 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val conn = URL(url.toString()).openConnection() as HttpURLConnection
                         conn.requestMethod = request.method ?: "GET"
-                        conn.connectTimeout = 4000
-                        conn.readTimeout = 6000
+                        conn.connectTimeout = 8000
+                        conn.readTimeout = 15000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
                         conn.setRequestProperty("Accept", "application/json")
+                        conn.setRequestProperty("Referer", "https://framextv.cc/")
+                        conn.setRequestProperty("Origin", "https://framextv.cc")
                         conn.setRequestProperty("Accept-Encoding", "gzip, deflate")
                         val status = conn.responseCode
                         val rawStream = try {
@@ -241,9 +244,30 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 3. Intercept and block ad networks, tracking scripts, popunders, and dummy warning streams (atlantic.st, totallyacdn, etc.)
+                // 3. Intercept dead stream hosts (atlantic.st, classroom.best, disable-devtool, theajack) with instant failover payload
+                val host = url.host?.lowercase() ?: ""
+                val path = url.path?.lowercase() ?: ""
+                val rawUrlStr = url.toString().lowercase()
+
+                if (host.contains("atlantic.st") || rawUrlStr.contains("atlantic.st") ||
+                    host.contains("classroom.best") || rawUrlStr.contains("classroom.best") ||
+                    host.contains("theajack.github.io") || rawUrlStr.contains("disable-devtool") ||
+                    rawUrlStr.contains("404.html?h=")
+                ) {
+                    Log.w("CineWaveProxy", "Intercepted dead stream host ($host), emitting immediate warning_slide failover payload")
+                    val failoverHtml = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body style=\"background:#000;color:#fff\"><script>(function(){" +
+                        "var p={type:'warning_slide',event:'warning_slide',currentTime:0,duration:0,playing:false,src:window.location.href};" +
+                        "try{if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');}catch(e){}" +
+                        "try{if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}catch(e){}" +
+                        "})();</script></body></html>"
+                    val headers = mutableMapOf<String, String>()
+                    headers["Access-Control-Allow-Origin"] = "*"
+                    return WebResourceResponse("text/html", "UTF-8", 200, "OK", headers, failoverHtml.byteInputStream(Charsets.UTF_8))
+                }
+
+                // 4. Intercept and block ad networks, tracking scripts, popunders, and rogue domains
                 if (isAdOrBlockedUrl(url)) {
-                    Log.d("CineWaveAdBlock", "Blocked ad or dummy warning resource request: $url")
+                    Log.d("CineWaveAdBlock", "Blocked ad or rogue resource request: $url")
                     return createEmptyResourceResponse()
                 }
 
@@ -319,24 +343,29 @@ class MainActivity : AppCompatActivity() {
                     return createEmptyResourceResponse()
                 }
 
-                // 6. Intercept 2embed / framextv / vidsrc / vidbolt / vidup / multiembed / streamingnow embed HTML and JS to neutralize anti-sandbox and suppress ad modals
-                val path = url.path?.lowercase() ?: ""
-                val host = url.host?.lowercase() ?: ""
+                // 6. Universal Interception of external HTML embed documents and subframes to neutralize anti-sandbox and inject telemetry
+                val isLocalHost = host.contains("androidplatform.net") || host.contains("localhost") || host == "127.0.0.1"
+                val isStaticMedia = path.endsWith(".css") || path.endsWith(".png") || path.endsWith(".jpg") ||
+                    path.endsWith(".jpeg") || path.endsWith(".gif") || path.endsWith(".webp") || path.endsWith(".svg") ||
+                    path.endsWith(".ico") || path.endsWith(".woff") || path.endsWith(".woff2") || path.endsWith(".ttf") ||
+                    path.endsWith(".mp4") || path.endsWith(".m3u8") || path.endsWith(".ts") || path.endsWith(".mpd") ||
+                    path.endsWith(".key") || path.endsWith(".json")
                 val isVidupOrSimilar = host.contains("vidup") || host.contains("vidbolt") || host.contains("2embed")
                 val isJs = path.endsWith(".js")
-                val isAsset = (isJs && !isVidupOrSimilar) || path.endsWith(".css") || path.endsWith(".png") ||
-                    path.endsWith(".jpg") || path.endsWith(".svg") || path.endsWith(".ico") ||
-                    path.endsWith(".woff") || path.endsWith(".woff2") || path.endsWith(".json") ||
+                val isAsset = (isJs && !isVidupOrSimilar) || isStaticMedia ||
                     (path.contains("/assets/") && !isVidupOrSimilar) || path.contains("/api/")
 
-                if (!isAsset && (
-                    host.contains("2embed") ||
-                    host.contains("framextv.cc") ||
-                    host.contains("vidsrc.to") ||
-                    host.contains("vidbolt") ||
-                    host.contains("vidup") ||
-                    host.contains("multiembed.mov") ||
-                    host.contains("streamingnow.mov"))) {
+                val isExplicitHtml = path.endsWith(".html") || path.endsWith(".htm") || path.endsWith(".php")
+                val acceptsHtml = request.requestHeaders?.get("Accept")?.contains("text/html", ignoreCase = true) == true
+                val isEmbedHost = host.contains("framextv") || host.contains("vidup") || host.contains("vidbolt") ||
+                    host.contains("multiembed") || host.contains("streamingnow") || host.contains("vidsrc") ||
+                    host.contains("2embed") || host.contains("autoembed") || host.contains("vidlink")
+
+                val shouldInterceptHtml = !isLocalHost && (!isAsset || isVidupOrSimilar) && (
+                    isExplicitHtml || acceptsHtml || isEmbedHost || !path.contains(".")
+                )
+
+                if (shouldInterceptHtml) {
                     try {
                         val conn = URL(url.toString()).openConnection() as HttpURLConnection
                         conn.requestMethod = "GET"
@@ -344,18 +373,18 @@ class MainActivity : AppCompatActivity() {
                         conn.readTimeout = 15000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
                         conn.setRequestProperty("Accept-Encoding", "gzip, deflate")
-                        if (host.contains("vidbolt")) {
-                            conn.setRequestProperty("Referer", "https://framextv.cc/")
-                            conn.setRequestProperty("Origin", "https://framextv.cc")
-                        } else if (host.contains("vidup")) {
-                            conn.setRequestProperty("Referer", "https://framextv.cc/")
-                            conn.setRequestProperty("Origin", "https://framextv.cc")
-                        } else if (host.contains("streamingnow.mov") || host.contains("multiembed.mov")) {
-                            conn.setRequestProperty("Referer", "https://multiembed.mov/")
-                            conn.setRequestProperty("Origin", "https://multiembed.mov")
-                        } else {
-                            conn.setRequestProperty("Referer", "https://appassets.androidplatform.net/")
+
+                        val clientReferer = request.requestHeaders?.entries?.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value
+                        val effectiveReferer = when {
+                            host.contains("vidbolt") || host.contains("vidup") -> "https://framextv.cc/"
+                            host.contains("streamingnow.mov") || host.contains("multiembed.mov") -> "https://multiembed.mov/"
+                            host.contains("vidsrc") -> "https://vidsrc.to/"
+                            !clientReferer.isNullOrEmpty() && !clientReferer.contains("androidplatform.net") -> clientReferer
+                            else -> "https://${url.host}/"
                         }
+                        conn.setRequestProperty("Referer", effectiveReferer)
+                        conn.setRequestProperty("Origin", effectiveReferer.trimEnd('/'))
+
                         val status = conn.responseCode
                         if (status in 200..399) {
                             val contentType = conn.contentType ?: "text/html"
@@ -787,6 +816,13 @@ class MainActivity : AppCompatActivity() {
         val antiSandboxScript = "<script>" +
             "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
             "try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}" +
+            "try{window.DisableDevtool={isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};Object.defineProperty(window,'DisableDevtool',{get:function(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};},configurable:true});}catch(e){}" +
+            "try{" +
+            "var _origAssign=window.location.assign;" +
+            "var _origReplace=window.location.replace;" +
+            "window.location.replace=function(u){if(typeof u==='string'&&(u.indexOf('disable-devtool')!==-1||u.indexOf('theajack')!==-1||u.indexOf('404.html')!==-1))return;return _origReplace?_origReplace.call(window.location,u):null;};" +
+            "window.location.assign=function(u){if(typeof u==='string'&&(u.indexOf('disable-devtool')!==-1||u.indexOf('theajack')!==-1||u.indexOf('404.html')!==-1))return;return _origAssign?_origAssign.call(window.location,u):null;};" +
+            "}catch(e){}" +
             "try{" +
             "if(window.navigator){" +
             "var _emptyPlugins={0:null,length:0,item:function(){return null;},namedItem:function(){return null;},refresh:function(){}};" +
@@ -829,8 +865,81 @@ class MainActivity : AppCompatActivity() {
             "}" +
             "}catch(e){}" +
             "</script>"
-        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\"], [id*=\"advertisement\"], a[href*=\"adplox.com\"], a[href*=\"bet\"], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\"], div[class*=\"gift\"], img[src*=\"gift\"], a[href*=\"gift\"], div[class*=\"floating\"], div[id*=\"ad\"], [class*=\"floating\"], div[class*=\"bonus\"], div[id*=\"bonus\"], [class*=\"casino\"], [id*=\"casino\"], [class*=\"claim\"], [id*=\"claim\"], [class*=\"wheel\"], [id*=\"wheel\"], [class*=\"reward\"], [id*=\"reward\"], [class*=\"badge\"], [id*=\"badge\"], div[class*=\"recaptcha\"], iframe[src*=\"recaptcha\"], div[class*=\"cf-turnstile\"], iframe[src*=\"turnstile\"], div[id*=\"turnstile\"], div[class*=\"atlantic\"], div[id*=\"atlantic\"] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
-        val telemetryScript = "<script>(function(){function s(t,c,d,src){try{var p={type:t,event:t,currentTime:c||0,duration:d||0,playing:true,src:src||''};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}catch(e){}}window.addEventListener('message',function(ev){if(ev.data&&(ev.data.type==='timeupdate'||ev.data.event==='timeupdate'||ev.data.event==='playing'||ev.data.type==='playing'||ev.data.event==='play'||ev.data.type==='play'||ev.data.event==='frameXTV:timeupdate'||ev.data.type==='warning_slide'||ev.data.type==='PLAYER_EVENT')){try{if(window.parent&&window.parent!==window)window.parent.postMessage(ev.data,'*');}catch(e){}try{if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(ev.data,'*');}catch(e){}}});var hasReportedWarning=false;function cwCheckText(){try{if(hasReportedWarning)return;var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){if(vs[i].currentTime>0||!vs[i].paused)return;}var txt=(document.body&&document.body.innerText)?document.body.innerText:'';if(txt.indexOf('Cloudflare Warp')!==-1||txt.indexOf('atlantic.st')!==-1||txt.indexOf('classroom.best')!==-1){hasReportedWarning=true;var p={type:'warning_slide',event:'warning_slide',currentTime:0,duration:0,playing:false,src:window.location.href};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}}catch(e){}}setInterval(cwCheckText,1000);function a(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){var v=vs[i];if(v._cwAtt)continue;v._cwAtt=true;v.addEventListener('play',function(){s('play',this.currentTime,this.duration,this.currentSrc||this.src);});v.addEventListener('playing',function(){s('playing',this.currentTime,this.duration,this.currentSrc||this.src);});v.addEventListener('timeupdate',function(){if(this.currentTime>0)s('timeupdate',this.currentTime,this.duration,this.currentSrc||this.src);});}}setInterval(a,500);if(document.readyState==='complete'||document.readyState==='interactive'){a();cwCheckText();}else{document.addEventListener('DOMContentLoaded',function(){a();cwCheckText();});window.addEventListener('load',function(){a();cwCheckText();});}})();</script>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\" i], [id*=\"advertisement\" i], a[href*=\"adplox.com\"], a[href*=\"bet\" i], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\" i], div[class*=\"gift\" i], img[src*=\"gift\" i], a[href*=\"gift\" i], div[class*=\"floating-ad\" i], div[id*=\"floating-ad\" i], [class*=\"floating\" i]:not(#vidup-player):not(.player-container), div[class*=\"bonus\" i], div[id*=\"bonus\" i], [class*=\"casino\" i], [id*=\"casino\" i], [class*=\"claim\" i], [id*=\"claim\" i], [class*=\"wheel\" i], [id*=\"wheel\" i], [class*=\"reward\" i], [id*=\"reward\" i], [class*=\"badge\" i]:not(.quality-badge), [id*=\"badge\" i], div[class*=\"recaptcha\" i], iframe[src*=\"recaptcha\" i], div[class*=\"cf-turnstile\" i], iframe[src*=\"turnstile\" i], div[id*=\"turnstile\" i], div[class*=\"atlantic\" i], div[id*=\"atlantic\" i], [class*=\"vjs-ad\" i], .video-ads, .ytp-ad-module { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
+        val telemetryScript = "<script>(function(){" +
+            "function s(t,c,d,src){try{var p={type:t,event:t,currentTime:c||0,duration:d||0,playing:true,src:src||''};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}catch(e){}}" +
+            "window.addEventListener('message',function(ev){if(ev.data&&(ev.data.type==='timeupdate'||ev.data.event==='timeupdate'||ev.data.event==='playing'||ev.data.type==='playing'||ev.data.event==='play'||ev.data.type==='play'||ev.data.event==='frameXTV:timeupdate'||ev.data.type==='warning_slide'||ev.data.type==='PLAYER_EVENT'||ev.data.type==='ad_video_detected')){try{if(window.parent&&window.parent!==window)window.parent.postMessage(ev.data,'*');}catch(e){}try{if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(ev.data,'*');}catch(e){}}});" +
+            "var hasReportedWarning=false;" +
+            "function cwCheckText(){" +
+                "try{" +
+                    "if(hasReportedWarning)return;" +
+                    "var txt=((document.body&&document.body.innerText)?document.body.innerText:'')+' '+document.title;" +
+                    "var low=txt.toLowerCase();" +
+                    "var isDead=" +
+                        "low.indexOf('cloudflare warp')!==-1||" +
+                        "low.indexOf('atlantic.st')!==-1||" +
+                        "low.indexOf('classroom.best')!==-1||" +
+                        "low.indexOf(\"couldn't find this content\")!==-1||" +
+                        "low.indexOf('could not find this content')!==-1||" +
+                        "low.indexOf('media not found')!==-1||" +
+                        "low.indexOf('404 not found')!==-1||" +
+                        "low.indexOf('video unavailable')!==-1||" +
+                        "low.indexOf('content unavailable')!==-1||" +
+                        "low.indexOf('file was deleted')!==-1||" +
+                        "low.indexOf('video could not be loaded')!==-1||" +
+                        "low.indexOf('disable-devtool')!==-1||" +
+                        "low.indexOf('no streams found')!==-1||" +
+                        "low.indexOf('playback crashed')!==-1||" +
+                        "low.indexOf('we couldn\\'t find this content')!==-1;" +
+                    "if(isDead){" +
+                        "hasReportedWarning=true;" +
+                        "try{var vs=document.querySelectorAll('video');for(var k=0;k<vs.length;k++){vs[k].pause();vs[k].src='';}}catch(e){}" +
+                        "var p={type:'warning_slide',event:'warning_slide',currentTime:0,duration:0,playing:false,src:window.location.href};" +
+                        "if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');" +
+                        "if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');" +
+                    "}" +
+                "}catch(e){}" +
+            "}" +
+            "setInterval(cwCheckText,400);" +
+            "function cwHandleAds(){" +
+                "try{" +
+                    "var skipBtns=document.querySelectorAll('.videoAdUiSkipButton,.skip-button,.skip-ad,.ad-skip,[class*=\"skip\" i],[id*=\"skip\" i],.jw-skip,.vjs-skip,button.skip,div.skip');" +
+                    "for(var j=0;j<skipBtns.length;j++){try{skipBtns[j].click();}catch(e){}}" +
+                    "var backupBtns=document.querySelectorAll('button[aria-label*=\"Backup\" i],.backup-server-btn,button[class*=\"backup\" i]');" +
+                    "for(var b=0;b<backupBtns.length;b++){try{backupBtns[b].click();}catch(e){}}" +
+                    "var gifts=document.querySelectorAll('div[class*=\"gift\" i],div[id*=\"gift\" i],img[src*=\"gift\" i],div[class*=\"bonus\" i],div[id*=\"bonus\" i],div[class*=\"reward\" i]');" +
+                    "for(var g=0;g<gifts.length;g++){try{gifts[g].remove();}catch(e){}}" +
+                "}catch(e){}" +
+            "}" +
+            "setInterval(cwHandleAds,350);" +
+            "function a(){" +
+                "var vs=document.querySelectorAll('video');" +
+                "for(var i=0;i<vs.length;i++){" +
+                    "var v=vs[i];" +
+                    "if(v.duration>0&&v.duration<=210){" +
+                        "s('ad_video_detected',v.currentTime,v.duration,v.currentSrc||v.src);" +
+                        "try{if(v.currentTime<v.duration-0.2){v.currentTime=v.duration;}}catch(e){}" +
+                    "}" +
+                    "if(v._cwAtt)continue;" +
+                    "v._cwAtt=true;" +
+                    "v.addEventListener('play',function(){" +
+                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,this.currentSrc||this.src);try{if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "s('play',this.currentTime,this.duration,this.currentSrc||this.src);" +
+                    "});" +
+                    "v.addEventListener('playing',function(){" +
+                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,this.currentSrc||this.src);try{if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "s('playing',this.currentTime,this.duration,this.currentSrc||this.src);" +
+                    "});" +
+                    "v.addEventListener('timeupdate',function(){" +
+                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,this.currentSrc||this.src);try{if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "if(this.currentTime>0)s('timeupdate',this.currentTime,this.duration,this.currentSrc||this.src);" +
+                    "});" +
+                "}" +
+            "}" +
+            "setInterval(a,300);" +
+            "if(document.readyState==='complete'||document.readyState==='interactive'){a();cwCheckText();cwHandleAds();}" +
+            "else{document.addEventListener('DOMContentLoaded',function(){a();cwCheckText();cwHandleAds();});window.addEventListener('load',function(){a();cwCheckText();cwHandleAds();});}" +
+        "})();</script>"
 
         var result = rawHtml
         val headIdx = result.indexOf("<head>", ignoreCase = true)
@@ -874,6 +983,9 @@ class MainActivity : AppCompatActivity() {
             .replace("navigator.plugins.namedItem(\"Chrome PDF Viewer\")", "null")
             .replace("navigator.plugins.namedItem('Chrome PDF Viewer')", "null")
             .replace("data:application/pdf;base64,aG1t", "data:text/plain;base64,aG1t")
+            .replace("DisableDevtool", "NeutralizedDevtool")
+            .replace("/assets/disable-devtool.js", "/assets/neutralized.js")
+            .replace("/assets/sbx.js", "/assets/neutralized.js")
 
         // Strip autoembed and vidbolt anti-sandbox scripts and casino ad generation scripts
         result = result.replace(Regex("<script[^>]*>[\\s\\S]*?asb\\.html[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
@@ -923,6 +1035,11 @@ class MainActivity : AppCompatActivity() {
             host.contains("atlantic.st") || urlStr.contains("atlantic.st") ||
             host.contains("amnestyinternational.dev") || urlStr.contains("amnestyinternational.dev") ||
             host.contains("classroom.best") || urlStr.contains("classroom.best") ||
+            host.contains("disable-devtool") || urlStr.contains("disable-devtool") ||
+            host.contains("theajack.github.io") || urlStr.contains("theajack.github.io") ||
+            path.contains("disable-devtool") ||
+            path.contains("sbx.js") ||
+            path.contains("sandbox.php") ||
             path.contains("asb.html") ||
             urlStr.contains("asb.html")
         ) {
@@ -965,7 +1082,8 @@ class MainActivity : AppCompatActivity() {
         if (isWhitelistedHost) {
             // Even on whitelisted hosts, block known ad routes or sandbox redirect traps
             if (path.contains("/__ads") || path.contains("/ads/") || urlStr.contains("/__ads/") ||
-                path.endsWith("/ad.js") || path.endsWith("/ads.js") || path.endsWith("/popad.js")) {
+                path.endsWith("/ad.js") || path.endsWith("/ads.js") || path.endsWith("/popad.js") ||
+                path.contains("disable-devtool") || path.contains("sbx.js") || path.contains("sandbox.php")) {
                 return true
             }
             return false
@@ -977,6 +1095,11 @@ class MainActivity : AppCompatActivity() {
             host.contains("tagivi") ||
             host.contains("histats") ||
             host.contains("profiton") ||
+            host.contains("vast") ||
+            host.contains("vpaid") ||
+            host.contains("vidverto") ||
+            host.contains("springserve") ||
+            host.contains("spotx") ||
             path.contains("/__ads") ||
             path.contains("/ads/") ||
             urlStr.contains("/__ads/") ||
@@ -986,7 +1109,8 @@ class MainActivity : AppCompatActivity() {
             urlStr.contains("/ad.js?") ||
             urlStr.contains("gift") ||
             urlStr.contains("bonus") ||
-            urlStr.contains("wheel")
+            urlStr.contains("wheel") ||
+            urlStr.contains("promo")
         ) {
             return true
         }
@@ -1042,6 +1166,10 @@ class MainActivity : AppCompatActivity() {
             "atlantic.st",
             "totallyacdn.cc",
             "classroom.best",
+            "disable-devtool",
+            "theajack.github.io",
+            "sbx.js",
+            "sandbox.php",
             "histats",
             "soycdn",
             "createlouisville",

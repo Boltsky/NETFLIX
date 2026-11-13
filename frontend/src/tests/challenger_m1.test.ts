@@ -546,5 +546,30 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(Number.isNaN(stateCurrentTime)).toBe(false);
       expect(Number.isNaN(stateDuration)).toBe(false);
     });
+
+    it('verifies MainActivity and VideoPlayer detect and bypass 2-minute ad videos and dead streams', () => {
+      const vpCode = fs.readFileSync(videoPlayerPath, 'utf8');
+      const maCode = fs.readFileSync(mainActivityPath, 'utf8');
+
+      // 1. VideoPlayer contains short duration ad detection
+      expect(vpCode).toContain('ad_video_detected');
+      expect(vpCode).toContain('reportedDur <= 210');
+      expect(vpCode).toContain('Skipping ad video...');
+      expect(vpCode).toContain('adFailoverTimerRef');
+
+      // 2. VideoPlayer contains dead stream notice detection
+      expect(vpCode).toContain("Couldn't Find This Content");
+      expect(vpCode).toContain('MEDIA NOT FOUND');
+      expect(vpCode).toContain('404 Not Found');
+
+      // 3. MainActivity contains DisableDevtool neutralization and dead stream checks
+      expect(maCode).toContain('DisableDevtool');
+      expect(maCode).toContain('ad_video_detected');
+      expect(maCode).toContain('v.duration<=210');
+      expect(maCode).toContain("couldn't find this content");
+      expect(maCode).toContain('media not found');
+      expect(maCode).toContain('404 not found');
+      expect(maCode).toContain('disable-devtool');
+    });
   });
 });

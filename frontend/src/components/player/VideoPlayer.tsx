@@ -86,6 +86,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Fallback watchdog & TV toast state
   const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adFailoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPlaybackStartedRef = useRef<boolean>(false);
   const attemptedServersRef = useRef<Set<number>>(new Set());
 
@@ -207,6 +208,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (watchdogTimerRef.current) {
       clearTimeout(watchdogTimerRef.current);
       watchdogTimerRef.current = null;
+    }
+    if (adFailoverTimerRef.current) {
+      clearTimeout(adFailoverTimerRef.current);
+      adFailoverTimerRef.current = null;
     }
     hasPlaybackStartedRef.current = false;
 
@@ -351,6 +356,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleExit = useCallback(() => {
     if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+    if (adFailoverTimerRef.current) clearTimeout(adFailoverTimerRef.current);
     if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
     const finalPos = isScrubbingRef.current
       ? scrubTargetTimeRef.current
@@ -378,6 +384,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
       if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+      if (adFailoverTimerRef.current) clearTimeout(adFailoverTimerRef.current);
       if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
       if (videoRef.current) {
         try {
@@ -578,6 +585,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         handleDirectStreamFailure('Warning slide source detected');
         return;
       }
+      const dur = video.duration || 0;
+      if (dur > 0 && dur <= 210 && item.type === 'movie') {
+        console.warn(`[Netflix Player] Direct video reported short ad duration (${dur}s), failing over`);
+        if (hlsRef.current) {
+          try { hlsRef.current.destroy(); } catch {}
+          hlsRef.current = null;
+        }
+        handleDirectStreamFailure('Short ad duration stream detected');
+        return;
+      }
       if (!isScrubbingRef.current) {
         setCurrentTime(video.currentTime);
         setDuration(video.duration || 0);
@@ -717,7 +734,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const data = event.data;
       if (!data) return;
 
-      // Detect and block dummy warning slide from atlantic.st
+      // Detect and block dummy warning slide from atlantic.st or dead stream notices
       const rawMsg = typeof data === 'string' ? data : (typeof data === 'object' ? JSON.stringify(data) : '');
       const isWarning =
         data.type === 'warning_slide' ||
@@ -725,11 +742,49 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         rawMsg.includes('Cloudflare Warp') ||
         rawMsg.includes('classroom.best') ||
         rawMsg.includes('atlantic.st') ||
-        (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best')));
+        rawMsg.includes("Couldn't Find This Content") ||
+        rawMsg.includes('could not find this content') ||
+        rawMsg.includes('MEDIA NOT FOUND') ||
+        rawMsg.includes('media not found') ||
+        rawMsg.includes('404 Not Found') ||
+        rawMsg.includes('404 not found') ||
+        rawMsg.includes('disable-devtool') ||
+        (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best') || data.src.includes('disable-devtool')));
 
       if (isWarning) {
-        console.warn('[Netflix Player] Dummy warning slide detected in telemetry, failing over immediately');
-        handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
+        console.warn('[Netflix Player] Dummy warning slide / dead stream detected in telemetry, failing over immediately');
+        attemptedServersRef.current.add(selectedServerIndex);
+        if (attemptedServersRef.current.size >= servers.length) {
+          setError('All streaming servers are currently unavailable. Please try again later or select another server.');
+        } else {
+          handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
+        }
+        return;
+      }
+
+      // Detect ad videos (duration <= 210s) on titles expected to be longer (> 600s or movie)
+      const reportedDur = Number(data.duration || 0);
+      const isAdVideo =
+        data.type === 'ad_video_detected' ||
+        data.event === 'ad_video_detected' ||
+        (reportedDur > 0 && reportedDur <= 210 && (item.type === 'movie' || duration > 600));
+
+      if (isAdVideo) {
+        console.warn(`[Netflix Player] Ad video detected (duration: ${reportedDur}s), fast-forwarding/bypassing`);
+        showPlayerToast('Skipping ad video...', 'play', 2500);
+
+        if (!adFailoverTimerRef.current) {
+          adFailoverTimerRef.current = setTimeout(() => {
+            console.warn('[Netflix Player] Ad video persisted without transitioning to movie, switching server');
+            adFailoverTimerRef.current = null;
+            attemptedServersRef.current.add(selectedServerIndex);
+            if (attemptedServersRef.current.size >= servers.length) {
+              setError('All streaming servers are currently unavailable. Please try again later or select another server.');
+            } else {
+              handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
+            }
+          }, 4500);
+        }
         return;
       }
 
@@ -750,6 +805,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (isTimeUpdate) {
         const cur = Number(data.currentTime || 0);
         const dur = Number(data.duration || 0);
+
+        // If duration is short (<= 210s) and this is a movie, ignore it as ad video
+        if (dur > 0 && dur <= 210 && item.type === 'movie') {
+          console.warn(`[Netflix Player] Short duration timeupdate in movie (${dur}s), treating as ad`);
+          return;
+        }
+
+        if (adFailoverTimerRef.current) {
+          clearTimeout(adFailoverTimerRef.current);
+          adFailoverTimerRef.current = null;
+        }
+
         if (!isScrubbingRef.current && cur >= 0) {
           setCurrentTime(cur);
           if (dur > 0) setDuration(dur);

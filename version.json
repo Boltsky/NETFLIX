@@ -1,16 +1,16 @@
 {
-  "versionCode": 21,
-  "versionName": "1.3.8",
-  "commitHash": "904bb448253df91448ab02828cd6dd2482666aa2",
-  "releaseDate": "2026-11-11",
+  "versionCode": 23,
+  "versionName": "1.4.0",
+  "commitHash": "latest",
+  "releaseDate": "2026-11-13",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.3.8",
+  "title": "Netflix TV v1.4.0",
   "changelog": [
-    "Extended watchdog timeout to 25s to prevent premature server cycling during stream initialization",
-    "Unified multi-server priority list with direct VidUp backup support across all movie servers",
-    "Added DOM video event forwarding relay across nested iframes for instant playback confirmation",
-    "Fixed stream URL validation to prevent obfuscated CDN playlist filenames from being rejected as incorrect titles"
+    "Universal embed and subframe HTML interception with automated ad-video fast forwarding",
+    "Instant 5ms failover for atlantic.st, classroom.best, and disable-devtool error loops",
+    "Auto-triggering of FrameX backup provider and prioritized VidUp clean streaming server",
+    "Complete suppression of floating gift box and promotional reward badges"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",
