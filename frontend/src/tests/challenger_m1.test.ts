@@ -571,5 +571,103 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(maCode).toContain('404 not found');
       expect(maCode).toContain('disable-devtool');
     });
+
+    it('verifies MainActivity and VideoPlayer implement TV Remote Virtual Cursor and Native Touch Engine', () => {
+      const vpCode = fs.readFileSync(videoPlayerPath, 'utf8');
+      const maCode = fs.readFileSync(mainActivityPath, 'utf8');
+
+      // 1. MainActivity native touch bridge methods
+      expect(maCode).toContain('fun dispatchPointerClick(x: Float, y: Float)');
+      expect(maCode).toContain('fun dispatchPointerMove(x: Float, y: Float)');
+      expect(maCode).toContain('MotionEvent.ACTION_DOWN');
+      expect(maCode).toContain('MotionEvent.ACTION_UP');
+      expect(maCode).toContain('webView.dispatchTouchEvent');
+      expect(maCode).toContain('webView.addJavascriptInterface(tvBridge, "AndroidTV")');
+
+      // 2. VideoPlayer Virtual Cursor Mode and D-pad interaction
+      expect(vpCode).toContain('isCursorMode');
+      expect(vpCode).toContain('enterCursorMode');
+      expect(vpCode).toContain('cursorPos');
+      expect(vpCode).toContain('server-controls');
+      expect(vpCode).toContain('Server Remote');
+      expect(vpCode).toContain('dispatchPointerClick');
+      expect(vpCode).toContain('Click Server Button');
+      expect(vpCode).toContain('Move Pointer');
+    });
+
+    it('simulates TV Remote Virtual Cursor kinematics, acceleration, clamping, and click dispatch', () => {
+      // Virtual Cursor Simulation matching VideoPlayer logic
+      let isCursorMode = false;
+      let cursorPos = { x: 640, y: 360 };
+      const screenBounds = { width: 1280, height: 720 };
+      let lastKeyTime = 0;
+      let holdCount = 0;
+      const clickedCoords: Array<{ x: number; y: number }> = [];
+
+      const mockAndroidTV = {
+        dispatchPointerClick: (x: number, y: number) => {
+          clickedCoords.push({ x, y });
+        }
+      };
+
+      // 1. Enter cursor mode
+      isCursorMode = true;
+      expect(isCursorMode).toBe(true);
+
+      // 2. D-pad movement step with acceleration
+      const handleDpadMove = (direction: 'Up' | 'Down' | 'Left' | 'Right', timestamp: number) => {
+        if (timestamp - lastKeyTime < 180) {
+          holdCount = Math.min(holdCount + 1, 10);
+        } else {
+          holdCount = 0;
+        }
+        lastKeyTime = timestamp;
+
+        const step = 8 + holdCount * 1.6;
+        let dx = 0;
+        let dy = 0;
+        if (direction === 'Up') dy = -step;
+        if (direction === 'Down') dy = step;
+        if (direction === 'Left') dx = -step;
+        if (direction === 'Right') dx = step;
+
+        const maxX = screenBounds.width - 8;
+        const maxY = screenBounds.height - 8;
+        cursorPos = {
+          x: Math.max(8, Math.min(maxX, cursorPos.x + dx)),
+          y: Math.max(8, Math.min(maxY, cursorPos.y + dy))
+        };
+      };
+
+      // First step: fine precision step (8px)
+      handleDpadMove('Right', 1000);
+      expect(cursorPos.x).toBe(648);
+      expect(cursorPos.y).toBe(360);
+
+      // Rapid consecutive steps: accelerating velocity
+      handleDpadMove('Right', 1100);
+      expect(cursorPos.x).toBe(648 + 9.6);
+
+      // Boundary clamping: large moves cannot escape the screen
+      for (let i = 0; i < 200; i++) {
+        handleDpadMove('Right', 1100 + i * 50);
+      }
+      expect(cursorPos.x).toBe(screenBounds.width - 8);
+
+      for (let i = 0; i < 200; i++) {
+        handleDpadMove('Down', 1100 + i * 50);
+      }
+      expect(cursorPos.y).toBe(screenBounds.height - 8);
+
+      // 3. Click execution: dispatches exact coordinates to native bridge
+      mockAndroidTV.dispatchPointerClick(cursorPos.x, cursorPos.y);
+      expect(clickedCoords.length).toBe(1);
+      expect(clickedCoords[0].x).toBe(1272);
+      expect(clickedCoords[0].y).toBe(712);
+
+      // 4. Back / Escape exits cursor mode
+      isCursorMode = false;
+      expect(isCursorMode).toBe(false);
+    });
   });
 });

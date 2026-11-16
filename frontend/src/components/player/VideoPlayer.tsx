@@ -16,7 +16,8 @@ import {
   X,
   AlertTriangle,
   SkipForward,
-  Server
+  Server,
+  MousePointerClick
 } from 'lucide-react';
 
 interface VideoPlayerProps {
@@ -118,11 +119,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const scrubMultiplierRef = useRef<number>(1);
 
   // TV D-pad focus state
-  const [focusedControl, setFocusedControlState] = useState<'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>('play');
-  const focusedControlRef = useRef<'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>('play');
-  const setFocusedControl = useCallback((ctrl: 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles') => {
+  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles';
+  const [focusedControl, setFocusedControlState] = useState<FocusedControl>('play');
+  const focusedControlRef = useRef<FocusedControl>('play');
+  const setFocusedControl = useCallback((ctrl: FocusedControl) => {
     focusedControlRef.current = ctrl;
     setFocusedControlState(ctrl);
+  }, []);
+
+  // Virtual TV Cursor Mode (Enables TV remote D-pad interaction with embedded server buttons)
+  const [isCursorMode, setIsCursorMode] = useState(false);
+  const isCursorModeRef = useRef(false);
+  isCursorModeRef.current = isCursorMode;
+
+  const [cursorPos, setCursorPos] = useState({
+    x: typeof window !== 'undefined' ? Math.floor(window.innerWidth / 2) : 640,
+    y: typeof window !== 'undefined' ? Math.floor(window.innerHeight / 2) : 360,
+  });
+  const cursorPosRef = useRef(cursorPos);
+  cursorPosRef.current = cursorPos;
+
+  const [isClicking, setIsClicking] = useState(false);
+  const cursorSpeedRef = useRef({ lastKeyTime: 0, holdCount: 0 });
+
+  const enterCursorMode = useCallback(() => {
+    setIsCursorMode(true);
+    setShowControls(false);
+    showControlsRef.current = false;
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 720;
+    setCursorPos((prev) => {
+      if (prev.x <= 10 || prev.x >= w - 10 || prev.y <= 10 || prev.y >= h - 10) {
+        return { x: Math.floor(w / 2), y: Math.floor(h / 2) };
+      }
+      return prev;
+    });
+  }, []);
+
+  const exitCursorMode = useCallback(() => {
+    setIsCursorMode(false);
+    setShowControls(true);
+    showControlsRef.current = true;
   }, []);
 
   const showControlsRef = useRef(true);
@@ -172,13 +209,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     ];
   }, [resolution, item, season, episode]);
 
-  const bottomControls = useMemo<Array<'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'>>(() => {
-    const list: Array<'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'subtitles'> = ['play', 'rewind', 'forward'];
+  const bottomControls = useMemo<Array<FocusedControl>>(() => {
+    const list: Array<FocusedControl> = ['play', 'rewind', 'forward'];
     if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode) {
       list.push('next-ep');
     }
     if (useIframeFallback && servers.length > 1) {
       list.push('server');
+    }
+    if (useIframeFallback) {
+      list.push('server-controls');
     }
     list.push('subtitles');
     return list;
@@ -843,13 +883,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [useIframeFallback]);
 
+  // Toast guidance when streaming from embedded player / backup player
+  useEffect(() => {
+    if (useIframeFallback) {
+      showPlayerToast("Server Controls active: Select 'Server Remote' to click buttons", 'server', 4000);
+    }
+  }, [useIframeFallback, showPlayerToast]);
+
   // OSD Inactivity Auto-Hide
   const resetControlsTimeout = useCallback(() => {
+    if (isCursorModeRef.current) return;
     setShowControls(true);
     showControlsRef.current = true;
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
-      if (!showAudioSubtitleModalRef.current && !isScrubbingRef.current) {
+      if (!showAudioSubtitleModalRef.current && !isScrubbingRef.current && !isCursorModeRef.current) {
         setShowControls(false);
         showControlsRef.current = false;
       }
@@ -904,6 +952,79 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
           return;
         }
+        return;
+      }
+
+      // If cursor mode is active, handle D-pad navigation, clicks, and back button
+      if (isCursorModeRef.current) {
+        if (e.key === 'Back' || e.key === 'Escape') {
+          e.preventDefault();
+          setIsCursorMode(false);
+          setShowControls(true);
+          showControlsRef.current = true;
+          return;
+        }
+
+        if (
+          e.key === 'ArrowUp' || e.key === 'Up' ||
+          e.key === 'ArrowDown' || e.key === 'Down' ||
+          e.key === 'ArrowLeft' || e.key === 'Left' ||
+          e.key === 'ArrowRight' || e.key === 'Right'
+        ) {
+          e.preventDefault();
+          const now = Date.now();
+          if (now - cursorSpeedRef.current.lastKeyTime < 180) {
+            cursorSpeedRef.current.holdCount = Math.min(cursorSpeedRef.current.holdCount + 1, 10);
+          } else {
+            cursorSpeedRef.current.holdCount = 0;
+          }
+          cursorSpeedRef.current.lastKeyTime = now;
+
+          const step = 8 + cursorSpeedRef.current.holdCount * 1.6;
+          let dx = 0;
+          let dy = 0;
+          if (e.key === 'ArrowUp' || e.key === 'Up') dy = -step;
+          if (e.key === 'ArrowDown' || e.key === 'Down') dy = step;
+          if (e.key === 'ArrowLeft' || e.key === 'Left') dx = -step;
+          if (e.key === 'ArrowRight' || e.key === 'Right') dx = step;
+
+          const maxX = typeof window !== 'undefined' ? window.innerWidth - 8 : 1272;
+          const maxY = typeof window !== 'undefined' ? window.innerHeight - 8 : 712;
+          const newX = Math.max(8, Math.min(maxX, cursorPosRef.current.x + dx));
+          const newY = Math.max(8, Math.min(maxY, cursorPosRef.current.y + dy));
+
+          setCursorPos({ x: newX, y: newY });
+
+          try {
+            const android = (window as any).AndroidTV || (window as any).AndroidUpdater;
+            android?.dispatchPointerMove?.(newX, newY);
+          } catch {}
+          return;
+        }
+
+        if (e.key === 'Enter' || e.key === 'Select') {
+          e.preventDefault();
+          setIsClicking(true);
+          setTimeout(() => setIsClicking(false), 200);
+
+          const cx = cursorPosRef.current.x;
+          const cy = cursorPosRef.current.y;
+
+          const android = (window as any).AndroidTV || (window as any).AndroidUpdater;
+          if (android && typeof android.dispatchPointerClick === 'function') {
+            android.dispatchPointerClick(cx, cy);
+          } else {
+            try {
+              const el = document.elementFromPoint(cx, cy) as HTMLElement;
+              if (el) {
+                el.click();
+                el.focus();
+              }
+            } catch {}
+          }
+          return;
+        }
+
         return;
       }
 
@@ -977,6 +1098,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           } else if (curCtrl === 'scrubber') {
             // Navigate DOWN to play button on bottom controls row
             setFocusedControl('play');
+          } else if (useIframeFallback && curBottom.includes(curCtrl as any)) {
+            // Navigate DOWN from bottom controls row to enter Server Remote (Cursor Mode)
+            enterCursorMode();
           }
           break;
 
@@ -1001,6 +1125,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (onNextEpisode) onNextEpisode();
           } else if (curCtrl === 'server') {
             handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+          } else if (curCtrl === 'server-controls') {
+            enterCursorMode();
           } else if (curCtrl === 'subtitles') {
             setShowAudioSubtitleModal(true);
             setModalCol(1);
@@ -1049,7 +1175,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     modalRow,
     handleScrubStep,
     commitSeek,
-    handleSwitchServer
+    handleSwitchServer,
+    enterCursorMode,
+    useIframeFallback
   ]);
 
   // Play / Pause Toggle
@@ -1344,11 +1472,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Netflix TV OSD Controls Overlay */}
       <div
         className={`absolute inset-0 z-30 transition-opacity duration-300 pointer-events-none flex flex-col justify-between p-10 ${
-          showControls ? 'opacity-100 bg-gradient-to-t from-black/90 via-transparent to-black/80' : 'opacity-0'
+          showControls && !isCursorMode ? 'opacity-100 bg-gradient-to-t from-black/90 via-transparent to-black/80' : 'opacity-0'
         }`}
       >
         {/* Top Header */}
-        <div className="flex items-center justify-between pointer-events-auto">
+        <div className={`flex items-center justify-between ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
           <div className="flex items-center space-x-4">
             <button
               onClick={handleExit}
@@ -1383,7 +1511,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
 
         {/* Bottom Timeline & Netflix TV Controls */}
-        <div className="space-y-4 pointer-events-auto max-w-5xl mx-auto w-full">
+        <div className={`space-y-4 max-w-5xl mx-auto w-full ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
           {/* Netflix Scrubber Line */}
           <div
             onClick={() => {
@@ -1538,6 +1666,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span className="text-[10px] font-bold uppercase">{servers[selectedServerIndex]?.name.split(' ')[1] || 'Server'}</span>
                 </button>
               )}
+
+              {/* Server Controls / Virtual Cursor Mode (if fallback) */}
+              {useIframeFallback && (
+                <button
+                  onClick={() => {
+                    setFocusedControl('server-controls');
+                    enterCursorMode();
+                  }}
+                  className={`p-2 rounded-full transition-all flex items-center space-x-1.5 ${
+                    focusedControl === 'server-controls'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200'
+                  }`}
+                  title="Server Controls / Mouse (Enter)"
+                >
+                  <MousePointerClick className={`w-5 h-5 ${focusedControl === 'server-controls' ? 'text-black' : 'text-white'}`} />
+                  <span className="text-[10px] font-bold uppercase">Server Remote</span>
+                </button>
+              )}
             </div>
 
             {/* Subtitles & Audio Dialog Launcher */}
@@ -1667,6 +1814,64 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Virtual TV Mouse Cursor & Guidance HUD */}
+      {isCursorMode && (
+        <div className="fixed inset-0 z-50 pointer-events-none select-none">
+          {/* Top HUD guidance bar */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/85 backdrop-blur-md border border-white/20 text-white px-6 py-2 rounded-full shadow-2xl flex items-center space-x-4 text-xs font-medium animate-fadeIn">
+            <span className="flex items-center space-x-1">
+              <span className="font-mono bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded text-[11px] border border-zinc-700">▲▼◀▶</span>
+              <span className="text-zinc-300">Move Pointer</span>
+            </span>
+            <span className="text-zinc-500">•</span>
+            <span className="flex items-center space-x-1">
+              <span className="font-mono bg-zinc-800 text-[#E50914] font-bold px-2 py-0.5 rounded text-[11px] border border-zinc-700">OK</span>
+              <span className="text-white font-semibold">Click Server Button</span>
+            </span>
+            <span className="text-zinc-500">•</span>
+            <span className="flex items-center space-x-1">
+              <span className="font-mono bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded text-[11px] border border-zinc-700">BACK</span>
+              <span className="text-zinc-300">Exit</span>
+            </span>
+          </div>
+
+          {/* High-visibility TV Cursor Pointer */}
+          <div
+            className="absolute transition-transform duration-75 will-change-transform"
+            style={{
+              left: `${cursorPos.x}px`,
+              top: `${cursorPos.y}px`,
+              transform: `translate(-4px, -4px) scale(${isClicking ? 0.8 : 1})`,
+            }}
+          >
+            {/* Outer pulse ring on click */}
+            {isClicking && (
+              <div className="absolute -inset-2 rounded-full bg-[#E50914]/40 animate-ping" />
+            )}
+
+            {/* Custom Arrow Pointer SVG */}
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+            >
+              <path
+                d="M3 3L10.07 20.97L13.58 13.58L20.97 10.07L3 3Z"
+                fill="#FFFFFF"
+                stroke="#E50914"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+
+            {/* Target red dot at tip */}
+            <div className="absolute top-0 left-0 w-2 h-2 rounded-full bg-[#E50914] shadow-sm transform -translate-x-1/2 -translate-y-1/2" />
           </div>
         </div>
       )}

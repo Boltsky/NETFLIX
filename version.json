@@ -1,17 +1,18 @@
 {
-  "versionCode": 26,
-  "versionName": "1.4.3",
+  "versionCode": 27,
+  "versionName": "1.4.4",
   "commitHash": "latest",
   "releaseDate": "2026-11-16",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.3",
+  "title": "Netflix TV v1.4.4",
   "changelog": [
+    "Added Virtual TV Cursor & Native Touch Engine enabling Android TV remotes to interact with embedded server player buttons (FrameX Backup player, server dropdowns, video controls)",
+    "Added 'Server Remote' mode toggle to bottom player controls with high-visibility cursor and guidance HUD",
+    "Enabled D-pad spatial velocity acceleration and boundary-clamped cursor targeting",
+    "Synthesized OS-level MotionEvent touch down/up events penetrating cross-origin iframe sandboxes",
     "Eliminated CTV video ads on Android TV by standardizing Desktop Chrome User-Agent across devices",
-    "Fixed Next.js SSR hydration exception on AutoEmbed server",
-    "Removed false-positive disable-devtool dead-stream trigger causing rapid server cycling",
-    "Added instant audio muting and hardware-safe auto-skip for pre-roll video ads",
-    "Enhanced FrameX backup player stability and suppressed floating gift badges"
+    "Fixed Next.js SSR hydration exception on AutoEmbed server"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

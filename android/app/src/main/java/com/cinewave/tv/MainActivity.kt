@@ -7,9 +7,11 @@ import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Message
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -542,8 +544,10 @@ class MainActivity : AppCompatActivity() {
         webView.isFocusableInTouchMode = true
         webView.requestFocus()
 
-        // Register in-app update bridge for Android TV / BlueStacks
-        webView.addJavascriptInterface(AppUpdateBridge(this, webView), "AndroidUpdater")
+        // Register in-app update & TV remote bridge for Android TV / BlueStacks
+        val tvBridge = AppUpdateBridge(this, webView)
+        webView.addJavascriptInterface(tvBridge, "AndroidUpdater")
+        webView.addJavascriptInterface(tvBridge, "AndroidTV")
     }
 
     private fun proxyApiRequest(request: WebResourceRequest): WebResourceResponse? {
@@ -1262,6 +1266,64 @@ class AppUpdateBridge(private val activity: MainActivity, private val webView: W
 
     @JavascriptInterface
     fun isAndroidApp(): Boolean = true
+
+    @JavascriptInterface
+    fun dispatchPointerClick(x: Float, y: Float) {
+        activity.runOnUiThread {
+            try {
+                val density = activity.resources.displayMetrics.density
+                val px = x * density
+                val py = y * density
+                val downTime = SystemClock.uptimeMillis()
+
+                val downEvent = MotionEvent.obtain(
+                    downTime, downTime,
+                    MotionEvent.ACTION_DOWN,
+                    px, py, 0
+                )
+                webView.dispatchTouchEvent(downEvent)
+                downEvent.recycle()
+
+                webView.postDelayed({
+                    try {
+                        val upTime = SystemClock.uptimeMillis()
+                        val upEvent = MotionEvent.obtain(
+                            downTime, upTime,
+                            MotionEvent.ACTION_UP,
+                            px, py, 0
+                        )
+                        webView.dispatchTouchEvent(upEvent)
+                        upEvent.recycle()
+                    } catch (e: Exception) {
+                        Log.w("NetflixTV", "Pointer up failed: ${e.message}")
+                    }
+                }, 50)
+            } catch (e: Exception) {
+                Log.w("NetflixTV", "dispatchPointerClick failed: ${e.message}")
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun dispatchPointerMove(x: Float, y: Float) {
+        activity.runOnUiThread {
+            try {
+                val density = activity.resources.displayMetrics.density
+                val px = x * density
+                val py = y * density
+                val now = SystemClock.uptimeMillis()
+                val moveEvent = MotionEvent.obtain(
+                    now, now,
+                    MotionEvent.ACTION_HOVER_MOVE,
+                    px, py, 0
+                )
+                webView.dispatchGenericMotionEvent(moveEvent)
+                moveEvent.recycle()
+            } catch (e: Exception) {
+                // Ignore hover move exceptions silently
+            }
+        }
+    }
 
     @JavascriptInterface
     fun getAppVersionCode(): Int {
