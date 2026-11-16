@@ -749,14 +749,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         rawMsg.includes('media not found') ||
         rawMsg.includes('404 Not Found') ||
         rawMsg.includes('404 not found') ||
-        rawMsg.includes('disable-devtool') ||
         rawMsg.includes('a client-side exception has occurred') ||
         rawMsg.includes('application error') ||
         rawMsg.includes('no streams found') ||
         rawMsg.includes('playback crashed') ||
         rawMsg.includes('video could not be loaded') ||
         rawMsg.includes('file was deleted') ||
-        (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best') || data.src.includes('disable-devtool')));
+        (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best')));
 
       if (isWarning) {
         console.warn('[Netflix Player] Dummy warning slide / dead stream detected in telemetry, failing over immediately');
@@ -779,19 +778,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (isAdVideo) {
         console.warn(`[Netflix Player] Ad video detected (duration: ${reportedDur}s), fast-forwarding/bypassing`);
         showPlayerToast('Skipping ad video...', 'play', 2500);
-
-        if (!adFailoverTimerRef.current) {
-          adFailoverTimerRef.current = setTimeout(() => {
-            console.warn('[Netflix Player] Ad video persisted without transitioning to movie, switching server');
-            adFailoverTimerRef.current = null;
-            attemptedServersRef.current.add(selectedServerIndex);
-            if (attemptedServersRef.current.size >= servers.length) {
-              setError('All streaming servers are currently unavailable. Please try again later or select another server.');
-            } else {
-              handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
-            }
-          }, 4500);
-        }
         return;
       }
 

@@ -109,14 +109,17 @@ class MainActivity : AppCompatActivity() {
         settings.javaScriptCanOpenWindowsAutomatically = false
         settings.setSupportMultipleWindows(true)
 
-        // Normalize User-Agent: strip '; wv)' and 'Version/4.0' to prevent Cloudflare Turnstile bot challenges
+        // Standardize User-Agent across all devices (including physical Android TV) to a clean Desktop Chrome string.
+        // This eliminates Connected TV (CTV) device fingerprinting (e.g. BRAVIA, Android TV, Large Screen)
+        // which ad exchanges (VAST/VPAID/SpringServe/VidZoo) require to deliver 2-minute CTV video ads,
+        // while also stripping WebView markers ('; wv', 'Version/4.0') to satisfy Cloudflare Turnstile.
         val defaultUa = settings.userAgentString ?: ""
-        val sanitizedUa = defaultUa
+        val sanitizedUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             .replace("; wv)", ")")
             .replace("; wv", "")
             .replace("Version/4.0 ", "")
         settings.userAgentString = sanitizedUa
-        Log.i("CineWaveWebView", "Sanitized User-Agent: $sanitizedUa")
+        Log.i("CineWaveWebView", "Sanitized User-Agent: $sanitizedUa (original: $defaultUa)")
 
         WebView.setWebContentsDebuggingEnabled(false)
 
@@ -244,14 +247,13 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 3. Intercept dead stream hosts (atlantic.st, classroom.best, disable-devtool, theajack) with instant failover payload
+                // 3. Intercept dead stream hosts (atlantic.st, classroom.best, 404.html) with instant failover payload
                 val host = url.host?.lowercase() ?: ""
                 val path = url.path?.lowercase() ?: ""
                 val rawUrlStr = url.toString().lowercase()
 
                 if (host.contains("atlantic.st") || rawUrlStr.contains("atlantic.st") ||
                     host.contains("classroom.best") || rawUrlStr.contains("classroom.best") ||
-                    host.contains("theajack.github.io") || rawUrlStr.contains("disable-devtool") ||
                     rawUrlStr.contains("404.html?h=")
                 ) {
                     Log.w("CineWaveProxy", "Intercepted dead stream host ($host), emitting immediate warning_slide failover payload")
@@ -263,6 +265,15 @@ class MainActivity : AppCompatActivity() {
                     val headers = mutableMapOf<String, String>()
                     headers["Access-Control-Allow-Origin"] = "*"
                     return WebResourceResponse("text/html", "UTF-8", 200, "OK", headers, failoverHtml.byteInputStream(Charsets.UTF_8))
+                }
+
+                // 3b. Neutralize anti-debugging scripts (disable-devtool) cleanly with empty JS instead of dead-stream failover
+                if (host.contains("theajack.github.io") || path.contains("disable-devtool") || rawUrlStr.contains("disable-devtool")) {
+                    val emptyJs = "window.DisableDevtool={isRunning:false,isDevToolOpened:()=>false,stop:()=>{}};"
+                    val headers = mutableMapOf<String, String>()
+                    headers["Access-Control-Allow-Origin"] = "*"
+                    headers["Content-Type"] = "application/javascript; charset=UTF-8"
+                    return WebResourceResponse("application/javascript", "UTF-8", 200, "OK", headers, emptyJs.byteInputStream(Charsets.UTF_8))
                 }
 
                 // 4. Intercept and block ad networks, tracking scripts, popunders, and rogue domains
@@ -394,7 +405,8 @@ class MainActivity : AppCompatActivity() {
                     host.contains("multiembed") || host.contains("streamingnow") || host.contains("vidsrc") ||
                     host.contains("2embed") || host.contains("autoembed") || host.contains("vidlink")
 
-                val isNextJsEmbed = host.contains("vidup") || host.contains("vidlink")
+                val isNextJsEmbed = host.contains("vidup") || host.contains("vidlink") ||
+                    host.contains("autoembed") || host.contains("cloudfabric") || host.contains("nextgen")
 
                 val shouldInterceptHtml = !isLocalHost && !isAsset && !isMediaStream && !isNextJsEmbed && (
                     isExplicitHtml || acceptsHtml || isEmbedHost || !path.contains(".")
@@ -777,6 +789,8 @@ class MainActivity : AppCompatActivity() {
             host.contains("autoembed") ||
             host.contains("vidbolt") ||
             host.contains("vidup") ||
+            host.contains("nextgencloudfabric") ||
+            host.contains("cloudfabric") ||
             host.contains("hakunaymatata") ||
             host.contains("johndoesdmc") ||
             host.contains("vidlink") ||
@@ -874,7 +888,7 @@ class MainActivity : AppCompatActivity() {
             "}" +
             "}catch(e){}" +
             "</script>"
-        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\" i], [id*=\"advertisement\" i], a[href*=\"adplox.com\"], a[href*=\"bet\" i], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\" i], div[class*=\"gift\" i], img[src*=\"gift\" i], a[href*=\"gift\" i], div[class*=\"floating-ad\" i], div[id*=\"floating-ad\" i], [class*=\"floating\" i]:not(#vidup-player):not(.player-container), div[class*=\"bonus\" i], div[id*=\"bonus\" i], [class*=\"casino\" i], [id*=\"casino\" i], [class*=\"claim\" i], [id*=\"claim\" i], [class*=\"wheel\" i], [id*=\"wheel\" i], [class*=\"reward\" i], [id*=\"reward\" i], [class*=\"badge\" i]:not(.quality-badge), [id*=\"badge\" i], [class*=\"spin\" i], [id*=\"spin\" i], [class*=\"lucky\" i], [id*=\"lucky\" i], [class*=\"promo\" i], [id*=\"promo\" i], [class*=\"present\" i], [id*=\"present\" i], a[href*=\"gift\" i], a[href*=\"bonus\" i], div[style*=\"position: fixed\"][style*=\"bottom:\"], div[style*=\"position: absolute\"][style*=\"bottom:\"][style*=\"right:\"], div[class*=\"recaptcha\" i], iframe[src*=\"recaptcha\" i], div[class*=\"cf-turnstile\" i], iframe[src*=\"turnstile\" i], div[id*=\"turnstile\" i], div[class*=\"atlantic\" i], div[id*=\"atlantic\" i], [class*=\"vjs-ad\" i], .video-ads, .ytp-ad-module { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
+        val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\" i], [id*=\"advertisement\" i], a[href*=\"adplox.com\"], a[href*=\"bet\" i], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\" i], div[class*=\"gift\" i], img[src*=\"gift\" i], a[href*=\"gift\" i], div[class*=\"floating-ad\" i], div[id*=\"floating-ad\" i], [class*=\"floating\" i]:not(#vidup-player):not(.player-container), div[class*=\"bonus\" i], div[id*=\"bonus\" i], [class*=\"casino\" i], [id*=\"casino\" i], [class*=\"claim\" i], [id*=\"claim\" i], [class*=\"wheel\" i], [id*=\"wheel\" i], [class*=\"reward\" i], [id*=\"reward\" i], [class*=\"badge\" i]:not(.quality-badge), [id*=\"badge\" i], [class*=\"spin\" i], [id*=\"spin\" i], [class*=\"lucky\" i], [id*=\"lucky\" i], [class*=\"promo\" i], [id*=\"promo\" i], [class*=\"present\" i], [id*=\"present\" i], a[href*=\"gift\" i], a[href*=\"bonus\" i], div[style*=\"position: fixed\"][style*=\"bottom:\"], div[style*=\"position: absolute\"][style*=\"bottom:\"][style*=\"right:\"], div[class*=\"recaptcha\" i], iframe[src*=\"recaptcha\" i], div[class*=\"cf-turnstile\" i], iframe[src*=\"turnstile\" i], div[id*=\"turnstile\" i], div[class*=\"atlantic\" i], div[id*=\"atlantic\" i], [class*=\"vjs-ad\" i], .video-ads, .ytp-ad-module, .videoAdUi, .ad-container, [id*=\"ad-container\" i], [class*=\"ad-container\" i] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
         val telemetryScript = "<script>(function(){" +
             "function s(t,c,d,src){try{var p={type:t,event:t,currentTime:c||0,duration:d||0,playing:true,src:src||''};if(window.parent&&window.parent!==window)window.parent.postMessage(p,'*');if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(p,'*');}catch(e){}}" +
             "window.addEventListener('message',function(ev){if(ev.data&&(ev.data.type==='timeupdate'||ev.data.event==='timeupdate'||ev.data.event==='playing'||ev.data.type==='playing'||ev.data.event==='play'||ev.data.type==='play'||ev.data.event==='frameXTV:timeupdate'||ev.data.type==='warning_slide'||ev.data.type==='PLAYER_EVENT'||ev.data.type==='ad_video_detected')){try{if(window.parent&&window.parent!==window)window.parent.postMessage(ev.data,'*');}catch(e){}try{if(window.top&&window.top!==window.parent&&window.top!==window)window.top.postMessage(ev.data,'*');}catch(e){}}});" +
@@ -896,7 +910,6 @@ class MainActivity : AppCompatActivity() {
                         "low.indexOf('content unavailable')!==-1||" +
                         "low.indexOf('file was deleted')!==-1||" +
                         "low.indexOf('video could not be loaded')!==-1||" +
-                        "low.indexOf('disable-devtool')!==-1||" +
                         "low.indexOf('no streams found')!==-1||" +
                         "low.indexOf('playback crashed')!==-1||" +
                         "low.indexOf('application error: a client-side exception has occurred')!==-1||" +
@@ -914,12 +927,12 @@ class MainActivity : AppCompatActivity() {
             "setInterval(cwCheckText,400);" +
             "function cwHandleAds(){" +
                 "try{" +
-                    "var skipBtns=document.querySelectorAll('.videoAdUiSkipButton,.skip-button,.skip-ad,.ad-skip,[class*=\"skip\" i],[id*=\"skip\" i],.jw-skip,.vjs-skip,button.skip,div.skip');" +
+                    "var skipBtns=document.querySelectorAll('.videoAdUiSkipButton,.skip-button,.skip-ad,.ad-skip,[class*=\"skip\" i],[id*=\"skip\" i],.jw-skip,.vjs-skip,button.skip,div.skip,.ytp-ad-skip-button,.videoAdUiAction,.ad-skip-btn,[aria-label*=\"skip\" i],button[class*=\"skip\" i]');" +
                     "for(var j=0;j<skipBtns.length;j++){try{skipBtns[j].click();}catch(e){}}" +
                     "var backupBtns=document.querySelectorAll('button[aria-label*=\"Backup\" i],.backup-server-btn,button[class*=\"backup\" i]');" +
                     "for(var b=0;b<backupBtns.length;b++){try{backupBtns[b].click();}catch(e){}}" +
-                    "var gifts=document.querySelectorAll('div[class*=\"gift\" i],div[id*=\"gift\" i],img[src*=\"gift\" i],div[class*=\"bonus\" i],div[id*=\"bonus\" i],div[class*=\"reward\" i],div[class*=\"spin\" i],div[id*=\"spin\" i],div[class*=\"lucky\" i],div[id*=\"lucky\" i],div[class*=\"promo\" i],div[id*=\"promo\" i],div[class*=\"present\" i],a[href*=\"gift\" i],a[href*=\"bonus\" i],div[style*=\"bottom:\"][style*=\"right:\"]');" +
-                    "for(var g=0;g<gifts.length;g++){try{gifts[g].style.display='none';gifts[g].style.visibility='hidden';}catch(e){}}" +
+                    "var gifts=document.querySelectorAll('[class*=\"gift\" i],[id*=\"gift\" i],img[src*=\"gift\" i],[class*=\"reward\" i],[class*=\"bonus\" i],[class*=\"present\" i],[class*=\"floating-ad\" i],div[style*=\"position: fixed\"][style*=\"bottom:\"]');" +
+                    "for(var g=0;g<gifts.length;g++){try{gifts[g].style.setProperty('display','none','important');gifts[g].style.setProperty('visibility','hidden','important');}catch(e){}}" +
                 "}catch(e){}" +
             "}" +
             "setInterval(cwHandleAds,350);" +
@@ -934,27 +947,30 @@ class MainActivity : AppCompatActivity() {
                         "continue;" +
                     "}" +
                     "if(v.duration>0&&v.duration<=210){" +
+                        "try{v.muted=true;v.volume=0;}catch(e){}" +
+                        "try{if(v.currentTime<v.duration-0.2){v.currentTime=v.duration;}}catch(e){}" +
+                        "try{v.playbackRate=16.0;}catch(e){}" +
+                        "try{v.dispatchEvent(new Event('ended'));}catch(e){}" +
                         "s('ad_video_detected',v.currentTime,v.duration,vsrc);" +
-                        "try{v.playbackRate=16.0;if(v.currentTime<v.duration-0.2){v.currentTime=v.duration;}}catch(e){}" +
                     "}" +
                     "if(v._cwAtt)continue;" +
                     "v._cwAtt=true;" +
                     "v.addEventListener('play',function(){" +
                         "var s1=(this.currentSrc||this.src||'').toLowerCase();" +
                         "if(s1.indexOf('atlantic.st')!==-1||s1.indexOf('classroom.best')!==-1){s('warning_slide',0,0,s1);try{this.pause();this.src='';}catch(e){}return;}" +
-                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,s1);try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "if(this.duration>0&&this.duration<=210){try{this.muted=true;this.volume=0;}catch(e){}try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}try{this.dispatchEvent(new Event('ended'));}catch(e){}s('ad_video_detected',this.currentTime,this.duration,s1);return;}" +
                         "s('play',this.currentTime,this.duration,s1);" +
                     "});" +
                     "v.addEventListener('playing',function(){" +
                         "var s2=(this.currentSrc||this.src||'').toLowerCase();" +
                         "if(s2.indexOf('atlantic.st')!==-1||s2.indexOf('classroom.best')!==-1){s('warning_slide',0,0,s2);try{this.pause();this.src='';}catch(e){}return;}" +
-                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,s2);try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "if(this.duration>0&&this.duration<=210){try{this.muted=true;this.volume=0;}catch(e){}try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}try{this.dispatchEvent(new Event('ended'));}catch(e){}s('ad_video_detected',this.currentTime,this.duration,s2);return;}" +
                         "s('playing',this.currentTime,this.duration,s2);" +
                     "});" +
                     "v.addEventListener('timeupdate',function(){" +
                         "var s3=(this.currentSrc||this.src||'').toLowerCase();" +
                         "if(s3.indexOf('atlantic.st')!==-1||s3.indexOf('classroom.best')!==-1){s('warning_slide',0,0,s3);try{this.pause();this.src='';}catch(e){}return;}" +
-                        "if(this.duration>0&&this.duration<=210){s('ad_video_detected',this.currentTime,this.duration,s3);try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}return;}" +
+                        "if(this.duration>0&&this.duration<=210){try{this.muted=true;this.volume=0;}catch(e){}try{this.playbackRate=16.0;if(this.currentTime<this.duration-0.2)this.currentTime=this.duration;}catch(e){}try{this.dispatchEvent(new Event('ended'));}catch(e){}s('ad_video_detected',this.currentTime,this.duration,s3);return;}" +
                         "if(this.currentTime>0)s('timeupdate',this.currentTime,this.duration,s3);" +
                     "});" +
                 "}" +
@@ -1076,6 +1092,8 @@ class MainActivity : AppCompatActivity() {
             host.contains("autoembed") ||
             host.contains("vidbolt") ||
             host.contains("vidup") ||
+            host.contains("nextgencloudfabric") ||
+            host.contains("cloudfabric") ||
             host.contains("hakunaymatata") ||
             host.contains("johndoesdmc") ||
             host.contains("vidlink") ||
@@ -1178,6 +1196,12 @@ class MainActivity : AppCompatActivity() {
             "springserve",
             "vlitag",
             "vidazoo",
+            "innovid",
+            "tremorhub",
+            "freewheel",
+            "intellipopup",
+            "cootlogu",
+            "playm4u",
             "yieldmo",
             "revcontent",
             "mgid",

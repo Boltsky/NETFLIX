@@ -1,16 +1,17 @@
 {
-  "versionCode": 25,
-  "versionName": "1.4.2",
+  "versionCode": 26,
+  "versionName": "1.4.3",
   "commitHash": "latest",
-  "releaseDate": "2026-11-13",
+  "releaseDate": "2026-11-16",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.2",
+  "title": "Netflix TV v1.4.3",
   "changelog": [
-    "Fixed binary media stream corruption by removing UTF-8 encoding in WebResourceResponse",
-    "Enabled CORS credentials and exposed range headers for direct MP4 playback",
-    "Added instant detection and skip for dead video slides (atlantic.st, classroom.best)",
-    "Suppressed floating ad badges and enhanced ad video skip automation"
+    "Eliminated CTV video ads on Android TV by standardizing Desktop Chrome User-Agent across devices",
+    "Fixed Next.js SSR hydration exception on AutoEmbed server",
+    "Removed false-positive disable-devtool dead-stream trigger causing rapid server cycling",
+    "Added instant audio muting and hardware-safe auto-skip for pre-roll video ads",
+    "Enhanced FrameX backup player stability and suppressed floating gift badges"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",
