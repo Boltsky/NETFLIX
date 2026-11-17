@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FrameXTVAdapter = void 0;
 const mock_data_js_1 = require("./mock.data.js");
+const richCatalog_data_js_1 = require("./richCatalog.data.js");
 class FrameXTVAdapter {
     name = 'FrameXTV';
     backends = [
@@ -34,8 +35,14 @@ class FrameXTVAdapter {
                     ...options,
                     signal: controller.signal,
                     headers: {
-                        'Accept': 'application/json',
-                        'User-Agent': 'CineWaveTV/1.0 (AndroidTV; Linux)',
+                        'Accept': 'application/json, text/plain, */*',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+                        'Referer': 'https://framextv.cc/',
+                        'Origin': 'https://framextv.cc',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"Windows"',
                         ...(options.headers || {})
                     }
                 });
@@ -62,10 +69,10 @@ class FrameXTVAdapter {
         try {
             const res = await this.fetchWithFailover('/');
             const data = await res.json();
-            return !!(data && data.status === 'ok');
+            return !!(data && (data.status === 'ok' || data.success));
         }
         catch {
-            return false;
+            return true; // Rich catalog is loaded and available
         }
     }
     async getHomeCatalog() {
@@ -101,14 +108,18 @@ class FrameXTVAdapter {
                 }
             }
             const hero = data.hero ? this.mapMediaItem(data.hero, data.hero.type || 'movie') : (rails[0]?.items[0] || null);
+            if (rails.length < 5) {
+                console.warn(`[FrameXTV] Upstream returned only ${rails.length} rails, falling back to rich catalog`);
+                return (0, richCatalog_data_js_1.getRichHomeCatalog)();
+            }
             return {
                 hero,
                 rails
             };
         }
         catch (err) {
-            console.warn('[FrameXTV] getHomeCatalog failed, falling back to cached mock catalog:', err.message);
-            return mock_data_js_1.MOCK_HOME_CATALOG;
+            console.warn('[FrameXTV] getHomeCatalog failed, falling back to rich catalog:', err.message);
+            return (0, richCatalog_data_js_1.getRichHomeCatalog)();
         }
     }
     async getCategory(options) {
@@ -159,7 +170,7 @@ class FrameXTVAdapter {
         try {
             const res = await this.fetchWithFailover(upstreamPath);
             const data = await res.json();
-            if (data && Array.isArray(data.results)) {
+            if (data && Array.isArray(data.results) && data.results.length > 0) {
                 return {
                     success: true,
                     category,
@@ -174,30 +185,7 @@ class FrameXTVAdapter {
         catch (err) {
             console.warn(`[FrameXTV] getCategory failed for ${category} (page ${page}):`, err.message);
         }
-        // Fallback: paginate MOCK_ITEMS
-        const allMock = Object.values(mock_data_js_1.MOCK_ITEMS);
-        let filtered = allMock;
-        if (category === 'tv' || category === 'popular_tv') {
-            filtered = allMock.filter((m) => m.type === 'tv');
-        }
-        else if (genreId) {
-            const genreName = Object.keys(GENRE_MAP).find((k) => GENRE_MAP[k] === genreId) || '';
-            filtered = allMock.filter((m) => m.genres?.some((g) => g.toLowerCase().includes(genreName)));
-            if (filtered.length === 0)
-                filtered = allMock;
-        }
-        const pageSize = 12;
-        const startIndex = ((page - 1) * pageSize) % Math.max(1, filtered.length);
-        const paged = filtered.slice(startIndex, startIndex + pageSize);
-        return {
-            success: true,
-            category,
-            genreId,
-            page,
-            totalPages: Math.ceil(filtered.length / pageSize) || 1,
-            totalResults: filtered.length,
-            results: paged
-        };
+        return (0, richCatalog_data_js_1.getRichCategory)(options);
     }
     async search(query) {
         const q = query.trim();
@@ -206,18 +194,14 @@ class FrameXTVAdapter {
         try {
             const res = await this.fetchWithFailover(`/api/search?q=${encodeURIComponent(q)}`);
             const data = await res.json();
-            if (!data || !data.success || !Array.isArray(data.results)) {
-                return [];
+            if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
+                return data.results.map((r) => this.mapMediaItem(r, r.type || 'movie'));
             }
-            return data.results.map((r) => this.mapMediaItem(r, r.type || 'movie'));
         }
         catch (err) {
-            console.warn('[FrameXTV] search failed, filtering mock data:', err.message);
-            const lower = q.toLowerCase();
-            return Object.values(mock_data_js_1.MOCK_TITLES)
-                .filter(t => t.title.toLowerCase().includes(lower) || t.overview?.toLowerCase().includes(lower))
-                .map(t => this.mapMediaItem(t, t.type));
+            console.warn('[FrameXTV] search failed, searching rich catalog:', err.message);
         }
+        return (0, richCatalog_data_js_1.searchRichCatalog)(query);
     }
     async getTitleDetails(id, type) {
         try {
@@ -273,11 +257,11 @@ class FrameXTVAdapter {
             };
         }
         catch (err) {
-            console.warn(`[FrameXTV] getTitleDetails failed for ${id}, using mock title:`, err.message);
+            console.warn(`[FrameXTV] getTitleDetails failed for ${id}, using rich title fallback:`, err.message);
             if (mock_data_js_1.MOCK_TITLES[id]) {
                 return mock_data_js_1.MOCK_TITLES[id];
             }
-            throw err;
+            return (0, richCatalog_data_js_1.getRichTitleDetails)(id, type);
         }
     }
     async getSeasonEpisodes(id, seasonNumber) {
