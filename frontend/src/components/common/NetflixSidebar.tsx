@@ -88,16 +88,16 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
     <>
       {/* Background glass scrim when sidebar is expanded */}
       <div
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 pointer-events-none ${
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 pointer-events-none hidden md:block ${
           isExpanded ? 'opacity-100' : 'opacity-0'
         }`}
       />
 
-      {/* Netflix Left Sidebar Drawer */}
+      {/* Netflix Left Sidebar Drawer (Tablets, Laptops & TV D-Pad) */}
       <aside
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className={`fixed top-0 left-0 bottom-0 z-50 bg-gradient-to-r from-black via-black/95 to-black/80 border-r border-white/5 transition-all duration-300 flex flex-col justify-between py-6 select-none ${
+        className={`fixed top-0 left-0 bottom-0 z-50 bg-gradient-to-r from-black via-black/95 to-black/80 border-r border-white/5 transition-all duration-300 hidden md:flex flex-col justify-between py-6 select-none ${
           isExpanded ? 'w-64 shadow-2xl' : 'w-18'
         }`}
       >

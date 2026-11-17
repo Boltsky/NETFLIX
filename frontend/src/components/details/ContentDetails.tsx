@@ -93,7 +93,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   const backdropUrl = details.backdrop || details.poster;
 
   return (
-    <div className="relative min-h-screen bg-[#141414] text-white pb-24 select-none pl-24 pr-12">
+    <div className="relative min-h-screen bg-[#141414] text-white pb-24 select-none px-4 sm:px-8 md:pl-24 md:pr-12">
       {/* Background Backdrop with Scrims */}
       <div
         className="fixed inset-0 bg-cover bg-center opacity-30 pointer-events-none"
@@ -102,26 +102,26 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
       <div className="fixed inset-0 bg-gradient-to-b from-[#141414]/70 via-[#141414]/90 to-[#141414] pointer-events-none" />
 
       {/* Top Bar with Back Button */}
-      <div className="relative z-30 pt-8 flex items-center justify-between">
+      <div className="relative z-30 pt-6 sm:pt-8 flex items-center justify-between">
         <BackButton onBack={onBack} />
         {/* Netflix Red Logo */}
         <div className="flex items-center space-x-2">
-          <svg viewBox="0 0 100 160" width="20" height="28" className="w-5 h-7 filter drop-shadow">
+          <svg viewBox="0 0 100 160" width="20" height="28" className="w-4.5 h-6 sm:w-5 sm:h-7 filter drop-shadow">
             <path d="M0 0h34v160H0z" fill="#B81D24" />
             <path d="M66 0h34v160H66z" fill="#B81D24" />
             <path d="M0 0h34l66 160H66z" fill="#E50914" />
           </svg>
-          <span className="text-xs font-black tracking-widest text-zinc-400 font-sans uppercase">
+          <span className="text-[10px] sm:text-xs font-black tracking-widest text-zinc-400 font-sans uppercase">
             {details.type === 'tv' ? 'NETFLIX SERIES' : 'NETFLIX FILM'}
           </span>
         </div>
       </div>
 
       {/* Main Content Layout */}
-      <div className="relative z-20 pt-8 max-w-5xl space-y-8">
+      <div className="relative z-20 pt-6 sm:pt-8 max-w-5xl space-y-6 sm:space-y-8">
         {/* Header Hero Area */}
-        <div className="space-y-4 max-w-3xl">
-          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">
+        <div className="space-y-3.5 sm:space-y-4 max-w-3xl">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight">
             {details.title}
           </h1>
 
@@ -265,7 +265,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
                 {details.recommendations.length} Recommendations
               </span>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
               {details.recommendations.slice(0, 12).map((rec, idx) => (
                 <MoreLikeThisCard
                   key={`rec-${rec.id}-${idx}`}

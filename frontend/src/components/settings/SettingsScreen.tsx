@@ -161,25 +161,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white flex flex-col pl-20 pr-10 py-10">
+    <div className="min-h-screen bg-[#141414] text-white flex flex-col px-4 sm:px-6 md:pl-20 md:pr-10 py-6 sm:py-10 pb-24 md:pb-10">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-6 border-b border-zinc-800 mb-8">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-wrap items-center justify-between pb-4 sm:pb-6 border-b border-zinc-800 mb-6 sm:mb-8 gap-3">
+        <div className="flex items-center space-x-3 sm:space-x-4">
           <SettingsBackButton onBack={onBack} />
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-white">Settings</h1>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Settings</h1>
             <p className="text-xs text-zinc-400 mt-0.5">Customize playback, subtitles, and system updates</p>
           </div>
         </div>
-        <div className="text-xs font-mono text-zinc-500">
+        <div className="text-[11px] sm:text-xs font-mono text-zinc-500">
           Build v{CURRENT_APP_VERSION.versionName} ({CURRENT_APP_VERSION.commitHash})
         </div>
       </div>
 
-      {/* 2-Pane TV Layout */}
-      <div className="flex-1 grid grid-cols-12 gap-8">
-        {/* Left Pane: Categories */}
-        <div className="col-span-4 lg:col-span-3 flex flex-col space-y-2 border-r border-zinc-800/80 pr-6">
+      {/* 2-Pane Responsive Layout (Stacked on mobile, 2-pane on tablet/desktop/TV) */}
+      <div className="flex-1 flex flex-col md:grid md:grid-cols-12 gap-6 md:gap-8">
+        {/* Left/Top Pane: Categories */}
+        <div className="flex flex-row md:flex-col overflow-x-auto no-scrollbar space-x-2 md:space-x-0 md:space-y-2 border-b md:border-b-0 md:border-r border-zinc-800/80 pb-3 md:pb-0 md:pr-6 col-span-12 md:col-span-4 lg:col-span-3">
           {categories.map((cat) => (
             <CategoryTab
               key={cat.id}
@@ -192,8 +192,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
           ))}
         </div>
 
-        {/* Right Pane: Configuration Content */}
-        <div className="col-span-8 lg:col-span-9 pl-4 overflow-y-auto max-h-[75vh]">
+        {/* Right/Content Pane: Configuration Content */}
+        <div className="col-span-12 md:col-span-8 lg:col-span-9 md:pl-4 overflow-y-auto max-h-[75vh]">
           {/* CATEGORY 1: UPDATES */}
           {activeCategory === 'updates' && (
             <div className="space-y-6 animate-fadeIn">

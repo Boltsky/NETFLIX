@@ -31,7 +31,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   const backdropUrl = item.backdrop || item.poster || 'https://image.tmdb.org/t/p/w1280/hZkgoQYus5vegHoetLkCJzb17zJ.jpg';
 
   return (
-    <div className="relative w-full h-[75vh] min-h-[500px] max-h-[760px] overflow-hidden select-none pl-18">
+    <div className="relative w-full h-[62vh] sm:h-[70vh] md:h-[75vh] min-h-[420px] sm:min-h-[460px] md:min-h-[500px] max-h-[760px] overflow-hidden select-none md:pl-18 pl-0">
       {/* Cinematic Backdrop Image */}
       <div
         className="absolute inset-0 bg-cover bg-center transition-all duration-700"
@@ -39,36 +39,36 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       >
         {/* Netflix Multi-Layered Dark Vignette Scrims */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/70 to-transparent w-3/4" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/70 to-transparent w-full md:w-3/4" />
       </div>
 
       {/* Hero Content */}
-      <div className="relative h-full flex flex-col justify-end pb-16 px-12 max-w-3xl space-y-3.5 z-10">
+      <div className="relative h-full flex flex-col justify-end pb-10 sm:pb-14 md:pb-16 px-4 sm:px-8 md:px-12 max-w-3xl space-y-2.5 sm:space-y-3.5 z-10">
         {/* Netflix Series / Film Prefix */}
         <div className="flex items-center space-x-2">
           {/* Netflix Red "N" */}
-          <svg viewBox="0 0 100 160" width="16" height="24" className="w-4 h-6 filter drop-shadow">
+          <svg viewBox="0 0 100 160" width="16" height="24" className="w-3.5 h-5 sm:w-4 sm:h-6 filter drop-shadow">
             <path d="M0 0h34v160H0z" fill="#B81D24" />
             <path d="M66 0h34v160H66z" fill="#B81D24" />
             <path d="M0 0h34l66 160H66z" fill="#E50914" />
           </svg>
-          <span className="text-xs font-black tracking-[0.25em] text-zinc-300 font-sans uppercase">
+          <span className="text-[10px] sm:text-xs font-black tracking-[0.25em] text-zinc-300 font-sans uppercase">
             {item.type === 'tv' ? 'S E R I E S' : 'F I L M'}
           </span>
         </div>
 
         {/* Title */}
-        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight drop-shadow-lg line-clamp-2">
+        <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight drop-shadow-lg line-clamp-2">
           {item.title}
         </h1>
 
         {/* Netflix Official Top 10 Badge & Metadata Bar */}
-        <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-white">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] sm:text-xs font-bold text-white">
           {/* Top 10 Red Badge */}
-          <div className="flex items-center space-x-2 bg-gradient-to-r from-[#B81D24] to-[#E50914] px-2 py-0.5 rounded-[2px] shadow">
-            <span className="text-[10px] font-black tracking-tight text-white uppercase">TOP 10</span>
+          <div className="flex items-center space-x-2 bg-gradient-to-r from-[#B81D24] to-[#E50914] px-1.5 sm:px-2 py-0.5 rounded-[2px] shadow">
+            <span className="text-[9px] sm:text-[10px] font-black tracking-tight text-white uppercase">TOP 10</span>
           </div>
-          <span className="text-white text-xs font-bold tracking-tight">
+          <span className="text-white text-[11px] sm:text-xs font-bold tracking-tight">
             #1 in {item.type === 'tv' ? 'TV Shows' : 'Movies'} Today
           </span>
 
@@ -90,12 +90,12 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
         </div>
 
         {/* Overview */}
-        <p className="text-zinc-200 text-sm md:text-base leading-relaxed line-clamp-3 max-w-2xl text-shadow font-normal">
+        <p className="text-zinc-200 text-xs sm:text-sm md:text-base leading-relaxed line-clamp-2 sm:line-clamp-3 max-w-2xl text-shadow font-normal">
           {item.overview || 'Watch this acclaimed Netflix release in Ultra HD streaming now.'}
         </p>
 
         {/* Netflix White Pill Play Button & Translucent More Info Button */}
-        <div className="flex items-center space-x-4 pt-2">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 pt-1 sm:pt-2">
           <NetflixPlayButton
             focusKey="hero-play"
             label={hasProgress ? 'Resume' : 'Play'}

@@ -32,7 +32,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle,
   }, [profileId]);
 
   return (
-    <div className="pt-24 pb-20 tv-safe-container min-h-screen text-white select-none space-y-6">
+    <div className="pt-20 sm:pt-24 pb-24 min-h-screen text-white select-none px-4 sm:px-6 md:px-12 space-y-6">
       {/* Header */}
       <div className="flex items-center space-x-3 border-b border-zinc-800 pb-4">
         <Bookmark className="w-6 h-6 text-red-600" />
@@ -48,7 +48,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectTitle,
           <p className="text-xs font-mono text-zinc-500">Loading your saved titles...</p>
         </div>
       ) : items.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
           {items.map((item, idx) => (
             <WatchlistCard
               key={`watchlist-${item.contentId}-${idx}`}

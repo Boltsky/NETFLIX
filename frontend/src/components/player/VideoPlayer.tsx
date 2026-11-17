@@ -1471,28 +1471,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Netflix TV OSD Controls Overlay */}
       <div
-        className={`absolute inset-0 z-30 transition-opacity duration-300 pointer-events-none flex flex-col justify-between p-10 ${
+        className={`absolute inset-0 z-30 transition-opacity duration-300 pointer-events-none flex flex-col justify-between p-3 sm:p-6 md:p-10 ${
           showControls && !isCursorMode ? 'opacity-100 bg-gradient-to-t from-black/90 via-transparent to-black/80' : 'opacity-0'
         }`}
       >
         {/* Top Header */}
         <div className={`flex items-center justify-between ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2.5 sm:space-x-4">
             <button
               onClick={handleExit}
-              className={`p-2.5 rounded-full transition-all ${
+              className={`p-2 sm:p-2.5 rounded-full transition-all ${
                 focusedControl === 'back'
                   ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
                   : 'hover:bg-white/10 text-white'
               }`}
               title="Exit (Back)"
             >
-              <ArrowLeft className={`w-6 h-6 ${focusedControl === 'back' ? 'text-black' : 'text-white'}`} />
+              <ArrowLeft className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'back' ? 'text-black' : 'text-white'}`} />
             </button>
             <div>
-              <h2 className="text-2xl font-black text-white drop-shadow tracking-tight">{item.title}</h2>
+              <h2 className="text-base sm:text-xl md:text-2xl font-black text-white drop-shadow tracking-tight truncate max-w-[200px] sm:max-w-md md:max-w-none">{item.title}</h2>
               {isEpisodic && effectiveSeason && effectiveEpisode && (
-                <p className="text-xs font-bold text-zinc-300">
+                <p className="text-[11px] sm:text-xs font-bold text-zinc-300">
                   S{effectiveSeason}:E{effectiveEpisode}
                 </p>
               )}
@@ -1715,18 +1715,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Audio, Subtitles & Servers Modal Dialog */}
       {showAudioSubtitleModal && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 animate-fadeIn">
-          <div className="bg-[#181818] border border-zinc-700 rounded-lg max-w-2xl w-full p-8 shadow-2xl relative">
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 md:p-8 animate-fadeIn">
+          <div className="bg-[#181818] border border-zinc-700 rounded-lg max-w-2xl w-full p-4 sm:p-6 md:p-8 shadow-2xl relative max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setShowAudioSubtitleModal(false)}
-              className="absolute top-6 right-6 text-zinc-400 hover:text-white"
+              className="absolute top-4 right-4 sm:top-6 sm:right-6 text-zinc-400 hover:text-white"
             >
               <X className="w-6 h-6" />
             </button>
 
-            <h3 className="text-xl font-bold text-white mb-6">Audio, Subtitles & Servers</h3>
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-6">Audio, Subtitles & Servers</h3>
 
-            <div className="grid grid-cols-3 gap-6 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-sm">
               {/* Column 1: Audio */}
               <div className="space-y-3">
                 <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${modalCol === 0 ? 'text-white' : 'text-zinc-400'}`}>

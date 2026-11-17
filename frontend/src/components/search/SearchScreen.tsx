@@ -143,6 +143,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<string[]>(() => getSearchHistory(profileId));
+  const [showMobileKeyboard, setShowMobileKeyboard] = useState(false);
   const { moveFocus, setFocusedKey } = useFocus();
 
   // Reload history when profile changes
@@ -245,21 +246,20 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
   }, [query, profileId, onSelectCardFocus, onSelectTitle]);
 
   return (
-    <div className="pt-20 pb-16 min-h-screen text-white select-none px-6">
-      <div className="flex flex-row items-start gap-8 w-full">
+    <div className="pt-16 sm:pt-20 pb-16 min-h-screen text-white select-none px-4 sm:px-6">
+      <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-8 w-full">
         {/* Left Column: TV Keyboard & Search Input Aside */}
-        <div className="w-[360px] flex-shrink-0 space-y-4">
-          {/* Search Input Box */}
-          <div className="flex items-center space-x-3 bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-3 shadow-inner">
+        <div className="w-full lg:w-[360px] flex-shrink-0 space-y-4">
+          {/* Search Input Box (Supports native touch/mobile keyboard, physical typing, and TV remote) */}
+          <div className="flex items-center space-x-3 bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2.5 sm:py-3 shadow-inner">
             <SearchIcon className="w-5 h-5 text-[#E50914] shrink-0" />
-            <div className="w-full bg-transparent text-white font-medium text-sm flex items-center overflow-hidden h-5 select-none">
-              {query ? (
-                <span className="truncate">{query}</span>
-              ) : (
-                <span className="text-zinc-500 truncate">Search movies, series, genres...</span>
-              )}
-              <span className="w-0.5 h-4 bg-[#E50914] ml-0.5 shrink-0 animate-pulse" />
-            </div>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder="Search movies, series, genres..."
+              className="w-full bg-transparent text-white font-medium text-sm focus:outline-none placeholder:text-zinc-500"
+            />
             {query && (
               <button
                 tabIndex={-1}
@@ -300,26 +300,38 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
             </div>
           )}
 
-          {/* Android TV QWERTY Keyboard */}
-          <div className="bg-[#141414] border border-zinc-800 rounded-2xl p-2.5 shadow-2xl space-y-1.5">
-            {QWERTY_ROWS.map((row, rowIndex) => (
-              <div key={`qwerty-row-${rowIndex}`} className="flex space-x-1 justify-center">
-                {row.map((item) => (
-                  <KeyButton
-                    key={`kb-${item.key}`}
-                    char={item.key}
-                    label={item.label}
-                    spanClass={item.spanClass}
-                    onPress={() => handleKeyPress(item.key)}
-                  />
-                ))}
-              </div>
-            ))}
+          {/* Android TV QWERTY Keyboard (Always on TV/Desktop, collapsible on Mobile) */}
+          <div className="space-y-2">
+            <div className="lg:hidden flex items-center justify-between text-xs text-zinc-400 px-1">
+              <span>TV Remote On-Screen Keyboard</span>
+              <button
+                type="button"
+                onClick={() => setShowMobileKeyboard((prev) => !prev)}
+                className="text-[#E50914] text-xs font-bold hover:underline"
+              >
+                {showMobileKeyboard ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <div className={`${showMobileKeyboard ? 'block' : 'hidden lg:block'} bg-[#141414] border border-zinc-800 rounded-2xl p-2.5 shadow-2xl space-y-1.5`}>
+              {QWERTY_ROWS.map((row, rowIndex) => (
+                <div key={`qwerty-row-${rowIndex}`} className="flex space-x-1 justify-center">
+                  {row.map((item) => (
+                    <KeyButton
+                      key={`kb-${item.key}`}
+                      char={item.key}
+                      label={item.label}
+                      spanClass={item.spanClass}
+                      onPress={() => handleKeyPress(item.key)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Right Column: Search Results / Recent Searches / Recommendations (Always visible aside) */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex-1 min-w-0 w-full space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <h3 className="text-base font-bold text-zinc-200">
               {query ? `Results for "${query}"` : 'Browse Catalog & Recent Searches'}
@@ -336,7 +348,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
             </div>
           ) : results.length > 0 ? (
             /* Active Results Grid: Side-by-side multi-column poster cards */
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[calc(100vh-10rem)] overflow-y-auto no-scrollbar p-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[calc(100vh-10rem)] overflow-y-auto no-scrollbar p-1">
               {results.map((item, idx) => (
                 <SearchResultCard
                   key={`search-card-${item.id}`}

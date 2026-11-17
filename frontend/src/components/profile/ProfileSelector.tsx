@@ -173,7 +173,7 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
       )}
 
       {/* Profiles Row */}
-      <div className="flex items-center space-x-6 md:space-x-8 mb-16">
+      <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-8 mb-12 sm:mb-16 max-w-4xl px-4">
         {profiles.map((profile) => (
           <ProfileCard
             key={profile.id}
@@ -237,7 +237,7 @@ const ProfileCard: React.FC<{
       className="flex flex-col items-center space-y-3 cursor-pointer group tv-focusable relative"
     >
       <div
-        className={`w-28 h-28 md:w-36 md:h-36 rounded-md overflow-hidden flex items-center justify-center transition-all duration-200 border-2 relative ${
+        className={`w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-md overflow-hidden flex items-center justify-center transition-all duration-200 border-2 relative ${
           profile.avatarBg
         } ${
           isFocused
@@ -327,7 +327,7 @@ const AddProfileCard: React.FC<{ onAdd: () => void }> = ({ onAdd }) => {
       className="flex flex-col items-center space-y-3 cursor-pointer group tv-focusable"
     >
       <div
-        className={`w-28 h-28 md:w-36 md:h-36 rounded-md border-2 border-zinc-700 flex items-center justify-center bg-zinc-900 transition-all duration-200 ${
+        className={`w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-md border-2 border-zinc-700 flex items-center justify-center bg-zinc-900 transition-all duration-200 ${
           isFocused
             ? 'scale-110 border-white bg-zinc-800 shadow-2xl ring-4 ring-white/30'
             : 'opacity-70 hover:opacity-100'

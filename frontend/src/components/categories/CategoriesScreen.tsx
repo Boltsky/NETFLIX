@@ -155,7 +155,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitl
   }, [loadNextPage]);
 
   return (
-    <div className="relative min-h-screen bg-[#141414] text-white pl-22 pr-8 pt-4 pb-28 select-none">
+    <div className="relative min-h-screen bg-[#141414] text-white px-4 sm:px-6 md:pl-22 md:pr-8 pt-4 pb-28 select-none">
       {/* Category Header */}
       <div className="mb-6 space-y-2">
         <div className="flex items-center space-x-3">
@@ -165,9 +165,9 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitl
             {totalCount > 0 ? `${totalCount}+ Titles Available` : 'Continuous Catalog'}
           </span>
         </div>
-        <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white flex items-center space-x-3">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-white flex items-center space-x-3">
           <span>Categories & Genres</span>
-          <span className="text-lg md:text-xl font-normal text-zinc-400">({selectedCat.label})</span>
+          <span className="text-base sm:text-lg md:text-xl font-normal text-zinc-400">({selectedCat.label})</span>
         </h1>
       </div>
 
@@ -202,7 +202,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitl
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-6 gap-2.5 sm:gap-3">
             {items.map((item, index) => {
               // Trigger pre-fetch 10 items early (2 full rows before end)
               const isNearEnd = index >= Math.max(0, items.length - 10);

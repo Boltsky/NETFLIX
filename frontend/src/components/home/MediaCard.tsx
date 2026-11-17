@@ -45,10 +45,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           onNearEnd();
         }
       }}
-      className={`relative flex-shrink-0 w-32 md:w-36 lg:w-40 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 cursor-pointer tv-focusable transition-transform duration-150 will-change-transform scroll-mx-6 md:scroll-mx-8 ${
+      className={`relative flex-shrink-0 w-28 sm:w-32 md:w-36 lg:w-40 aspect-[2/3] rounded-[4px] overflow-hidden bg-zinc-900 cursor-pointer tv-focusable transition-all duration-200 will-change-transform scroll-mx-4 sm:scroll-mx-6 md:scroll-mx-8 ${
         isFocused
           ? 'scale-110 z-30 shadow-2xl border-2 border-white ring-2 ring-[#E50914]'
-          : 'border border-zinc-800/80'
+          : 'border border-zinc-800/80 hover:scale-105 hover:z-20 hover:shadow-xl hover:border-zinc-500'
       }`}
     >
       {/* Poster Image */}

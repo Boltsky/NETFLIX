@@ -3,6 +3,7 @@ import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem, CatalogRail } 
 import { api } from './services/api';
 import { FocusProvider, useFocus } from './components/focus/FocusContext';
 import { NetflixSidebar, NetflixNavTab } from './components/common/NetflixSidebar';
+import { NetflixMobileNav } from './components/common/NetflixMobileNav';
 import { ProfileSelector, NetflixProfile, BOLT_PROFILE } from './components/profile/ProfileSelector';
 import { HeroBanner } from './components/home/HeroBanner';
 import { ContentRail } from './components/home/ContentRail';
@@ -394,22 +395,38 @@ export const App: React.FC = () => {
           <ProfileSelector onSelectProfile={handleSelectProfile} />
         )}
 
-        {/* Netflix Left Sidebar Drawer (visible whenever logged in and not in full-screen player) */}
+        {/* Navigation (visible whenever logged in and not in full-screen player) */}
         {currentScreen !== 'profiles' && currentScreen !== 'player' && (
-          <NetflixSidebar
-            currentTab={
-              currentScreen === 'details'
-                ? (previousScreen as NetflixNavTab)
-                : (currentScreen as NetflixNavTab)
-            }
-            onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
-            activeProfile={activeProfile}
-            onSwitchProfile={() => setCurrentScreen('profiles')}
-            hasUpdate={Boolean(availableUpdate)}
-            onCheckUpdate={handleManualCheckUpdate}
-            onOpenSettings={() => setCurrentScreen('settings')}
-            isSettingsActive={currentScreen === 'settings'}
-          />
+          <>
+            {/* Desktop & TV Sidebar Drawer (Tablets, Laptops & TV D-Pad) */}
+            <NetflixSidebar
+              currentTab={
+                currentScreen === 'details'
+                  ? (previousScreen as NetflixNavTab)
+                  : (currentScreen as NetflixNavTab)
+              }
+              onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
+              activeProfile={activeProfile}
+              onSwitchProfile={() => setCurrentScreen('profiles')}
+              hasUpdate={Boolean(availableUpdate)}
+              onCheckUpdate={handleManualCheckUpdate}
+              onOpenSettings={() => setCurrentScreen('settings')}
+              isSettingsActive={currentScreen === 'settings'}
+            />
+
+            {/* Mobile Top & Bottom Navigation Bars (< 768px) */}
+            <NetflixMobileNav
+              currentTab={
+                currentScreen === 'details'
+                  ? (previousScreen as NetflixNavTab)
+                  : (currentScreen as NetflixNavTab)
+              }
+              onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
+              activeProfile={activeProfile}
+              onSwitchProfile={() => setCurrentScreen('profiles')}
+              onOpenSettings={() => setCurrentScreen('settings')}
+            />
+          </>
         )}
 
         {/* SCREEN 1: Netflix Video Player */}
@@ -439,7 +456,7 @@ export const App: React.FC = () => {
 
         {/* SCREEN 3: Netflix Search */}
         {currentScreen === 'search' && (
-          <div className="pl-18">
+          <div className="md:pl-18 pl-0 pb-16 md:pb-0">
             <SearchScreen
               query={searchQuery}
               onQueryChange={setSearchQuery}
@@ -455,7 +472,7 @@ export const App: React.FC = () => {
 
         {/* SCREEN 4: My List */}
         {currentScreen === 'watchlist' && (
-          <div className="pl-18">
+          <div className="md:pl-18 pl-0 pb-16 md:pb-0">
             <WatchlistScreen
               profileId={activeProfile.id}
               onSelectTitle={handleOpenDetails}
@@ -482,7 +499,7 @@ export const App: React.FC = () => {
           currentScreen === 'series' ||
           currentScreen === 'movies' ||
           currentScreen === 'popular') && (
-          <main className="pb-24">
+          <main className="pb-28 md:pb-24">
             {loading ? (
               <div className="h-[75vh] flex flex-col items-center justify-center space-y-4">
                 <div className="w-14 h-14 rounded-full border-4 border-[#E50914] border-t-transparent animate-spin" />
