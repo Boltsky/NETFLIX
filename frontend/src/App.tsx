@@ -159,51 +159,179 @@ export const App: React.FC = () => {
     api.getWatchlist(activeProfile.id).then(setWatchlist).catch(() => {});
   }, [activeProfile.id]);
 
-  // Global Back key handler
+  // History state model for browser and mobile device navigation
+  interface HistoryStateData {
+    screen: Screen;
+    item?: MediaItem;
+    season?: number;
+    episode?: number;
+    previousScreen?: Screen;
+  }
+
+  const isPopstateNavigatingRef = useRef(false);
+
+  // Navigate forward with history.pushState so mobile hardware/virtual back key works
+  const navigateTo = useCallback((screen: Screen, data?: { item?: MediaItem; season?: number; episode?: number }) => {
+    const prev = currentScreen !== 'details' && currentScreen !== 'player' ? currentScreen : previousScreen;
+
+    const nextState: HistoryStateData = {
+      screen,
+      item: data?.item || (screen === 'details' ? selectedTitle || undefined : undefined),
+      season: data?.season,
+      episode: data?.episode,
+      previousScreen: prev
+    };
+
+    let hash = `#/${screen}`;
+    if (screen === 'details' && data?.item) {
+      hash = `#/title/${data.item.id}`;
+      setSelectedTitle(data.item);
+      setPreviousScreen(prev);
+    } else if (screen === 'player' && data?.item) {
+      hash = `#/watch/${data.item.id}`;
+      const isEpisodic = data.item.type === 'tv' || data.item.type === 'anime';
+      setPlayerTarget({
+        item: data.item,
+        season: isEpisodic ? data.season : undefined,
+        episode: isEpisodic ? data.episode : undefined
+      });
+    }
+
+    try {
+      window.history.pushState(nextState, '', hash);
+    } catch (err) {
+      console.warn('[Navigation] pushState failed:', err);
+    }
+
+    setCurrentScreen(screen);
+  }, [currentScreen, previousScreen, selectedTitle]);
+
+  // Navigate back using browser history or safe fallback
+  const navigateBack = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.state && window.history.length > 1) {
+      window.history.back();
+    } else {
+      if (currentScreen === 'player') {
+        setPlayerTarget(null);
+        setCurrentScreen(selectedTitle ? 'details' : previousScreen);
+      } else if (currentScreen === 'details') {
+        setSelectedTitle(null);
+        setCurrentScreen(previousScreen);
+      } else if (currentScreen !== 'home') {
+        setCurrentScreen('home');
+      }
+    }
+  }, [currentScreen, previousScreen, selectedTitle]);
+
+  // Mobile Device Back Key & Browser Popstate Navigation Listener
+  useEffect(() => {
+    // 1. Establish initial root history state if null
+    if (!window.history.state) {
+      const initialHash = window.location.hash || '#/profiles';
+      window.history.replaceState({ screen: 'profiles' }, '', initialHash);
+    }
+
+    // 2. Parse initial hash on fresh load / direct link
+    const initialHash = window.location.hash;
+    if (initialHash && initialHash.startsWith('#/')) {
+      const route = initialHash.slice(2);
+      if (route.startsWith('title/')) {
+        const id = route.split('/')[1];
+        if (id) {
+          api.getTitleDetails(id, 'movie').then((item) => {
+            if (item) {
+              setSelectedTitle(item);
+              setCurrentScreen('details');
+              window.history.replaceState({ screen: 'details', item }, '', initialHash);
+            }
+          }).catch(() => {});
+        }
+      } else if (route.startsWith('watch/')) {
+        const id = route.split('/')[1];
+        if (id) {
+          api.getTitleDetails(id, 'movie').then((item) => {
+            if (item) {
+              setPlayerTarget({ item });
+              setCurrentScreen('player');
+              window.history.replaceState({ screen: 'player', item }, '', initialHash);
+            }
+          }).catch(() => {});
+        }
+      } else {
+        const validScreens: Screen[] = ['home', 'series', 'movies', 'popular', 'watchlist', 'categories', 'search', 'settings'];
+        if (validScreens.includes(route as Screen)) {
+          setCurrentScreen(route as Screen);
+          window.history.replaceState({ screen: route }, '', initialHash);
+        }
+      }
+    }
+
+    // 3. Popstate event listener: triggers whenever mobile phone back button is pressed
+    const handlePopState = (e: PopStateEvent) => {
+      isPopstateNavigatingRef.current = true;
+      const state: HistoryStateData | null = e.state;
+
+      if (!state || !state.screen) {
+        setPlayerTarget(null);
+        setSelectedTitle(null);
+        setCurrentScreen('home');
+        setTimeout(() => { isPopstateNavigatingRef.current = false; }, 50);
+        return;
+      }
+
+      if (state.screen === 'player' && state.item) {
+        setPlayerTarget({
+          item: state.item,
+          season: state.season,
+          episode: state.episode
+        });
+        setCurrentScreen('player');
+      } else if (state.screen === 'details' && state.item) {
+        setPlayerTarget(null);
+        setSelectedTitle(state.item);
+        setCurrentScreen('details');
+        if (state.previousScreen) {
+          setPreviousScreen(state.previousScreen);
+        }
+      } else {
+        setPlayerTarget(null);
+        setSelectedTitle(null);
+        setCurrentScreen(state.screen);
+      }
+
+      setTimeout(() => { isPopstateNavigatingRef.current = false; }, 50);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Global Back key handler (TV Remote D-Pad Escape/Back)
   useEffect(() => {
     const handleGlobalBack = (e: KeyboardEvent) => {
       if (e.key === 'Back' || e.key === 'Escape') {
         e.preventDefault();
         if (currentScreen === 'player') {
           // Handled inside VideoPlayer
-        } else if (currentScreen === 'details') {
-          setCurrentScreen(previousScreen);
-        } else if (
-          currentScreen === 'search' ||
-          currentScreen === 'watchlist' ||
-          currentScreen === 'series' ||
-          currentScreen === 'movies' ||
-          currentScreen === 'popular' ||
-          currentScreen === 'categories' ||
-          currentScreen === 'settings' ||
-          currentScreen === 'profiles'
-        ) {
-          setCurrentScreen('home');
+        } else {
+          navigateBack();
         }
       }
     };
 
     window.addEventListener('keydown', handleGlobalBack);
     return () => window.removeEventListener('keydown', handleGlobalBack);
-  }, [currentScreen, previousScreen]);
+  }, [currentScreen, navigateBack]);
 
   // Open Details Screen
-  const handleOpenDetails = (item: MediaItem) => {
-    setSelectedTitle(item);
-    setPreviousScreen(currentScreen);
-    setCurrentScreen('details');
-  };
+  const handleOpenDetails = useCallback((item: MediaItem) => {
+    navigateTo('details', { item });
+  }, [navigateTo]);
 
   // Launch Player
-  const handleLaunchPlayer = (item: MediaItem, season?: number, episode?: number) => {
-    const isEpisodic = item.type === 'tv' || item.type === 'anime';
-    setPlayerTarget({
-      item,
-      season: isEpisodic ? season : undefined,
-      episode: isEpisodic ? episode : undefined
-    });
-    setCurrentScreen('player');
-  };
+  const handleLaunchPlayer = useCallback((item: MediaItem, season?: number, episode?: number) => {
+    navigateTo('player', { item, season, episode });
+  }, [navigateTo]);
 
   useEffect(() => {
     (window as any).cinewavePlay = (id: string, title?: string, type: 'movie' | 'tv' = 'movie', season?: number, episode?: number) => {
@@ -217,14 +345,13 @@ export const App: React.FC = () => {
     return () => {
       delete (window as any).cinewavePlay;
     };
-  }, []);
+  }, [handleLaunchPlayer]);
 
   // Exit Player
-  const handleExitPlayer = () => {
-    setPlayerTarget(null);
-    setCurrentScreen(selectedTitle ? 'details' : previousScreen);
+  const handleExitPlayer = useCallback(() => {
     api.getProgress(activeProfile.id).then(setProgressList).catch(() => {});
-  };
+    navigateBack();
+  }, [activeProfile.id, navigateBack]);
 
   // Continuous horizontal rail pagination
   const [railPages, setRailPages] = useState<Record<string, number>>({});
@@ -380,6 +507,7 @@ export const App: React.FC = () => {
   // When profile is chosen
   const handleSelectProfile = (profile: NetflixProfile) => {
     setActiveProfile(profile);
+    window.history.replaceState({ screen: 'home' }, '', '#/home');
     setCurrentScreen('home');
   };
 
@@ -405,12 +533,12 @@ export const App: React.FC = () => {
                   ? (previousScreen as NetflixNavTab)
                   : (currentScreen as NetflixNavTab)
               }
-              onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
+              onSelectTab={(tab) => navigateTo(tab as Screen)}
               activeProfile={activeProfile}
-              onSwitchProfile={() => setCurrentScreen('profiles')}
+              onSwitchProfile={() => navigateTo('profiles')}
               hasUpdate={Boolean(availableUpdate)}
               onCheckUpdate={handleManualCheckUpdate}
-              onOpenSettings={() => setCurrentScreen('settings')}
+              onOpenSettings={() => navigateTo('settings')}
               isSettingsActive={currentScreen === 'settings'}
             />
 
@@ -421,10 +549,10 @@ export const App: React.FC = () => {
                   ? (previousScreen as NetflixNavTab)
                   : (currentScreen as NetflixNavTab)
               }
-              onSelectTab={(tab) => setCurrentScreen(tab as Screen)}
+              onSelectTab={(tab) => navigateTo(tab as Screen)}
               activeProfile={activeProfile}
-              onSwitchProfile={() => setCurrentScreen('profiles')}
-              onOpenSettings={() => setCurrentScreen('settings')}
+              onSwitchProfile={() => navigateTo('profiles')}
+              onOpenSettings={() => navigateTo('settings')}
             />
           </>
         )}
@@ -447,7 +575,7 @@ export const App: React.FC = () => {
             mediaType={selectedTitle.type}
             profileId={activeProfile.id}
             onPlay={handleLaunchPlayer}
-            onBack={() => setCurrentScreen(previousScreen)}
+            onBack={navigateBack}
             isInWatchlist={isInWatchlist(selectedTitle.id)}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectRelated={handleOpenDetails}
@@ -476,7 +604,7 @@ export const App: React.FC = () => {
             <WatchlistScreen
               profileId={activeProfile.id}
               onSelectTitle={handleOpenDetails}
-              onExplore={() => setCurrentScreen('home')}
+              onExplore={() => navigateTo('home')}
             />
           </div>
         )}
@@ -489,7 +617,7 @@ export const App: React.FC = () => {
         {/* SCREEN 6: Settings Screen */}
         {currentScreen === 'settings' && (
           <SettingsScreen
-            onBack={() => setCurrentScreen('home')}
+            onBack={navigateBack}
             onCheckUpdates={handleManualCheckUpdate}
           />
         )}

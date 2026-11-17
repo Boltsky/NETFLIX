@@ -10,6 +10,7 @@ import path from 'node:path';
 
 const projectRoot = path.resolve(__dirname, '../../../');
 const videoPlayerPath = path.resolve(__dirname, '../components/player/VideoPlayer.tsx');
+const appPath = path.resolve(__dirname, '../App.tsx');
 const mainActivityPath = path.resolve(projectRoot, 'android/app/src/main/java/com/cinewave/tv/MainActivity.kt');
 const apiPath = path.resolve(__dirname, '../services/api.ts');
 
@@ -704,6 +705,29 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(code).toContain('isPortrait');
       expect(code).toContain('isCssLandscape');
       expect(code).toMatch(/rotate\(90deg\)/);
+    });
+
+    it('verifies mobile history navigation and hardware back button handling', () => {
+      const appCode = fs.readFileSync(appPath, 'utf8');
+      const playerCode = fs.readFileSync(videoPlayerPath, 'utf8');
+
+      // 1. App.tsx history management and popstate handler
+      expect(appCode).toContain('interface HistoryStateData');
+      expect(appCode).toContain('navigateTo');
+      expect(appCode).toContain('navigateBack');
+      expect(appCode).toContain("window.addEventListener('popstate'");
+      expect(appCode).toContain('window.history.pushState');
+      expect(appCode).toMatch(/window\.history\.back\(\)/);
+
+      // 2. URL hash syncing across screens
+      expect(appCode).toMatch(/#\/\$\{screen\}/);
+      expect(appCode).toMatch(/#\/title\/\$\{/);
+      expect(appCode).toMatch(/#\/watch\/\$\{/);
+      expect(appCode).toMatch(/#\/profiles/);
+
+      // 3. VideoPlayer fullscreen history push and popstate trapping
+      expect(playerCode).toMatch(/window\.history\.pushState\(\s*\{[\s\S]*isFullscreen:\s*true/);
+      expect(playerCode).toMatch(/window\.addEventListener\(['"]popstate['"]/);
     });
   });
 });

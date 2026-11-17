@@ -274,6 +274,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const scrubberRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
+  const isFsHistoryPushedRef = useRef(false);
+  const isHandlingPopRef = useRef(false);
 
   // Screen orientation tracking (portrait vs landscape)
   const [isPortrait, setIsPortrait] = useState(() => {
@@ -378,10 +380,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!enteredNative) {
           setIsFallbackFullscreen(true);
         }
+
+        if (typeof window !== 'undefined' && window.history.state) {
+          try {
+            window.history.pushState({ ...(window.history.state || {}), isFullscreen: true }, '', window.location.hash);
+            isFsHistoryPushedRef.current = true;
+          } catch {}
+        }
       } else {
         unlockScreenOrientation();
         setIsFallbackFullscreen(false);
         setIsFullscreen(false);
+
+        if (isFsHistoryPushedRef.current && !isHandlingPopRef.current) {
+          isFsHistoryPushedRef.current = false;
+          window.history.back();
+        }
 
         try {
           if (doc.exitFullscreen) {
@@ -439,6 +453,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       unlockScreenOrientation();
     };
   }, [isFallbackFullscreen, lockLandscapeOrientation, unlockScreenOrientation]);
+
+  // Mobile Back Key Handler for Fullscreen & Modals
+  useEffect(() => {
+    const handlePlayerPopState = () => {
+      if (showAudioSubtitleModalRef.current) {
+        setShowAudioSubtitleModal(false);
+        return;
+      }
+      if (isFullscreen) {
+        isHandlingPopRef.current = true;
+        isFsHistoryPushedRef.current = false;
+        toggleFullscreen();
+        setTimeout(() => { isHandlingPopRef.current = false; }, 100);
+      }
+    };
+
+    window.addEventListener('popstate', handlePlayerPopState);
+    return () => window.removeEventListener('popstate', handlePlayerPopState);
+  }, [isFullscreen, toggleFullscreen]);
 
   // Save viewing progress
   const saveCurrentProgress = useCallback((posSec: number, durSec: number) => {
