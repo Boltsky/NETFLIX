@@ -24,7 +24,11 @@ import {
   PlayCircle,
   User,
   UserCheck,
-  Search
+  Search,
+  Settings,
+  Mail,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { AnalyticsStats } from '../../types';
@@ -57,6 +61,93 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
   // User Directory Filter State
   const [userSearch, setUserSearch] = useState('');
   const [userFilter, setUserFilter] = useState<'all' | 'active' | 'watched'>('all');
+
+  // Admin Account Settings Modal State
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountEmail, setAccountEmail] = useState('');
+  const [accountUsername, setAccountUsername] = useState('');
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountSuccessMsg, setAccountSuccessMsg] = useState<string | null>(null);
+  const [accountErrorMsg, setAccountErrorMsg] = useState<string | null>(null);
+  const [accountLastUpdated, setAccountLastUpdated] = useState<string | null>(null);
+
+  const fetchAccountDetails = useCallback(async () => {
+    setAccountLoading(true);
+    setAccountErrorMsg(null);
+    setAccountSuccessMsg(null);
+    try {
+      const data = await api.getAdminAccount();
+      if (data) {
+        setAccountEmail(data.email || '');
+        setAccountUsername(data.username || '');
+        setAccountLastUpdated(data.lastUpdated || null);
+      }
+    } catch (err: any) {
+      console.warn('Failed to load admin account', err);
+    } finally {
+      setAccountLoading(false);
+    }
+  }, []);
+
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAccountErrorMsg(null);
+    setAccountSuccessMsg(null);
+
+    // If attempting to change password
+    if (newPwd.trim() || confirmPwd.trim() || currentPwd.trim()) {
+      if (!currentPwd.trim()) {
+        setAccountErrorMsg('Please enter your current master password to authorize changes.');
+        return;
+      }
+      if (newPwd.trim().length < 4) {
+        setAccountErrorMsg('New password must be at least 4 characters long.');
+        return;
+      }
+      if (newPwd !== confirmPwd) {
+        setAccountErrorMsg('New password and confirmation password do not match.');
+        return;
+      }
+    }
+
+    setAccountSaving(true);
+    try {
+      const payload: any = {
+        email: accountEmail.trim(),
+        username: accountUsername.trim()
+      };
+      if (newPwd.trim()) {
+        payload.currentPassword = currentPwd.trim();
+        payload.newPassword = newPwd.trim();
+      }
+
+      const res = await api.updateAdminAccount(payload);
+      if (res.success) {
+        setAccountSuccessMsg(res.message || 'Account settings and master password successfully updated!');
+        if (res.token) {
+          // Keep session synchronized so dashboard continues working with new password
+          sessionStorage.setItem('cinewave_analytics_token', res.token);
+        }
+        setCurrentPwd('');
+        setNewPwd('');
+        setConfirmPwd('');
+        await fetchAccountDetails();
+      } else {
+        setAccountErrorMsg(res.error || 'Failed to update administrator account.');
+      }
+    } catch (err: any) {
+      setAccountErrorMsg(err.message || 'Network error updating account settings.');
+    } finally {
+      setAccountSaving(false);
+    }
+  };
 
   const fetchStats = useCallback(async (isManual = false, token?: string) => {
     if (isManual) setRefreshing(true);
@@ -312,6 +403,17 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
           >
             <RotateCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-[#E50914]' : ''}`} />
             <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+          <button
+            onClick={() => {
+              setIsAccountModalOpen(true);
+              fetchAccountDetails();
+            }}
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-xs font-semibold text-zinc-200 transition-all border border-zinc-700/60 cursor-pointer"
+            title="Manage Master Password & Account Settings"
+          >
+            <Settings className="w-3.5 h-3.5 text-zinc-400" />
+            <span>Manage Account</span>
           </button>
           <button
             onClick={handleLock}
@@ -1138,6 +1240,211 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
               <div className="py-12 text-center text-zinc-500 text-sm">
                 No recent sessions recorded yet.
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Account Settings / Master Password Management Modal */}
+      {isAccountModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[92vh] overflow-y-auto space-y-6">
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setIsAccountModalOpen(false);
+                setAccountSuccessMsg(null);
+                setAccountErrorMsg(null);
+                setCurrentPwd('');
+                setNewPwd('');
+                setConfirmPwd('');
+              }}
+              className="absolute top-5 right-5 text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-all cursor-pointer"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Title */}
+            <div className="flex items-start space-x-3.5">
+              <div className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-[#E50914] flex items-center justify-center flex-shrink-0">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-white">Administrator Account</h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Manage administrator contact email, username, and change the master access password.
+                </p>
+                {accountLastUpdated && (
+                  <p className="text-[10px] text-zinc-500 mt-1 font-mono">
+                    Last modified: {new Date(accountLastUpdated).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Notification messages */}
+            {accountSuccessMsg && (
+              <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+                <span>{accountSuccessMsg}</span>
+              </div>
+            )}
+            {accountErrorMsg && (
+              <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/50 text-red-300 text-xs flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                <span>{accountErrorMsg}</span>
+              </div>
+            )}
+
+            {accountLoading ? (
+              <div className="py-8 flex flex-col items-center justify-center space-y-3">
+                <RotateCw className="w-6 h-6 animate-spin text-[#E50914]" />
+                <span className="text-xs text-zinc-400">Loading account preferences...</span>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveAccount} className="space-y-5">
+                {/* Section 1: Administrator Profile */}
+                <div className="space-y-3.5">
+                  <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center space-x-2">
+                    <User className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Admin Profile</span>
+                  </h3>
+
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-400 block mb-1">
+                      Administrator Name
+                    </label>
+                    <input
+                      type="text"
+                      value={accountUsername}
+                      onChange={(e) => setAccountUsername(e.target.value)}
+                      placeholder="e.g. Administrator / CineWave TV"
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 focus:outline-none focus:border-[#E50914] text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-400 block mb-1 flex items-center space-x-1.5">
+                      <Mail className="w-3 h-3 text-zinc-400" />
+                      <span>Contact Email</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={accountEmail}
+                      onChange={(e) => setAccountEmail(e.target.value)}
+                      placeholder="admin@cinewave.tv"
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 focus:outline-none focus:border-[#E50914] text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Section 2: Change Master Password */}
+                <div className="pt-4 border-t border-zinc-800/80 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center space-x-2">
+                      <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Change Master Password</span>
+                    </h3>
+                    <span className="text-[10px] text-zinc-500">Leave blank to keep unchanged</span>
+                  </div>
+
+                  {/* Current Password */}
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-400 block mb-1">
+                      Current Password <span className="text-zinc-500 font-normal">(required if changing password)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showCurrentPwd ? 'text' : 'password'}
+                        value={currentPwd}
+                        onChange={(e) => setCurrentPwd(e.target.value)}
+                        placeholder="Current master password..."
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 focus:outline-none focus:border-[#E50914] text-xs pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPwd(!showCurrentPwd)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
+                      >
+                        {showCurrentPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* New Password */}
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-400 block mb-1">
+                      New Master Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPwd ? 'text' : 'password'}
+                        value={newPwd}
+                        onChange={(e) => setNewPwd(e.target.value)}
+                        placeholder="Enter new master password (min 4 chars)..."
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 focus:outline-none focus:border-[#E50914] text-xs pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPwd(!showNewPwd)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
+                      >
+                        {showNewPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Confirm New Password */}
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-400 block mb-1">
+                      Confirm New Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPwd ? 'text' : 'password'}
+                        value={confirmPwd}
+                        onChange={(e) => setConfirmPwd(e.target.value)}
+                        placeholder="Repeat new master password..."
+                        className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 focus:outline-none focus:border-[#E50914] text-xs pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPwd(!showConfirmPwd)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
+                      >
+                        {showConfirmPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer Actions */}
+                <div className="flex items-center justify-end space-x-3 pt-3 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAccountModalOpen(false);
+                      setAccountSuccessMsg(null);
+                      setAccountErrorMsg(null);
+                      setCurrentPwd('');
+                      setNewPwd('');
+                      setConfirmPwd('');
+                    }}
+                    className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={accountSaving}
+                    className="flex items-center space-x-2 px-5 py-2 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-95 text-xs font-bold text-white transition-all shadow-md shadow-red-950/60 cursor-pointer disabled:opacity-50"
+                  >
+                    {accountSaving && <RotateCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{accountSaving ? 'Saving Changes...' : 'Save Settings'}</span>
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         </div>

@@ -44,5 +44,8 @@ router.get('/subtitles/proxy', CatalogController.proxySubtitle);
 router.post('/analytics/visit', AnalyticsController.recordVisit);
 router.post('/analytics/verify', AnalyticsController.verifyPassword);
 router.get('/analytics/stats', AnalyticsController.getStats);
+router.get('/analytics/account', AnalyticsController.getAccount);
+router.post('/analytics/account', AnalyticsController.updateAccount);
+router.put('/analytics/account', AnalyticsController.updateAccount);
 
 export default router;

@@ -3,6 +3,17 @@ import { analyticsService, verifyAdminPassword } from '../services/analytics.ser
 import { VisitPayload } from '../types/analytics.types.js';
 
 export class AnalyticsController {
+  // Helper to extract admin key from headers or query
+  public static extractAdminKey(req: Request): string {
+    const authHeader = req.headers['authorization'];
+    const rawHeaderKey = req.headers['x-admin-key'];
+    return (
+      (typeof rawHeaderKey === 'string' ? rawHeaderKey : '') ||
+      (typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '') ||
+      (typeof req.query.key === 'string' ? req.query.key : '')
+    );
+  }
+
   // Non-blocking visitor ping endpoint (public, anonymous)
   static async recordVisit(req: Request, res: Response): Promise<void> {
     try {
@@ -38,12 +49,7 @@ export class AnalyticsController {
   // Returns full aggregated stats for the dashboard (PASSWORD PROTECTED)
   static async getStats(req: Request, res: Response): Promise<void> {
     try {
-      const authHeader = req.headers['authorization'];
-      const rawHeaderKey = req.headers['x-admin-key'];
-      const key =
-        (typeof rawHeaderKey === 'string' ? rawHeaderKey : '') ||
-        (typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '') ||
-        (typeof req.query.key === 'string' ? req.query.key : '');
+      const key = AnalyticsController.extractAdminKey(req);
 
       if (!verifyAdminPassword(key)) {
         res.status(401).json({
@@ -62,6 +68,70 @@ export class AnalyticsController {
       res.status(500).json({
         success: false,
         error: err.message || 'Failed to retrieve analytics stats'
+      });
+    }
+  }
+
+  // Returns administrator account info (email, username, lastUpdated - no password returned)
+  static async getAccount(req: Request, res: Response): Promise<void> {
+    try {
+      const key = AnalyticsController.extractAdminKey(req);
+      if (!verifyAdminPassword(key)) {
+        res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin password required'
+        });
+        return;
+      }
+
+      const account = analyticsService.getAdminAccountConfig();
+      res.status(200).json({
+        success: true,
+        data: {
+          email: account.email,
+          username: account.username,
+          lastUpdated: account.lastUpdated
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Failed to retrieve account details'
+      });
+    }
+  }
+
+  // Updates administrator account settings (email, username, password)
+  static async updateAccount(req: Request, res: Response): Promise<void> {
+    try {
+      const key = AnalyticsController.extractAdminKey(req);
+      if (!verifyAdminPassword(key)) {
+        res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin password required'
+        });
+        return;
+      }
+
+      const result = analyticsService.updateAdminAccount(req.body || {});
+      if (!result.success) {
+        res.status(400).json({
+          success: false,
+          error: result.error || 'Failed to update admin account'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Administrator account successfully updated',
+        token: result.token,
+        data: result.account
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Failed to update administrator account'
       });
     }
   }

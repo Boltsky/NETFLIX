@@ -35,4 +35,7 @@ router.get('/subtitles/proxy', catalog_controller_js_1.CatalogController.proxySu
 router.post('/analytics/visit', analytics_controller_js_1.AnalyticsController.recordVisit);
 router.post('/analytics/verify', analytics_controller_js_1.AnalyticsController.verifyPassword);
 router.get('/analytics/stats', analytics_controller_js_1.AnalyticsController.getStats);
+router.get('/analytics/account', analytics_controller_js_1.AnalyticsController.getAccount);
+router.post('/analytics/account', analytics_controller_js_1.AnalyticsController.updateAccount);
+router.put('/analytics/account', analytics_controller_js_1.AnalyticsController.updateAccount);
 exports.default = router;

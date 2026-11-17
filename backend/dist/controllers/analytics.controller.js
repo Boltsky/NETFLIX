@@ -3,6 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsController = void 0;
 const analytics_service_js_1 = require("../services/analytics.service.js");
 class AnalyticsController {
+    // Helper to extract admin key from headers or query
+    static extractAdminKey(req) {
+        const authHeader = req.headers['authorization'];
+        const rawHeaderKey = req.headers['x-admin-key'];
+        return ((typeof rawHeaderKey === 'string' ? rawHeaderKey : '') ||
+            (typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '') ||
+            (typeof req.query.key === 'string' ? req.query.key : ''));
+    }
     // Non-blocking visitor ping endpoint (public, anonymous)
     static async recordVisit(req, res) {
         try {
@@ -36,11 +44,7 @@ class AnalyticsController {
     // Returns full aggregated stats for the dashboard (PASSWORD PROTECTED)
     static async getStats(req, res) {
         try {
-            const authHeader = req.headers['authorization'];
-            const rawHeaderKey = req.headers['x-admin-key'];
-            const key = (typeof rawHeaderKey === 'string' ? rawHeaderKey : '') ||
-                (typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '') ||
-                (typeof req.query.key === 'string' ? req.query.key : '');
+            const key = AnalyticsController.extractAdminKey(req);
             if (!(0, analytics_service_js_1.verifyAdminPassword)(key)) {
                 res.status(401).json({
                     success: false,
@@ -58,6 +62,67 @@ class AnalyticsController {
             res.status(500).json({
                 success: false,
                 error: err.message || 'Failed to retrieve analytics stats'
+            });
+        }
+    }
+    // Returns administrator account info (email, username, lastUpdated - no password returned)
+    static async getAccount(req, res) {
+        try {
+            const key = AnalyticsController.extractAdminKey(req);
+            if (!(0, analytics_service_js_1.verifyAdminPassword)(key)) {
+                res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized: Admin password required'
+                });
+                return;
+            }
+            const account = analytics_service_js_1.analyticsService.getAdminAccountConfig();
+            res.status(200).json({
+                success: true,
+                data: {
+                    email: account.email,
+                    username: account.username,
+                    lastUpdated: account.lastUpdated
+                }
+            });
+        }
+        catch (err) {
+            res.status(500).json({
+                success: false,
+                error: err.message || 'Failed to retrieve account details'
+            });
+        }
+    }
+    // Updates administrator account settings (email, username, password)
+    static async updateAccount(req, res) {
+        try {
+            const key = AnalyticsController.extractAdminKey(req);
+            if (!(0, analytics_service_js_1.verifyAdminPassword)(key)) {
+                res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized: Admin password required'
+                });
+                return;
+            }
+            const result = analytics_service_js_1.analyticsService.updateAdminAccount(req.body || {});
+            if (!result.success) {
+                res.status(400).json({
+                    success: false,
+                    error: result.error || 'Failed to update admin account'
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                message: 'Administrator account successfully updated',
+                token: result.token,
+                data: result.account
+            });
+        }
+        catch (err) {
+            res.status(500).json({
+                success: false,
+                error: err.message || 'Failed to update administrator account'
             });
         }
     }

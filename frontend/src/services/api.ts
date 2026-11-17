@@ -12,7 +12,9 @@ import {
   StreamSource,
   SubtitleTrack,
   AnalyticsStats,
-  VisitPayload
+  VisitPayload,
+  AdminAccountConfig,
+  UpdateAdminAccountPayload
 } from '../types';
 import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data';
 
@@ -1501,6 +1503,56 @@ export const api = {
     } catch (err) {
       console.warn('[Analytics] Failed to fetch stats:', err);
       return null;
+    }
+  },
+
+  // Get Administrator Account Info (Email, Username, lastUpdated)
+  getAdminAccount: async (token?: string): Promise<{ email: string; username: string; lastUpdated: string } | null> => {
+    try {
+      const savedToken =
+        token ||
+        (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cinewave_analytics_token') : null) ||
+        'bolt2026';
+      const res = await apiFetch<{ success: boolean; data: { email: string; username: string; lastUpdated: string } }>(
+        `/analytics/account?key=${encodeURIComponent(savedToken)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${savedToken}`,
+            'x-admin-key': savedToken
+          }
+        }
+      );
+      return res.data;
+    } catch (err) {
+      console.warn('[Analytics] Failed to fetch admin account:', err);
+      return null;
+    }
+  },
+
+  // Update Administrator Account (Email, Username, Master Password)
+  updateAdminAccount: async (
+    payload: UpdateAdminAccountPayload,
+    token?: string
+  ): Promise<{ success: boolean; token?: string; error?: string; message?: string }> => {
+    try {
+      const savedToken =
+        token ||
+        (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cinewave_analytics_token') : null) ||
+        'bolt2026';
+      const res = await apiFetch<{ success: boolean; token?: string; error?: string; message?: string }>(
+        `/analytics/account?key=${encodeURIComponent(savedToken)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${savedToken}`,
+            'x-admin-key': savedToken
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+      return res;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update administrator account' };
     }
   }
 };

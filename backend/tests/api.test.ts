@@ -223,4 +223,76 @@ describe('CineWave TV Backend API Tests', () => {
     expect(statsRes.body.data.recentVisits[0].ip).toBeDefined();
     expect(statsRes.body.data.recentWatchedMovies[0].ip).toBeDefined();
   });
+
+  it('GET /api/v1/analytics/account should reject unauthorized requests and return account data when authenticated', async () => {
+    // 401 without auth
+    const unauthorizedRes = await request(app).get('/api/v1/analytics/account');
+    expect(unauthorizedRes.status).toBe(401);
+    expect(unauthorizedRes.body.success).toBe(false);
+
+    // 200 with valid key
+    const authRes = await request(app)
+      .get('/api/v1/analytics/account')
+      .set('x-admin-key', 'bolt2026');
+    expect(authRes.status).toBe(200);
+    expect(authRes.body.success).toBe(true);
+    expect(authRes.body.data.email).toBeDefined();
+    expect(authRes.body.data.username).toBeDefined();
+    expect(authRes.body.data.password).toBeUndefined(); // Must never leak password
+  });
+
+  it('POST /api/v1/analytics/account should update email and password correctly', async () => {
+    // Attempt password change without currentPassword -> fail
+    const invalidPwdRes = await request(app)
+      .post('/api/v1/analytics/account')
+      .set('x-admin-key', 'bolt2026')
+      .send({ newPassword: 'newsecurepass123' });
+    expect(invalidPwdRes.status).toBe(400);
+
+    // Attempt password change with wrong currentPassword -> fail
+    const wrongCurrentRes = await request(app)
+      .post('/api/v1/analytics/account')
+      .set('x-admin-key', 'bolt2026')
+      .send({ currentPassword: 'wrongpassword', newPassword: 'newsecurepass123' });
+    expect(wrongCurrentRes.status).toBe(400);
+
+    // Successful update of email, username, and password
+    const updateRes = await request(app)
+      .post('/api/v1/analytics/account')
+      .set('x-admin-key', 'bolt2026')
+      .send({
+        email: 'cinewave.owner@gmail.com',
+        username: 'CineWave Master',
+        currentPassword: 'bolt2026',
+        newPassword: 'master2026password'
+      });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.success).toBe(true);
+    expect(updateRes.body.data.email).toBe('cinewave.owner@gmail.com');
+    expect(updateRes.body.data.username).toBe('CineWave Master');
+    expect(updateRes.body.token).toBe('master2026password');
+
+    // Access stats with new password -> 200
+    const newStatsRes = await request(app)
+      .get('/api/v1/analytics/stats')
+      .set('x-admin-key', 'master2026password');
+    expect(newStatsRes.status).toBe(200);
+
+    // Access stats with old password -> 401
+    const oldStatsRes = await request(app)
+      .get('/api/v1/analytics/stats')
+      .set('x-admin-key', 'oldboltpasswordrandom');
+    expect(oldStatsRes.status).toBe(401);
+
+    // Reset password back to bolt2026 so other tests or session defaults continue to work cleanly
+    await request(app)
+      .post('/api/v1/analytics/account')
+      .set('x-admin-key', 'master2026password')
+      .send({
+        email: 'admin@cinewave.tv',
+        username: 'Administrator',
+        currentPassword: 'master2026password',
+        newPassword: 'bolt2026'
+      });
+  });
 });

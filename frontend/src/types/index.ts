@@ -299,3 +299,17 @@ export interface AnalyticsStats {
   recentVisits: VisitRecord[];
   lastUpdated: string;
 }
+
+export interface AdminAccountConfig {
+  email: string;
+  username: string;
+  password?: string;
+  lastUpdated: string;
+}
+
+export interface UpdateAdminAccountPayload {
+  email?: string;
+  username?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}

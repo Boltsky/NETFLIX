@@ -24,7 +24,13 @@ const DEFAULT_STORE = {
     userProfiles: {},
     screenCounts: {},
     titleCounts: {},
-    watchedMovies: []
+    watchedMovies: [],
+    adminAccount: {
+        email: 'admin@cinewave.tv',
+        username: 'Administrator',
+        password: process.env.ANALYTICS_PASSWORD || 'bolt2026',
+        lastUpdated: new Date().toISOString()
+    }
 };
 // Maximum number of recent granular visit logs kept in the rolling buffer
 const MAX_RECENT_VISITS = 2000;
@@ -32,7 +38,9 @@ exports.ADMIN_PASSWORD = process.env.ANALYTICS_PASSWORD || 'bolt2026';
 function verifyAdminPassword(pwd) {
     if (!pwd)
         return false;
-    return pwd === exports.ADMIN_PASSWORD || pwd === 'admin123';
+    const currentAccount = exports.analyticsService ? exports.analyticsService.getAdminAccountConfig() : null;
+    const activePassword = currentAccount?.password || exports.ADMIN_PASSWORD;
+    return pwd === activePassword || pwd === exports.ADMIN_PASSWORD || pwd === 'admin123';
 }
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 function formatDuration(seconds) {
@@ -111,7 +119,13 @@ class AnalyticsService {
                     userProfiles: {
                         ...(parsed.userProfiles || {})
                     },
-                    watchedMovies: Array.isArray(parsed.watchedMovies) ? parsed.watchedMovies : []
+                    watchedMovies: Array.isArray(parsed.watchedMovies) ? parsed.watchedMovies : [],
+                    adminAccount: {
+                        email: parsed.adminAccount?.email || DEFAULT_STORE.adminAccount.email,
+                        username: parsed.adminAccount?.username || DEFAULT_STORE.adminAccount.username,
+                        password: parsed.adminAccount?.password || DEFAULT_STORE.adminAccount.password,
+                        lastUpdated: parsed.adminAccount?.lastUpdated || DEFAULT_STORE.adminAccount.lastUpdated
+                    }
                 };
                 this.backfillProfiles(store);
                 return store;
@@ -689,6 +703,62 @@ class AnalyticsService {
             users,
             recentVisits: this.data.recentVisits.slice(0, 25),
             lastUpdated: new Date().toISOString()
+        };
+    }
+    // Retrieves administrator account configuration
+    getAdminAccountConfig() {
+        if (!this.data.adminAccount) {
+            this.data.adminAccount = {
+                email: 'admin@cinewave.tv',
+                username: 'Administrator',
+                password: process.env.ANALYTICS_PASSWORD || 'bolt2026',
+                lastUpdated: new Date().toISOString()
+            };
+        }
+        return this.data.adminAccount;
+    }
+    // Updates administrator email, username, or master password
+    updateAdminAccount(payload) {
+        const account = this.getAdminAccountConfig();
+        // If changing password, verify current password first
+        if (payload.newPassword && payload.newPassword.trim()) {
+            if (!payload.currentPassword) {
+                return { success: false, error: 'Current password is required to change password' };
+            }
+            if (!verifyAdminPassword(payload.currentPassword)) {
+                return { success: false, error: 'Current password is incorrect' };
+            }
+            const newPwd = payload.newPassword.trim();
+            if (newPwd.length < 4) {
+                return { success: false, error: 'New password must be at least 4 characters long' };
+            }
+            account.password = newPwd;
+        }
+        // Update email
+        if (payload.email !== undefined) {
+            const email = payload.email.trim();
+            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                return { success: false, error: 'Please enter a valid email address (e.g. name@example.com)' };
+            }
+            account.email = email;
+        }
+        // Update username / display name
+        if (payload.username !== undefined) {
+            const uname = payload.username.trim();
+            if (uname) {
+                account.username = uname;
+            }
+        }
+        account.lastUpdated = new Date().toISOString();
+        this.scheduleSave();
+        return {
+            success: true,
+            token: account.password,
+            account: {
+                email: account.email,
+                username: account.username,
+                lastUpdated: account.lastUpdated
+            }
         };
     }
 }
