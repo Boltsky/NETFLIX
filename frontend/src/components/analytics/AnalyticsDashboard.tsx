@@ -21,7 +21,10 @@ import {
   Unlock,
   KeyRound,
   Film,
-  PlayCircle
+  PlayCircle,
+  User,
+  UserCheck,
+  Search
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { AnalyticsStats } from '../../types';
@@ -50,6 +53,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>('Just now');
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // User Directory Filter State
+  const [userSearch, setUserSearch] = useState('');
+  const [userFilter, setUserFilter] = useState<'all' | 'active' | 'watched'>('all');
 
   const fetchStats = useCallback(async (isManual = false, token?: string) => {
     if (isManual) setRefreshing(true);
@@ -825,6 +832,198 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Individual User Directory: Per-User Time Spent & Movies Watched */}
+          <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 sm:p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-5 border-b border-zinc-800/80 gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-lg bg-blue-600/15 text-blue-400">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <span>Per-User Watch History & Time Spent</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                      {stats?.users?.length || 0} Distinct Users
+                    </span>
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    Track individual visitors, their cumulative dwell time on site, and movies played
+                  </p>
+                </div>
+              </div>
+
+              {/* Search & Filter Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Search user, city, movie..."
+                    className="pl-8 pr-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 w-44 sm:w-52"
+                  />
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                </div>
+
+                <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg p-0.5 text-[11px] font-semibold">
+                  <button
+                    onClick={() => setUserFilter('all')}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      userFilter === 'all'
+                        ? 'bg-zinc-800 text-white shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    All ({stats?.users?.length || 0})
+                  </button>
+                  <button
+                    onClick={() => setUserFilter('active')}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      userFilter === 'active'
+                        ? 'bg-zinc-800 text-emerald-400 shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Active ({stats?.users?.filter((u) => u.isActiveNow).length || 0})
+                  </button>
+                  <button
+                    onClick={() => setUserFilter('watched')}
+                    className={`px-2.5 py-1 rounded-md transition-all ${
+                      userFilter === 'watched'
+                        ? 'bg-zinc-800 text-[#E50914] shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Watched ({stats?.users?.filter((u) => u.moviesPlayed && u.moviesPlayed.length > 0).length || 0})
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* User Cards List */}
+            {(() => {
+              const filteredUsers = (stats?.users || []).filter((u) => {
+                const q = userSearch.toLowerCase().trim();
+                const matchesSearch =
+                  !q ||
+                  u.displayName.toLowerCase().includes(q) ||
+                  u.visitorId.toLowerCase().includes(q) ||
+                  u.location.country.toLowerCase().includes(q) ||
+                  (u.location.city && u.location.city.toLowerCase().includes(q)) ||
+                  u.os.toLowerCase().includes(q) ||
+                  (u.moviesPlayed && u.moviesPlayed.some((m) => m.title.toLowerCase().includes(q)));
+
+                if (!matchesSearch) return false;
+                if (userFilter === 'active') return u.isActiveNow;
+                if (userFilter === 'watched') return u.moviesPlayed && u.moviesPlayed.length > 0;
+                return true;
+              });
+
+              if (filteredUsers.length === 0) {
+                return (
+                  <div className="py-12 px-4 text-center rounded-lg bg-zinc-800/20 border border-dashed border-zinc-800 my-auto text-zinc-500 text-xs">
+                    <User className="w-8 h-8 mx-auto mb-2 opacity-30 text-blue-400" />
+                    <p className="font-semibold text-zinc-400">No users match your criteria</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      As viewers navigate the site or play movies, individual profiles will appear here.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {filteredUsers.map((u) => (
+                    <div
+                      key={u.visitorId}
+                      className="p-4 rounded-xl bg-zinc-800/40 hover:bg-zinc-800/60 border border-zinc-800 transition-all space-y-3"
+                    >
+                      {/* User Card Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center space-x-3 truncate">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600/30 to-red-600/30 border border-zinc-700 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
+                            {u.displayName.slice(0, 1)}
+                          </div>
+                          <div className="truncate">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-white text-sm">{u.displayName}</span>
+                              <span className="font-mono text-[10px] text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                                {u.visitorId.slice(0, 12)}...
+                              </span>
+                              {u.isActiveNow ? (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>Active Now</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-zinc-500">
+                                  Last seen {getTimeAgo(u.lastSeen)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2 text-[11px] text-zinc-400 mt-0.5">
+                              <span>
+                                {u.location.flag || '🌐'}{' '}
+                                {u.location.city && u.location.city !== 'Unknown City' ? `${u.location.city}, ` : ''}
+                                {u.location.country}
+                              </span>
+                              <span>•</span>
+                              <span>
+                                {getOsIcon(u.os)} {u.os} ({u.browser})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Top Highlights: Total Time on Site & Visits */}
+                        <div className="flex items-center space-x-2 self-start sm:self-auto flex-shrink-0">
+                          <div className="px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-800/40 text-purple-300 font-mono text-xs font-bold flex items-center space-x-1.5" title="Total cumulative time spent on website">
+                            <Timer className="w-3.5 h-3.5 text-purple-400" />
+                            <span>{u.totalTimeSpentFormatted || '< 1m'} on site</span>
+                          </div>
+                          <div className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 font-mono text-xs font-bold" title="Total visit sessions">
+                            {u.visitCount} {u.visitCount === 1 ? 'visit' : 'visits'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Watched Movies Section for this User */}
+                      <div className="pt-2 border-t border-zinc-800/60">
+                        <div className="flex items-center space-x-1.5 mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                          <Film className="w-3.5 h-3.5 text-[#E50914]" />
+                          <span>Movies & Shows Played ({u.moviesPlayed?.length || 0}):</span>
+                        </div>
+
+                        {u.moviesPlayed && u.moviesPlayed.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {u.moviesPlayed.map((m, mIdx) => (
+                              <div
+                                key={`${m.title}-${mIdx}`}
+                                className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-700/80 hover:border-zinc-600 transition-all text-xs"
+                              >
+                                <span className="font-bold text-white text-xs">{m.title}</span>
+                                <span className="px-1.5 py-0.2 rounded bg-red-950 text-[#E50914] font-mono text-[10px] font-bold border border-red-900/60">
+                                  {m.playCount}x
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  ({getTimeAgo(m.lastPlayed)})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-zinc-500 italic bg-zinc-900/40 px-3 py-1.5 rounded-lg border border-zinc-800/40 inline-block">
+                            Browsed screens only · No movies played yet
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Real-Time Live Activity Feed with Time Visited & Time Spent */}

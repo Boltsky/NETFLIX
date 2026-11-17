@@ -242,6 +242,33 @@ export interface TopTitleStat {
   percentage: number;
 }
 
+export interface UserPlayedMovie {
+  title: string;
+  titleId?: string | number;
+  type?: string;
+  season?: number;
+  episode?: number;
+  playCount: number;
+  firstPlayed: string;
+  lastPlayed: string;
+}
+
+export interface UserProfileRecord {
+  visitorId: string;
+  displayName: string;
+  firstSeen: string;
+  lastSeen: string;
+  visitCount: number;
+  totalTimeSpentSec: number;
+  totalTimeSpentFormatted: string;
+  isActiveNow: boolean;
+  location: LocationInfo;
+  device: 'mobile' | 'tablet' | 'desktop' | 'tv';
+  os: string;
+  browser: string;
+  moviesPlayed: UserPlayedMovie[];
+}
+
 export interface AnalyticsStats {
   summary: {
     totalVisits: number;
@@ -265,6 +292,7 @@ export interface AnalyticsStats {
   topScreens: Array<{ screen: string; count: number }>;
   topTitles: TopTitleStat[];
   recentWatchedMovies?: WatchedMovieRecord[];
+  users?: UserProfileRecord[];
   recentVisits: VisitRecord[];
   lastUpdated: string;
 }

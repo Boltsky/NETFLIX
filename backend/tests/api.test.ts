@@ -213,5 +213,11 @@ describe('CineWave TV Backend API Tests', () => {
     expect(statsRes.body.success).toBe(true);
     expect(statsRes.body.data.topTitles.some((t: any) => t.title === 'The Notebook')).toBe(true);
     expect(statsRes.body.data.recentWatchedMovies.some((m: any) => m.title === 'The Notebook')).toBe(true);
+    expect(statsRes.body.data.users).toBeInstanceOf(Array);
+    const movieUser = statsRes.body.data.users.find((u: any) => u.visitorId === 'test-visitor-movie');
+    expect(movieUser).toBeDefined();
+    expect(movieUser.moviesPlayed.some((m: any) => m.title === 'The Notebook')).toBe(true);
+    expect(movieUser.totalTimeSpentSec).toBeGreaterThanOrEqual(120);
+    expect(movieUser.totalTimeSpentFormatted).toBeDefined();
   });
 });

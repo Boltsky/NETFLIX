@@ -6,6 +6,8 @@ class AnalyticsService {
   private sessionId: string = '';
   private sessionStartTime: number = 0;
   private lastTrackedScreen: string = '';
+  private lastTrackedTitle?: string;
+  private lastTrackedTitleId?: string | number;
   private lastTrackedTime: number = 0;
   private heartbeatInterval: any = null;
 
@@ -137,6 +139,11 @@ class AnalyticsService {
       fullTitle = `${item.title} (S${season || 1}:E${episode || 1})`;
     }
 
+    this.lastTrackedTitle = fullTitle;
+    this.lastTrackedTitleId = item.id;
+    this.lastTrackedScreen = 'player';
+    this.lastTrackedTime = Date.now();
+
     const payload: VisitPayload = {
       visitorId: this.visitorId,
       sessionId: this.sessionId,
@@ -153,8 +160,6 @@ class AnalyticsService {
       sessionStartTime: this.sessionStartTime
     };
 
-    this.lastTrackedScreen = 'player';
-    this.lastTrackedTime = Date.now();
     api.logVisit(payload).catch(() => {});
   }
 
@@ -163,10 +168,14 @@ class AnalyticsService {
 
     const now = Date.now();
     // Avoid double logging the exact same screen within 3 seconds
-    if (this.lastTrackedScreen === screen && now - this.lastTrackedTime < 3000) {
+    if (this.lastTrackedScreen === screen && !titleName && now - this.lastTrackedTime < 3000) {
       return;
     }
     this.lastTrackedScreen = screen;
+    if (titleName) {
+      this.lastTrackedTitle = titleName;
+      this.lastTrackedTitleId = titleId;
+    }
     this.lastTrackedTime = now;
 
     const payload: VisitPayload = {
@@ -175,8 +184,8 @@ class AnalyticsService {
       device: this.detectDevice(),
       os: this.detectOS(),
       screen,
-      titleName,
-      titleId,
+      titleName: titleName || (screen === 'player' ? this.lastTrackedTitle : undefined),
+      titleId: titleId || (screen === 'player' ? this.lastTrackedTitleId : undefined),
       timezone: Intl.DateTimeFormat?.().resolvedOptions?.().timeZone || undefined,
       language: navigator.language || undefined,
       screenResolution: `${window.screen?.width || window.innerWidth}x${window.screen?.height || window.innerHeight}`,
@@ -190,12 +199,14 @@ class AnalyticsService {
 
   private startHeartbeat(): void {
     if (this.heartbeatInterval) return;
-    // Heartbeat every 45 seconds while tab is open to update dwell time spent & active status
+    // Heartbeat every 30 seconds while tab is open to update dwell time spent & active status
     this.heartbeatInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        this.trackVisit(this.lastTrackedScreen || 'home');
+        const titleName = this.lastTrackedScreen === 'player' ? this.lastTrackedTitle : undefined;
+        const titleId = this.lastTrackedScreen === 'player' ? this.lastTrackedTitleId : undefined;
+        this.trackVisit(this.lastTrackedScreen || 'home', titleName, titleId);
       }
-    }, 45000);
+    }, 30000);
   }
 
   private initLeaveListeners(): void {

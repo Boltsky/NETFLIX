@@ -10,7 +10,9 @@ import {
   CityStat,
   OSStat,
   WatchedMovieRecord,
-  TopTitleStat
+  TopTitleStat,
+  UserProfileRecord,
+  UserPlayedMovie
 } from '../types/analytics.types.js';
 
 interface AnalyticsStore {
@@ -23,6 +25,8 @@ interface AnalyticsStore {
   deviceCounts: { mobile: number; tablet: number; desktop: number; tv: number };
   osCounts: Record<string, number>;
   sessionDurations: Record<string, number>;
+  sessionDurationsByVisitor: Record<string, Record<string, number>>;
+  userProfiles: Record<string, UserProfileRecord>;
   screenCounts: Record<string, number>;
   titleCounts: Record<string, number>;
   watchedMovies: WatchedMovieRecord[];
@@ -38,6 +42,8 @@ const DEFAULT_STORE: AnalyticsStore = {
   deviceCounts: { mobile: 0, tablet: 0, desktop: 0, tv: 0 },
   osCounts: {},
   sessionDurations: {},
+  sessionDurationsByVisitor: {},
+  userProfiles: {},
   screenCounts: {},
   titleCounts: {},
   watchedMovies: []
@@ -112,7 +118,7 @@ export class AnalyticsService {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw);
-        return {
+        const store: AnalyticsStore = {
           ...DEFAULT_STORE,
           ...parsed,
           deviceCounts: {
@@ -127,14 +133,106 @@ export class AnalyticsService {
             ...DEFAULT_STORE.sessionDurations,
             ...(parsed.sessionDurations || {})
           },
+          sessionDurationsByVisitor: {
+            ...(parsed.sessionDurationsByVisitor || {})
+          },
+          userProfiles: {
+            ...(parsed.userProfiles || {})
+          },
           watchedMovies: Array.isArray(parsed.watchedMovies) ? parsed.watchedMovies : []
         };
+        this.backfillProfiles(store);
+        return store;
       }
     } catch (err) {
       console.warn(`[Analytics] Failed to read ${this.filePath}, initializing new analytics store:`, err);
     }
     this.saveImmediate(DEFAULT_STORE);
     return JSON.parse(JSON.stringify(DEFAULT_STORE));
+  }
+
+  // Backfills per-user profiles and movie watch records from historical visits if needed
+  private backfillProfiles(store: AnalyticsStore): void {
+    if (!store.userProfiles) store.userProfiles = {};
+    if (!store.sessionDurationsByVisitor) store.sessionDurationsByVisitor = {};
+
+    // 1. Process recent visits in chronological order (oldest to newest)
+    const visitsAsc = [...store.recentVisits].reverse();
+    for (const v of visitsAsc) {
+      const vid = v.visitorId;
+      if (!vid) continue;
+
+      if (!store.sessionDurationsByVisitor[vid]) {
+        store.sessionDurationsByVisitor[vid] = {};
+      }
+      if (v.sessionId) {
+        store.sessionDurationsByVisitor[vid][v.sessionId] = Math.max(
+          store.sessionDurationsByVisitor[vid][v.sessionId] || 0,
+          v.timeSpentSec || 0
+        );
+      }
+
+      if (!store.userProfiles[vid]) {
+        const userNum = Object.keys(store.userProfiles).length + 1;
+        store.userProfiles[vid] = {
+          visitorId: vid,
+          displayName: `Viewer #${userNum}`,
+          firstSeen: v.timestamp,
+          lastSeen: v.timestamp,
+          visitCount: 1,
+          totalTimeSpentSec: v.timeSpentSec || 0,
+          totalTimeSpentFormatted: v.timeSpentFormatted || formatDuration(v.timeSpentSec || 0),
+          isActiveNow: false,
+          location: v.location,
+          device: v.device,
+          os: v.os,
+          browser: v.browser,
+          moviesPlayed: []
+        };
+      } else {
+        const u = store.userProfiles[vid];
+        u.lastSeen = v.timestamp;
+        u.visitCount += 1;
+        u.location = v.location;
+        u.device = v.device;
+        u.os = v.os;
+        u.browser = v.browser;
+      }
+    }
+
+    // 2. Link any watched movies
+    for (const wm of store.watchedMovies) {
+      const vid = wm.visitorId;
+      if (vid && store.userProfiles[vid]) {
+        const u = store.userProfiles[vid];
+        if (!u.moviesPlayed) u.moviesPlayed = [];
+        const existing = u.moviesPlayed.find((m) => m.title === wm.title);
+        if (existing) {
+          existing.playCount += 1;
+          existing.lastPlayed = wm.timestamp;
+        } else {
+          u.moviesPlayed.push({
+            title: wm.title,
+            titleId: wm.titleId,
+            type: wm.type,
+            season: wm.season,
+            episode: wm.episode,
+            playCount: 1,
+            firstPlayed: wm.timestamp,
+            lastPlayed: wm.timestamp
+          });
+        }
+      }
+    }
+
+    // 3. Recalculate each user's total time spent across all sessions
+    for (const vid of Object.keys(store.userProfiles)) {
+      const u = store.userProfiles[vid];
+      const durations = Object.values(store.sessionDurationsByVisitor[vid] || {});
+      const total = durations.reduce((a, b) => a + b, 0);
+      u.totalTimeSpentSec = Math.max(u.totalTimeSpentSec || 0, total);
+      u.totalTimeSpentFormatted = formatDuration(u.totalTimeSpentSec);
+    }
   }
 
   private scheduleSave(): void {
@@ -421,7 +519,58 @@ export class AnalyticsService {
     // Screen Stats
     this.data.screenCounts[screen] = (this.data.screenCounts[screen] || 0) + 1;
 
-    // Title & Watched Movies Stats
+    // User Profile & Per-User Time Spent Tracking
+    if (!this.data.sessionDurationsByVisitor) {
+      this.data.sessionDurationsByVisitor = {};
+    }
+    if (!this.data.sessionDurationsByVisitor[visitorId]) {
+      this.data.sessionDurationsByVisitor[visitorId] = {};
+    }
+    this.data.sessionDurationsByVisitor[visitorId][sessionId] = Math.max(
+      this.data.sessionDurationsByVisitor[visitorId][sessionId] || 0,
+      sessionSpent
+    );
+
+    const userTotalSpentSec = Object.values(this.data.sessionDurationsByVisitor[visitorId]).reduce(
+      (a, b) => a + b,
+      0
+    );
+
+    if (!this.data.userProfiles) {
+      this.data.userProfiles = {};
+    }
+
+    if (!this.data.userProfiles[visitorId]) {
+      const userNum = Object.keys(this.data.userProfiles).length + 1;
+      this.data.userProfiles[visitorId] = {
+        visitorId,
+        displayName: `Viewer #${userNum}`,
+        firstSeen: timestamp,
+        lastSeen: timestamp,
+        visitCount: 1,
+        totalTimeSpentSec: userTotalSpentSec,
+        totalTimeSpentFormatted: formatDuration(userTotalSpentSec),
+        isActiveNow: true,
+        location,
+        device,
+        os,
+        browser,
+        moviesPlayed: []
+      };
+    } else {
+      const u = this.data.userProfiles[visitorId];
+      u.lastSeen = timestamp;
+      u.visitCount += 1;
+      u.totalTimeSpentSec = Math.max(u.totalTimeSpentSec || 0, userTotalSpentSec);
+      u.totalTimeSpentFormatted = formatDuration(u.totalTimeSpentSec);
+      u.location = location;
+      u.device = device;
+      u.os = os;
+      u.browser = browser;
+      u.isActiveNow = true;
+    }
+
+    // Title & Watched Movies Stats (Per-User + Global)
     if (payload.titleName) {
       this.data.titleCounts[payload.titleName] = (this.data.titleCounts[payload.titleName] || 0) + 1;
 
@@ -444,6 +593,26 @@ export class AnalyticsService {
       this.data.watchedMovies.unshift(movieRecord);
       if (this.data.watchedMovies.length > 500) {
         this.data.watchedMovies.length = 500;
+      }
+
+      // Record in per-user profile
+      const user = this.data.userProfiles[visitorId];
+      if (user) {
+        if (!user.moviesPlayed) user.moviesPlayed = [];
+        const existingMovie = user.moviesPlayed.find((m) => m.title === payload.titleName);
+        if (existingMovie) {
+          existingMovie.playCount += 1;
+          existingMovie.lastPlayed = timestamp;
+        } else {
+          user.moviesPlayed.unshift({
+            title: payload.titleName,
+            titleId: payload.titleId,
+            type: payload.screen === 'player' ? 'video' : 'title',
+            playCount: 1,
+            firstPlayed: timestamp,
+            lastPlayed: timestamp
+          });
+        }
       }
     }
 
@@ -535,6 +704,23 @@ export class AnalyticsService {
 
     const recentWatchedMovies = (this.data.watchedMovies || []).slice(0, 30);
 
+    // Individual Users Directory with Per-User Movies & Total Time Spent
+    const users: UserProfileRecord[] = Object.values(this.data.userProfiles || {})
+      .map((u) => {
+        const isActiveNow = u.lastSeen >= fiveMinutesAgo;
+        const totalSpent = this.data.sessionDurationsByVisitor?.[u.visitorId]
+          ? Object.values(this.data.sessionDurationsByVisitor[u.visitorId]).reduce((a, b) => a + b, 0)
+          : u.totalTimeSpentSec;
+        return {
+          ...u,
+          isActiveNow,
+          totalTimeSpentSec: Math.max(u.totalTimeSpentSec || 0, totalSpent),
+          totalTimeSpentFormatted: formatDuration(Math.max(u.totalTimeSpentSec || 0, totalSpent)),
+          moviesPlayed: u.moviesPlayed || []
+        };
+      })
+      .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+
     return {
       summary: {
         totalVisits: this.data.allTimeVisits,
@@ -553,6 +739,7 @@ export class AnalyticsService {
       topScreens,
       topTitles,
       recentWatchedMovies,
+      users,
       recentVisits: this.data.recentVisits.slice(0, 25),
       lastUpdated: new Date().toISOString()
     };
