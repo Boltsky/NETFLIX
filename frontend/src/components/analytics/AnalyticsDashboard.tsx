@@ -802,10 +802,18 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                           </div>
                           <div className="truncate">
                             <p className="font-bold text-white truncate text-sm">{wm.title}</p>
-                            <div className="flex items-center space-x-2 text-[10px] text-zinc-400 mt-0.5">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-zinc-400 mt-0.5">
                               <span>{wm.location.flag || '🌐'} {wm.location.city && wm.location.city !== 'Unknown City' ? `${wm.location.city}, ` : ''}{wm.location.country}</span>
                               <span>•</span>
                               <span>{getOsIcon(wm.os)} {wm.os}</span>
+                              {wm.ip && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-800/40 px-1.5 py-0.2 rounded">
+                                    IP: {wm.ip}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -910,6 +918,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                   !q ||
                   u.displayName.toLowerCase().includes(q) ||
                   u.visitorId.toLowerCase().includes(q) ||
+                  (u.ip && u.ip.toLowerCase().includes(q)) ||
                   u.location.country.toLowerCase().includes(q) ||
                   (u.location.city && u.location.city.toLowerCase().includes(q)) ||
                   u.os.toLowerCase().includes(q) ||
@@ -963,7 +972,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center space-x-2 text-[11px] text-zinc-400 mt-0.5">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400 mt-0.5">
                               <span>
                                 {u.location.flag || '🌐'}{' '}
                                 {u.location.city && u.location.city !== 'Unknown City' ? `${u.location.city}, ` : ''}
@@ -973,6 +982,14 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                               <span>
                                 {getOsIcon(u.os)} {u.os} ({u.browser})
                               </span>
+                              {u.ip && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/40 border border-cyan-800/40 px-1.5 py-0.5 rounded">
+                                    IP: {u.ip}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1050,6 +1067,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                     <tr>
                       <th className="py-2.5 px-3">Time Visited</th>
                       <th className="py-2.5 px-3">Time Spent</th>
+                      <th className="py-2.5 px-3">IP Address</th>
                       <th className="py-2.5 px-3">Operating System</th>
                       <th className="py-2.5 px-3">Location & Area</th>
                       <th className="py-2.5 px-3">Screen / Title</th>
@@ -1070,6 +1088,13 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                           <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-purple-950/40 border border-purple-800/40 text-purple-300 font-mono text-[11px] font-bold">
                             <Timer className="w-3 h-3 text-purple-400" />
                             <span>{v.timeSpentFormatted || '< 1m'}</span>
+                          </span>
+                        </td>
+
+                        {/* IP Address */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="font-mono text-cyan-400 text-[11px] bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-800/40">
+                            {v.ip || 'Local / Edge'}
                           </span>
                         </td>
 

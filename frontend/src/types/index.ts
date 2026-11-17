@@ -195,6 +195,7 @@ export interface VisitRecord {
   screen: string;
   titleName?: string;
   location: LocationInfo;
+  ip?: string;
   browser: string;
   os: string;
   referrer?: string;
@@ -232,6 +233,7 @@ export interface WatchedMovieRecord {
   timestamp: string;
   timeWatched: string;
   location: LocationInfo;
+  ip?: string;
   device: 'mobile' | 'tablet' | 'desktop' | 'tv';
   os: string;
 }
@@ -263,6 +265,7 @@ export interface UserProfileRecord {
   totalTimeSpentFormatted: string;
   isActiveNow: boolean;
   location: LocationInfo;
+  ip?: string;
   device: 'mobile' | 'tablet' | 'desktop' | 'tv';
   os: string;
   browser: string;

@@ -219,5 +219,8 @@ describe('CineWave TV Backend API Tests', () => {
     expect(movieUser.moviesPlayed.some((m: any) => m.title === 'The Notebook')).toBe(true);
     expect(movieUser.totalTimeSpentSec).toBeGreaterThanOrEqual(120);
     expect(movieUser.totalTimeSpentFormatted).toBeDefined();
+    expect(movieUser.ip).toBeDefined();
+    expect(statsRes.body.data.recentVisits[0].ip).toBeDefined();
+    expect(statsRes.body.data.recentWatchedMovies[0].ip).toBeDefined();
   });
 });

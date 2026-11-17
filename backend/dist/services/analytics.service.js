@@ -153,6 +153,7 @@ class AnalyticsService {
                     totalTimeSpentFormatted: v.timeSpentFormatted || formatDuration(v.timeSpentSec || 0),
                     isActiveNow: false,
                     location: v.location,
+                    ip: v.ip,
                     device: v.device,
                     os: v.os,
                     browser: v.browser,
@@ -164,6 +165,7 @@ class AnalyticsService {
                 u.lastSeen = v.timestamp;
                 u.visitCount += 1;
                 u.location = v.location;
+                u.ip = v.ip || u.ip;
                 u.device = v.device;
                 u.os = v.os;
                 u.browser = v.browser;
@@ -224,6 +226,18 @@ class AnalyticsService {
     }
     // Extracts public IP from request
     getClientIp(req) {
+        const cfConnectingIp = req.headers['cf-connecting-ip'];
+        if (typeof cfConnectingIp === 'string' && cfConnectingIp.trim()) {
+            return cfConnectingIp.trim();
+        }
+        const trueClientIp = req.headers['true-client-ip'];
+        if (typeof trueClientIp === 'string' && trueClientIp.trim()) {
+            return trueClientIp.trim();
+        }
+        const xRealIp = req.headers['x-real-ip'];
+        if (typeof xRealIp === 'string' && xRealIp.trim()) {
+            return xRealIp.trim();
+        }
         const forwarded = req.headers['x-forwarded-for'];
         if (typeof forwarded === 'string') {
             const first = forwarded.split(',')[0].trim();
@@ -384,6 +398,7 @@ class AnalyticsService {
         const dateKey = timestamp.slice(0, 10); // YYYY-MM-DD
         const ua = req.headers['user-agent'] || '';
         const parsed = this.parseUserAgent(ua);
+        const ip = this.getClientIp(req);
         const location = await this.resolveLocation(req, payload.timezone);
         // Prefer client-reported OS (iOS, Android, Windows, macOS, Android TV) if provided
         const os = payload.os || parsed.os;
@@ -419,6 +434,7 @@ class AnalyticsService {
             screen,
             titleName: payload.titleName,
             location,
+            ip,
             browser,
             os,
             referrer: payload.referrer
@@ -494,6 +510,7 @@ class AnalyticsService {
                 totalTimeSpentFormatted: formatDuration(userTotalSpentSec),
                 isActiveNow: true,
                 location,
+                ip,
                 device,
                 os,
                 browser,
@@ -507,6 +524,7 @@ class AnalyticsService {
             u.totalTimeSpentSec = Math.max(u.totalTimeSpentSec || 0, userTotalSpentSec);
             u.totalTimeSpentFormatted = formatDuration(u.totalTimeSpentSec);
             u.location = location;
+            u.ip = ip || u.ip;
             u.device = device;
             u.os = os;
             u.browser = browser;
@@ -524,6 +542,7 @@ class AnalyticsService {
                 timestamp,
                 timeWatched: timeVisited,
                 location,
+                ip,
                 device,
                 os
             };

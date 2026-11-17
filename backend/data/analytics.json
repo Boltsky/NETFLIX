@@ -1,20 +1,106 @@
 {
-  "allTimeVisits": 13,
+  "allTimeVisits": 17,
   "uniqueVisitors": {
     "test-visitor-123": {
       "firstSeen": "2026-11-17T10:33:51.635Z",
-      "lastSeen": "2026-11-17T12:51:09.270Z",
-      "count": 10,
+      "lastSeen": "2026-11-17T13:43:00.358Z",
+      "count": 12,
       "country": "Uganda"
     },
     "test-visitor-movie": {
       "firstSeen": "2026-11-17T12:16:59.763Z",
-      "lastSeen": "2026-11-17T12:51:09.288Z",
-      "count": 3,
+      "lastSeen": "2026-11-17T13:43:00.378Z",
+      "count": 5,
       "country": "Localhost"
     }
   },
   "recentVisits": [
+    {
+      "id": "v_1794922980378_2wuy6",
+      "visitorId": "test-visitor-movie",
+      "sessionId": "test-session-movie",
+      "timestamp": "2026-11-17T13:43:00.378Z",
+      "timeVisited": "4:43 PM",
+      "timeSpentSec": 120,
+      "timeSpentFormatted": "2m 0s",
+      "device": "desktop",
+      "screen": "player",
+      "titleName": "The Notebook",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Unknown Browser",
+      "os": "Windows"
+    },
+    {
+      "id": "v_1794922980361_ktifo",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T13:43:00.358Z",
+      "timeVisited": "4:43 PM",
+      "timeSpentSec": 185,
+      "timeSpentFormatted": "3m 5s",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Unknown Browser",
+      "os": "iOS"
+    },
+    {
+      "id": "v_1794922929022_mnxy0",
+      "visitorId": "test-visitor-movie",
+      "sessionId": "test-session-movie",
+      "timestamp": "2026-11-17T13:42:09.021Z",
+      "timeVisited": "4:42 PM",
+      "timeSpentSec": 120,
+      "timeSpentFormatted": "2m 0s",
+      "device": "desktop",
+      "screen": "player",
+      "titleName": "The Notebook",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Unknown Browser",
+      "os": "Windows"
+    },
+    {
+      "id": "v_1794922929006_bn5yb",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T13:42:09.002Z",
+      "timeVisited": "4:42 PM",
+      "timeSpentSec": 185,
+      "timeSpentFormatted": "3m 5s",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Unknown Browser",
+      "os": "iOS"
+    },
     {
       "id": "v_1794919869289_y0tvi",
       "visitorId": "test-visitor-movie",
@@ -280,37 +366,37 @@
   ],
   "dailyStats": {
     "2026-11-17": {
-      "visits": 13,
+      "visits": 17,
       "uniqueVisitors": 0
     }
   },
   "countryCounts": {
-    "Uganda": 10,
-    "Localhost": 3
+    "Uganda": 12,
+    "Localhost": 5
   },
   "cityCounts": {
     "Kampala, Uganda": {
       "city": "Kampala",
       "country": "Uganda",
       "flag": "🇺🇬",
-      "count": 10
+      "count": 12
     },
     "Local, Localhost": {
       "city": "Local",
       "country": "Localhost",
       "flag": "🏠",
-      "count": 3
+      "count": 5
     }
   },
   "deviceCounts": {
-    "mobile": 10,
+    "mobile": 12,
     "tablet": 0,
-    "desktop": 3,
+    "desktop": 5,
     "tv": 0
   },
   "osCounts": {
-    "iOS": 9,
-    "Windows": 3
+    "iOS": 11,
+    "Windows": 5
   },
   "sessionDurations": {
     "test-session-456": 185,
@@ -329,8 +415,8 @@
       "visitorId": "test-visitor-123",
       "displayName": "Viewer #1",
       "firstSeen": "2026-11-17T10:33:51.635Z",
-      "lastSeen": "2026-11-17T12:51:09.270Z",
-      "visitCount": 19,
+      "lastSeen": "2026-11-17T13:43:00.358Z",
+      "visitCount": 42,
       "totalTimeSpentSec": 185,
       "totalTimeSpentFormatted": "3m 5s",
       "isActiveNow": true,
@@ -344,14 +430,15 @@
       "device": "mobile",
       "os": "iOS",
       "browser": "Unknown Browser",
-      "moviesPlayed": []
+      "moviesPlayed": [],
+      "ip": "127.0.0.1"
     },
     "test-visitor-movie": {
       "visitorId": "test-visitor-movie",
       "displayName": "Viewer #2",
       "firstSeen": "2026-11-17T12:16:59.763Z",
-      "lastSeen": "2026-11-17T12:51:09.288Z",
-      "visitCount": 5,
+      "lastSeen": "2026-11-17T13:43:00.378Z",
+      "visitCount": 14,
       "totalTimeSpentSec": 120,
       "totalTimeSpentFormatted": "2m 0s",
       "isActiveNow": true,
@@ -370,21 +457,60 @@
           "title": "The Notebook",
           "titleId": 11036,
           "type": "video",
-          "playCount": 5,
+          "playCount": 14,
           "firstPlayed": "2026-11-17T12:16:59.763Z",
-          "lastPlayed": "2026-11-17T12:51:09.288Z"
+          "lastPlayed": "2026-11-17T13:43:00.378Z"
         }
-      ]
+      ],
+      "ip": "127.0.0.1"
     }
   },
   "screenCounts": {
-    "home": 10,
-    "player": 3
+    "home": 12,
+    "player": 5
   },
   "titleCounts": {
-    "The Notebook": 3
+    "The Notebook": 5
   },
   "watchedMovies": [
+    {
+      "id": "wm_1794922980378_rh2bz",
+      "visitorId": "test-visitor-movie",
+      "title": "The Notebook",
+      "titleId": 11036,
+      "type": "video",
+      "timestamp": "2026-11-17T13:43:00.378Z",
+      "timeWatched": "4:43 PM",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "ip": "127.0.0.1",
+      "device": "desktop",
+      "os": "Windows"
+    },
+    {
+      "id": "wm_1794922929022_a6co1",
+      "visitorId": "test-visitor-movie",
+      "title": "The Notebook",
+      "titleId": 11036,
+      "type": "video",
+      "timestamp": "2026-11-17T13:42:09.021Z",
+      "timeWatched": "4:42 PM",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "ip": "127.0.0.1",
+      "device": "desktop",
+      "os": "Windows"
+    },
     {
       "id": "wm_1794919869289_zpg8b",
       "visitorId": "test-visitor-movie",
