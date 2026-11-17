@@ -126,14 +126,16 @@ describe('CineWave TV Backend API Tests', () => {
     expect(getRes.body.progress.some((p: any) => p.contentId === 'prog-101')).toBe(true);
   });
 
-  it('POST /api/v1/analytics/visit should record visitor telemetry anonymously', async () => {
+  it('POST /api/v1/analytics/visit should record visitor telemetry anonymously with OS and duration', async () => {
     const payload = {
       visitorId: 'test-visitor-123',
       sessionId: 'test-session-456',
       device: 'mobile',
+      os: 'iOS',
       screen: 'home',
       timezone: 'Africa/Kampala',
-      language: 'en-US'
+      language: 'en-US',
+      durationSec: 185
     };
 
     const res = await request(app)
@@ -146,16 +148,22 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.success).toBe(true);
   });
 
-  it('GET /api/v1/analytics/stats should return aggregated visitor and location statistics', async () => {
+  it('GET /api/v1/analytics/stats should return aggregated visitor, location, OS, and time spent statistics', async () => {
     const res = await request(app).get('/api/v1/analytics/stats');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.summary).toBeDefined();
     expect(res.body.data.summary.totalVisits).toBeGreaterThanOrEqual(1);
     expect(res.body.data.summary.uniqueVisitors).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.summary.avgTimeSpentFormatted).toBeDefined();
+    expect(typeof res.body.data.summary.avgTimeSpentSec).toBe('number');
+    expect(res.body.data.osBreakdown).toBeInstanceOf(Array);
+    expect(res.body.data.osBreakdown.some((o: any) => o.os === 'iOS')).toBe(true);
     expect(res.body.data.devices).toBeDefined();
     expect(res.body.data.topCountries).toBeInstanceOf(Array);
     expect(res.body.data.topCities).toBeInstanceOf(Array);
     expect(res.body.data.recentVisits).toBeInstanceOf(Array);
+    expect(res.body.data.recentVisits[0].timeVisited).toBeDefined();
+    expect(res.body.data.recentVisits[0].timeSpentFormatted).toBeDefined();
   });
 });

@@ -4,6 +4,7 @@ import { VisitPayload } from '../types';
 class AnalyticsService {
   private visitorId: string = '';
   private sessionId: string = '';
+  private sessionStartTime: number = 0;
   private lastTrackedScreen: string = '';
   private lastTrackedTime: number = 0;
   private heartbeatInterval: any = null;
@@ -12,6 +13,7 @@ class AnalyticsService {
     if (typeof window !== 'undefined') {
       this.initVisitor();
       this.startHeartbeat();
+      this.initLeaveListeners();
     }
   }
 
@@ -32,9 +34,18 @@ class AnalyticsService {
         sessionStorage.setItem('cinewave_session_id', sid);
       }
       this.sessionId = sid;
+
+      // 3. Session Start Time (tracks total dwell time on website)
+      let sstart = sessionStorage.getItem('cinewave_session_start');
+      if (!sstart) {
+        sstart = String(Date.now());
+        sessionStorage.setItem('cinewave_session_start', sstart);
+      }
+      this.sessionStartTime = Number(sstart) || Date.now();
     } catch {
       this.visitorId = `v_fallback_${Date.now()}`;
       this.sessionId = `s_fallback_${Date.now()}`;
+      this.sessionStartTime = Date.now();
     }
   }
 
@@ -66,6 +77,53 @@ class AnalyticsService {
     return 'desktop';
   }
 
+  // Detect Operating System (iOS, Android, Windows, macOS, Android TV, Linux)
+  public detectOS(): string {
+    if (typeof window === 'undefined') return 'Unknown OS';
+
+    const ua = navigator.userAgent;
+
+    // 1. Android TV
+    if ((window as any).AndroidTV || /Android TV|CrKey|AFT|SmartTV|Tizen/i.test(ua)) {
+      return 'Android TV';
+    }
+
+    // 2. iOS (iPhone, iPad, iPod - including iPadOS desktop user-agent mode)
+    const isIosDevice =
+      /iPhone|iPad|iPod/i.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIosDevice) {
+      return 'iOS';
+    }
+
+    // 3. Android Phone / Tablet
+    if (/Android/i.test(ua)) {
+      return 'Android';
+    }
+
+    // 4. Windows PC / Laptop
+    if (/Windows NT/i.test(ua)) {
+      return 'Windows';
+    }
+
+    // 5. Apple macOS
+    if (/Macintosh|Mac OS X/i.test(ua)) {
+      return 'macOS';
+    }
+
+    // 6. Linux
+    if (/Linux/i.test(ua)) {
+      return 'Linux';
+    }
+
+    return 'Other OS';
+  }
+
+  public getSessionDurationSec(): number {
+    if (!this.sessionStartTime) return 0;
+    return Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000));
+  }
+
   public trackVisit(screen: string, titleName?: string, titleId?: string | number): void {
     if (typeof window === 'undefined') return;
 
@@ -81,13 +139,16 @@ class AnalyticsService {
       visitorId: this.visitorId,
       sessionId: this.sessionId,
       device: this.detectDevice(),
+      os: this.detectOS(),
       screen,
       titleName,
       titleId,
       timezone: Intl.DateTimeFormat?.().resolvedOptions?.().timeZone || undefined,
       language: navigator.language || undefined,
       screenResolution: `${window.screen?.width || window.innerWidth}x${window.screen?.height || window.innerHeight}`,
-      referrer: document.referrer || undefined
+      referrer: document.referrer || undefined,
+      durationSec: this.getSessionDurationSec(),
+      sessionStartTime: this.sessionStartTime
     };
 
     api.logVisit(payload).catch(() => {});
@@ -95,12 +156,42 @@ class AnalyticsService {
 
   private startHeartbeat(): void {
     if (this.heartbeatInterval) return;
-    // Heartbeat every 2.5 minutes to keep "Active Now" counter accurate
+    // Heartbeat every 45 seconds while tab is open to update dwell time spent & active status
     this.heartbeatInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         this.trackVisit(this.lastTrackedScreen || 'home');
       }
-    }, 150000);
+    }, 45000);
+  }
+
+  private initLeaveListeners(): void {
+    const handleLeave = () => {
+      const payload: VisitPayload = {
+        visitorId: this.visitorId,
+        sessionId: this.sessionId,
+        device: this.detectDevice(),
+        os: this.detectOS(),
+        screen: this.lastTrackedScreen || 'home',
+        durationSec: this.getSessionDurationSec(),
+        sessionStartTime: this.sessionStartTime
+      };
+      // Send beacon on exit
+      try {
+        if (navigator.sendBeacon) {
+          const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+          navigator.sendBeacon('/api/v1/analytics/visit', blob);
+        } else {
+          api.logVisit(payload).catch(() => {});
+        }
+      } catch {}
+    };
+
+    window.addEventListener('pagehide', handleLeave);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        handleLeave();
+      }
+    });
   }
 
   public getVisitorId(): string {

@@ -10,6 +10,7 @@ export interface VisitPayload {
   visitorId: string;
   sessionId: string;
   device?: 'mobile' | 'tablet' | 'desktop' | 'tv';
+  os?: string;
   screen?: string;
   titleId?: string | number;
   titleName?: string;
@@ -17,6 +18,8 @@ export interface VisitPayload {
   language?: string;
   screenResolution?: string;
   referrer?: string;
+  durationSec?: number;
+  sessionStartTime?: number;
 }
 
 export interface VisitRecord {
@@ -24,6 +27,9 @@ export interface VisitRecord {
   visitorId: string;
   sessionId: string;
   timestamp: string;
+  timeVisited: string;
+  timeSpentSec: number;
+  timeSpentFormatted: string;
   device: 'mobile' | 'tablet' | 'desktop' | 'tv';
   screen: string;
   titleName?: string;
@@ -48,6 +54,12 @@ export interface CityStat {
   count: number;
 }
 
+export interface OSStat {
+  os: string;
+  count: number;
+  percentage: number;
+}
+
 export interface AnalyticsStats {
   summary: {
     totalVisits: number;
@@ -55,6 +67,9 @@ export interface AnalyticsStats {
     activeNow: number;
     visitsToday: number;
     visitsLast7Days: number;
+    avgTimeSpentSec: number;
+    avgTimeSpentFormatted: string;
+    totalTimeSpentSec: number;
   };
   devices: {
     mobile: number;
@@ -62,6 +77,7 @@ export interface AnalyticsStats {
     desktop: number;
     tv: number;
   };
+  osBreakdown: OSStat[];
   topCountries: CountryStat[];
   topCities: CityStat[];
   topScreens: Array<{ screen: string; count: number }>;

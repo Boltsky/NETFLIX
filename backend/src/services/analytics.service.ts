@@ -7,7 +7,8 @@ import {
   VisitRecord,
   AnalyticsStats,
   CountryStat,
-  CityStat
+  CityStat,
+  OSStat
 } from '../types/analytics.types.js';
 
 interface AnalyticsStore {
@@ -18,6 +19,8 @@ interface AnalyticsStore {
   countryCounts: Record<string, number>;
   cityCounts: Record<string, { city: string; country: string; flag: string; count: number }>;
   deviceCounts: { mobile: number; tablet: number; desktop: number; tv: number };
+  osCounts: Record<string, number>;
+  sessionDurations: Record<string, number>;
   screenCounts: Record<string, number>;
   titleCounts: Record<string, number>;
 }
@@ -30,6 +33,8 @@ const DEFAULT_STORE: AnalyticsStore = {
   countryCounts: {},
   cityCounts: {},
   deviceCounts: { mobile: 0, tablet: 0, desktop: 0, tv: 0 },
+  osCounts: {},
+  sessionDurations: {},
   screenCounts: {},
   titleCounts: {}
 };
@@ -38,6 +43,21 @@ const DEFAULT_STORE: AnalyticsStore = {
 const MAX_RECENT_VISITS = 2000;
 
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '< 1m';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hrs > 0) {
+    return `${hrs}h ${mins}m`;
+  }
+  if (mins > 0) {
+    return `${mins}m ${secs}s`;
+  }
+  return `${secs}s`;
+}
 
 export function getFlagEmoji(countryCode: string): string {
   if (!countryCode || countryCode.length !== 2) return '🌐';
@@ -87,6 +107,14 @@ export class AnalyticsService {
           deviceCounts: {
             ...DEFAULT_STORE.deviceCounts,
             ...(parsed.deviceCounts || {})
+          },
+          osCounts: {
+            ...DEFAULT_STORE.osCounts,
+            ...(parsed.osCounts || {})
+          },
+          sessionDurations: {
+            ...DEFAULT_STORE.sessionDurations,
+            ...(parsed.sessionDurations || {})
           }
         };
       }
@@ -203,7 +231,6 @@ export class AnalyticsService {
       ip.startsWith('fc00:');
 
     if (isPrivate) {
-      // Local development or private network: infer from client timezone if available
       if (timezone && timezone.includes('/')) {
         const cityPart = timezone.split('/')[1].replace(/_/g, ' ');
         return {
@@ -252,9 +279,7 @@ export class AnalyticsService {
           return info;
         }
       }
-    } catch {
-      // Fallback if IP API is unreachable
-    }
+    } catch {}
 
     // 5. Fallback using client timezone
     if (timezone && timezone.includes('/')) {
@@ -278,23 +303,50 @@ export class AnalyticsService {
     };
   }
 
-  // Records a visit / page view event
+  // Records a visit / page view event with OS, Time Visited, and Time Spent
   public async recordVisit(req: Request, payload: VisitPayload): Promise<VisitRecord> {
     const now = new Date();
     const timestamp = now.toISOString();
     const dateKey = timestamp.slice(0, 10); // YYYY-MM-DD
     const ua = req.headers['user-agent'] || '';
-    const { os, browser } = this.parseUserAgent(ua);
+    const parsed = this.parseUserAgent(ua);
     const location = await this.resolveLocation(req, payload.timezone);
 
+    // Prefer client-reported OS (iOS, Android, Windows, macOS, Android TV) if provided
+    const os = payload.os || parsed.os;
+    const browser = parsed.browser;
     const device = payload.device || (os === 'Android TV' ? 'tv' : 'desktop');
     const screen = payload.screen || 'home';
 
+    const visitorId = payload.visitorId || `anon_${Math.random().toString(36).slice(2, 10)}`;
+    const sessionId = payload.sessionId || `sess_${Math.random().toString(36).slice(2, 10)}`;
+
+    // Time Visited: Formatted human-readable time (e.g. "1:45 PM")
+    const timeVisited = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    // Time Spent on Website in seconds
+    const durationSec = Math.max(0, Math.floor(payload.durationSec || 0));
+    const previousDuration = this.data.sessionDurations[sessionId] || 0;
+    const sessionSpent = Math.max(previousDuration, durationSec);
+    this.data.sessionDurations[sessionId] = sessionSpent;
+    const timeSpentFormatted = formatDuration(sessionSpent);
+
+    // Update existing recentVisits from this same session with the latest time spent
+    for (const v of this.data.recentVisits) {
+      if (v.sessionId === sessionId) {
+        v.timeSpentSec = sessionSpent;
+        v.timeSpentFormatted = timeSpentFormatted;
+      }
+    }
+
     const record: VisitRecord = {
       id: `v_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      visitorId: payload.visitorId || `anon_${Math.random().toString(36).slice(2, 10)}`,
-      sessionId: payload.sessionId || `sess_${Math.random().toString(36).slice(2, 10)}`,
+      visitorId,
+      sessionId,
       timestamp,
+      timeVisited,
+      timeSpentSec: sessionSpent,
+      timeSpentFormatted,
       device,
       screen,
       titleName: payload.titleName,
@@ -307,17 +359,20 @@ export class AnalyticsService {
     // Update Totals
     this.data.allTimeVisits += 1;
 
+    // Track Operating System (iOS, Android, Windows, macOS, Android TV, Linux)
+    this.data.osCounts[os] = (this.data.osCounts[os] || 0) + 1;
+
     // Track Unique Visitors
-    if (!this.data.uniqueVisitors[record.visitorId]) {
-      this.data.uniqueVisitors[record.visitorId] = {
+    if (!this.data.uniqueVisitors[visitorId]) {
+      this.data.uniqueVisitors[visitorId] = {
         firstSeen: timestamp,
         lastSeen: timestamp,
         count: 1,
         country: location.country
       };
     } else {
-      this.data.uniqueVisitors[record.visitorId].lastSeen = timestamp;
-      this.data.uniqueVisitors[record.visitorId].count += 1;
+      this.data.uniqueVisitors[visitorId].lastSeen = timestamp;
+      this.data.uniqueVisitors[visitorId].count += 1;
     }
 
     // Daily Stats
@@ -381,7 +436,7 @@ export class AnalyticsService {
       if (v.timestamp >= fiveMinutesAgo) {
         activeVisitorsSet.add(v.visitorId);
       } else {
-        break; // sorted newest first
+        break;
       }
     }
     const activeNow = activeVisitorsSet.size;
@@ -396,11 +451,25 @@ export class AnalyticsService {
       }
     }
 
+    // Operating System Breakdown (iOS, Android, Windows, macOS, Android TV, Linux)
+    const totalOsVisits = Object.values(this.data.osCounts).reduce((a, b) => a + b, 0) || 1;
+    const osBreakdown: OSStat[] = Object.entries(this.data.osCounts)
+      .map(([os, count]) => {
+        const percentage = Math.round((count / totalOsVisits) * 1000) / 10;
+        return { os, count, percentage };
+      })
+      .sort((a, b) => b.count - a.count);
+
+    // Time Spent Calculations (Average & Total Duration)
+    const durations = Object.values(this.data.sessionDurations);
+    const totalTimeSpentSec = durations.reduce((a, b) => a + b, 0);
+    const avgTimeSpentSec = durations.length > 0 ? Math.round(totalTimeSpentSec / durations.length) : 0;
+    const avgTimeSpentFormatted = formatDuration(avgTimeSpentSec);
+
     // Top Countries
     const totalCountryVisits = Object.values(this.data.countryCounts).reduce((a, b) => a + b, 0) || 1;
     const topCountries: CountryStat[] = Object.entries(this.data.countryCounts)
       .map(([country, count]) => {
-        // Find matching flag from recent visits or default
         const match = this.data.recentVisits.find((v) => v.location.country === country);
         const countryCode = match?.location.countryCode || 'UN';
         const flag = match?.location.flag || getFlagEmoji(countryCode);
@@ -433,9 +502,13 @@ export class AnalyticsService {
         uniqueVisitors: Object.keys(this.data.uniqueVisitors).length,
         activeNow,
         visitsToday,
-        visitsLast7Days
+        visitsLast7Days,
+        avgTimeSpentSec,
+        avgTimeSpentFormatted,
+        totalTimeSpentSec
       },
       devices: { ...this.data.deviceCounts },
+      osBreakdown,
       topCountries,
       topCities,
       topScreens,

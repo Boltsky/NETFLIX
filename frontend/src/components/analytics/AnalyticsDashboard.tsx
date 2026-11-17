@@ -14,7 +14,9 @@ import {
   TrendingUp,
   Clock,
   ShieldCheck,
-  Film
+  Timer,
+  Laptop,
+  Cpu
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { AnalyticsStats } from '../../types';
@@ -73,6 +75,18 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
     }
   };
 
+  // Helper for OS emoji icon
+  const getOsIcon = (osName: string) => {
+    const lower = osName.toLowerCase();
+    if (lower.includes('ios')) return '🍏';
+    if (lower.includes('android tv')) return '📺';
+    if (lower.includes('android')) return '🤖';
+    if (lower.includes('windows')) return '🪟';
+    if (lower.includes('mac')) return '💻';
+    if (lower.includes('linux')) return '🐧';
+    return '🖥️';
+  };
+
   // Calculate device percentages
   const totalDeviceVisits = stats
     ? stats.devices.mobile + stats.devices.desktop + stats.devices.tablet + stats.devices.tv || 1
@@ -105,7 +119,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
               </span>
             </div>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Anonymous audience telemetry & geographic location monitoring without requiring sign-up
+              Real-time audience monitoring, OS breakdown (iOS, Android, Windows), time visited, and dwell time spent
             </p>
           </div>
         </div>
@@ -132,8 +146,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
         </div>
       ) : (
         <div className="mt-6 space-y-8">
-          {/* Top 4 KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+          {/* Top 5 Hero KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-5">
             {/* Card 1: Unique Visitors */}
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-zinc-700 transition-all">
               <div className="flex items-center justify-between text-zinc-400">
@@ -148,7 +162,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-1 flex items-center space-x-1">
                   <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                  <span>Distinct users (no sign-up needed)</span>
+                  <span>Distinct users (no sign-up)</span>
                 </div>
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-cyan-400" />
@@ -168,7 +182,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-1 flex items-center space-x-1">
                   <TrendingUp className="w-3 h-3 text-[#E50914]" />
-                  <span>Total sessions & page views</span>
+                  <span>Total sessions</span>
                 </div>
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#E50914] to-orange-500" />
@@ -188,14 +202,33 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-1">
-                  <span>Browsing in last 5 minutes</span>
+                  <span>In last 5 minutes</span>
                 </div>
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-400" />
             </div>
 
-            {/* Card 4: Visits Today */}
+            {/* Card 4: Avg. Time Spent on Site */}
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-zinc-700 transition-all">
+              <div className="flex items-center justify-between text-zinc-400">
+                <span className="text-xs font-medium uppercase tracking-wider">Avg. Time Spent</span>
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
+                  <Timer className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl sm:text-3xl font-black text-purple-400 tracking-tight">
+                  {stats?.summary.avgTimeSpentFormatted || '< 1m'}
+                </div>
+                <div className="text-[11px] text-zinc-400 mt-1">
+                  <span>Average dwell time</span>
+                </div>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-500" />
+            </div>
+
+            {/* Card 5: Visits Today */}
+            <div className="col-span-2 sm:col-span-1 bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-zinc-700 transition-all">
               <div className="flex items-center justify-between text-zinc-400">
                 <span className="text-xs font-medium uppercase tracking-wider">Visits Today</span>
                 <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
@@ -207,14 +240,62 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                   {formatNumber(stats?.summary.visitsToday)}
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-1">
-                  <span>{formatNumber(stats?.summary.visitsLast7Days)} in last 7 days</span>
+                  <span>{formatNumber(stats?.summary.visitsLast7Days)} in 7 days</span>
                 </div>
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-yellow-400" />
             </div>
           </div>
 
-          {/* Location & Geographic Audience Breakdown (CORE REQUIREMENT) */}
+          {/* Operating System Breakdown (iOS, Android, Windows, macOS, etc.) */}
+          <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 sm:p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                  <Cpu className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Operating Systems (iOS, Android, Windows & more)</h2>
+                  <p className="text-xs text-zinc-400">Breakdown of operating systems used by your visitors</p>
+                </div>
+              </div>
+              <span className="text-xs font-mono text-zinc-500">
+                {stats?.osBreakdown.length || 0} OS types
+              </span>
+            </div>
+
+            {stats?.osBreakdown && stats.osBreakdown.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {stats.osBreakdown.map((item) => (
+                  <div
+                    key={item.os}
+                    className="p-3.5 rounded-xl bg-zinc-800/40 border border-zinc-800/80 hover:bg-zinc-800/70 transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">{getOsIcon(item.os)}</span>
+                      <span className="text-xs font-bold font-mono text-white px-2 py-0.5 rounded bg-zinc-700/60">
+                        {item.percentage}%
+                      </span>
+                    </div>
+                    <div className="font-bold text-sm text-white truncate">{item.os}</div>
+                    <div className="text-[11px] text-zinc-400 font-mono mt-0.5">{item.count} visitors</div>
+                    <div className="w-full bg-zinc-700/40 rounded-full h-1.5 mt-2.5 overflow-hidden">
+                      <div
+                        className="bg-cyan-400 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(item.percentage, 5)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-6 text-center text-zinc-500 text-xs">
+                Operating system telemetry is populating as users visit...
+              </div>
+            )}
+          </div>
+
+          {/* Location & Geographic Audience Breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Top Countries (8 cols) */}
             <div className="lg:col-span-8 bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 sm:p-6">
@@ -289,7 +370,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
 
               {stats?.topCities && stats.topCities.length > 0 ? (
                 <div className="space-y-3 overflow-y-auto max-h-[320px] pr-1">
-                  {stats.topCities.map((city, idx) => (
+                  {stats.topCities.map((city) => (
                     <div
                       key={`${city.city}-${city.country}`}
                       className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-800/40 hover:bg-zinc-800/70 border border-zinc-800 transition-all text-xs"
@@ -322,8 +403,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Device Distribution */}
             <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 sm:p-6">
-              <h2 className="text-lg font-bold text-white mb-1">Device Distribution</h2>
-              <p className="text-xs text-zinc-400 mb-5">What hardware visitors use to stream</p>
+              <h2 className="text-lg font-bold text-white mb-1">Hardware Form Factors</h2>
+              <p className="text-xs text-zinc-400 mb-5">Phones, computers, tablets & TVs</p>
 
               <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {/* Mobile */}
@@ -420,7 +501,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
             </div>
           </div>
 
-          {/* Real-Time Live Activity Feed */}
+          {/* Real-Time Live Activity Feed with Time Visited & Time Spent */}
           <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 sm:p-6">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center space-x-3">
@@ -428,8 +509,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-white">Recent Real-Time Visitors Feed</h2>
-                  <p className="text-xs text-zinc-400">Live stream of incoming visitor sessions</p>
+                  <h2 className="text-lg font-bold text-white">Recent Visitors Stream</h2>
+                  <p className="text-xs text-zinc-400">Live stream with time visited, time spent, OS & location</p>
                 </div>
               </div>
               <span className="text-xs font-mono text-zinc-500">
@@ -442,42 +523,59 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                 <table className="w-full text-left text-xs text-zinc-300">
                   <thead className="text-[11px] uppercase bg-zinc-800/50 text-zinc-400 border-b border-zinc-800">
                     <tr>
-                      <th className="py-2.5 px-3">Time</th>
+                      <th className="py-2.5 px-3">Time Visited</th>
+                      <th className="py-2.5 px-3">Time Spent</th>
+                      <th className="py-2.5 px-3">Operating System</th>
                       <th className="py-2.5 px-3">Location & Area</th>
-                      <th className="py-2.5 px-3">Device / Platform</th>
                       <th className="py-2.5 px-3">Screen / Title</th>
-                      <th className="py-2.5 px-3">Visitor Token</th>
+                      <th className="py-2.5 px-3">Visitor ID</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60">
                     {stats.recentVisits.map((v) => (
                       <tr key={v.id} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="py-2.5 px-3 whitespace-nowrap text-zinc-400 font-mono">
-                          {getTimeAgo(v.timestamp)}
+                        {/* Time Visited */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <div className="font-mono text-zinc-200 font-semibold">{v.timeVisited || 'Recent'}</div>
+                          <div className="text-[10px] text-zinc-500">{getTimeAgo(v.timestamp)}</div>
                         </td>
+
+                        {/* Time Spent */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-purple-950/40 border border-purple-800/40 text-purple-300 font-mono text-[11px] font-bold">
+                            <Timer className="w-3 h-3 text-purple-400" />
+                            <span>{v.timeSpentFormatted || '< 1m'}</span>
+                          </span>
+                        </td>
+
+                        {/* Operating System */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-zinc-800 text-zinc-200 font-medium text-[11px]">
+                            <span>{getOsIcon(v.os)}</span>
+                            <span className="font-bold">{v.os}</span>
+                            <span className="text-zinc-500 text-[10px]">({v.browser})</span>
+                          </span>
+                        </td>
+
+                        {/* Location & Area */}
                         <td className="py-2.5 px-3 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
                             <span className="text-base">{v.location.flag || '🌐'}</span>
                             <span className="font-semibold text-white">
-                              {v.location.city !== 'Unknown City' ? `${v.location.city}, ` : ''}
+                              {v.location.city && v.location.city !== 'Unknown City' ? `${v.location.city}, ` : ''}
                               {v.location.country}
                             </span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 capitalize text-[11px]">
-                            {v.device === 'mobile' && <Smartphone className="w-3 h-3 text-blue-400" />}
-                            {v.device === 'desktop' && <Monitor className="w-3 h-3 text-purple-400" />}
-                            {v.device === 'tablet' && <Tablet className="w-3 h-3 text-emerald-400" />}
-                            {v.device === 'tv' && <Tv className="w-3 h-3 text-[#E50914]" />}
-                            <span>{v.os} ({v.browser})</span>
-                          </span>
-                        </td>
+
+                        {/* Screen / Title */}
                         <td className="py-2.5 px-3 whitespace-nowrap">
                           <span className="capitalize font-medium text-zinc-300">
                             {v.titleName ? `Playing: ${v.titleName}` : `${v.screen} screen`}
                           </span>
                         </td>
+
+                        {/* Visitor ID */}
                         <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px] text-zinc-500">
                           {v.visitorId.slice(0, 14)}...
                         </td>
