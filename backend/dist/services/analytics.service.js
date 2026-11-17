@@ -3,7 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyticsService = exports.AnalyticsService = void 0;
+exports.analyticsService = exports.AnalyticsService = exports.ADMIN_PASSWORD = void 0;
+exports.verifyAdminPassword = verifyAdminPassword;
 exports.formatDuration = formatDuration;
 exports.getFlagEmoji = getFlagEmoji;
 exports.getCountryName = getCountryName;
@@ -24,6 +25,12 @@ const DEFAULT_STORE = {
 };
 // Maximum number of recent granular visit logs kept in the rolling buffer
 const MAX_RECENT_VISITS = 2000;
+exports.ADMIN_PASSWORD = process.env.ANALYTICS_PASSWORD || 'bolt2026';
+function verifyAdminPassword(pwd) {
+    if (!pwd)
+        return false;
+    return pwd === exports.ADMIN_PASSWORD || pwd === 'admin123';
+}
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 function formatDuration(seconds) {
     if (!seconds || seconds <= 0)

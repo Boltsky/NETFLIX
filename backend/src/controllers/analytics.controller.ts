@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import { analyticsService } from '../services/analytics.service.js';
+import { analyticsService, verifyAdminPassword } from '../services/analytics.service.js';
 import { VisitPayload } from '../types/analytics.types.js';
 
 export class AnalyticsController {
-  // Non-blocking visitor ping endpoint
+  // Non-blocking visitor ping endpoint (public, anonymous)
   static async recordVisit(req: Request, res: Response): Promise<void> {
     try {
       const payload: VisitPayload = req.body || {};
@@ -20,14 +20,39 @@ export class AnalyticsController {
       });
 
       res.status(200).json({ success: true });
-    } catch (err: any) {
+    } catch {
       res.status(200).json({ success: true }); // Always return 200 so analytics never interferes with client
     }
   }
 
-  // Returns full aggregated stats for the dashboard
+  // Verifies admin password
+  static async verifyPassword(req: Request, res: Response): Promise<void> {
+    const { password } = req.body || {};
+    if (verifyAdminPassword(password)) {
+      res.status(200).json({ success: true, token: password });
+    } else {
+      res.status(401).json({ success: false, error: 'Incorrect administrator password' });
+    }
+  }
+
+  // Returns full aggregated stats for the dashboard (PASSWORD PROTECTED)
   static async getStats(req: Request, res: Response): Promise<void> {
     try {
+      const authHeader = req.headers['authorization'];
+      const rawHeaderKey = req.headers['x-admin-key'];
+      const key =
+        (typeof rawHeaderKey === 'string' ? rawHeaderKey : '') ||
+        (typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '') ||
+        (typeof req.query.key === 'string' ? req.query.key : '');
+
+      if (!verifyAdminPassword(key)) {
+        res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin password required to access analytics'
+        });
+        return;
+      }
+
       const stats = analyticsService.getStats();
       res.status(200).json({
         success: true,

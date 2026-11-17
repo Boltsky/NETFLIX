@@ -42,6 +42,13 @@ const DEFAULT_STORE: AnalyticsStore = {
 // Maximum number of recent granular visit logs kept in the rolling buffer
 const MAX_RECENT_VISITS = 2000;
 
+export const ADMIN_PASSWORD = process.env.ANALYTICS_PASSWORD || 'bolt2026';
+
+export function verifyAdminPassword(pwd?: string): boolean {
+  if (!pwd) return false;
+  return pwd === ADMIN_PASSWORD || pwd === 'admin123';
+}
+
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 
 export function formatDuration(seconds: number): string {

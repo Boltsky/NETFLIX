@@ -148,8 +148,30 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.success).toBe(true);
   });
 
-  it('GET /api/v1/analytics/stats should return aggregated visitor, location, OS, and time spent statistics', async () => {
+  it('GET /api/v1/analytics/stats should reject unauthorized access without admin password', async () => {
     const res = await request(app).get('/api/v1/analytics/stats');
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('POST /api/v1/analytics/verify should validate admin password', async () => {
+    const badRes = await request(app)
+      .post('/api/v1/analytics/verify')
+      .send({ password: 'wrongpassword' });
+    expect(badRes.status).toBe(401);
+    expect(badRes.body.success).toBe(false);
+
+    const goodRes = await request(app)
+      .post('/api/v1/analytics/verify')
+      .send({ password: 'bolt2026' });
+    expect(goodRes.status).toBe(200);
+    expect(goodRes.body.success).toBe(true);
+  });
+
+  it('GET /api/v1/analytics/stats should return aggregated visitor, location, OS, and time spent statistics with valid password', async () => {
+    const res = await request(app)
+      .get('/api/v1/analytics/stats')
+      .set('x-admin-key', 'bolt2026');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.summary).toBeDefined();

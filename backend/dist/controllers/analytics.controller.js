@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsController = void 0;
 const analytics_service_js_1 = require("../services/analytics.service.js");
 class AnalyticsController {
-    // Non-blocking visitor ping endpoint
+    // Non-blocking visitor ping endpoint (public, anonymous)
     static async recordVisit(req, res) {
         try {
             const payload = req.body || {};
@@ -19,13 +19,35 @@ class AnalyticsController {
             });
             res.status(200).json({ success: true });
         }
-        catch (err) {
+        catch {
             res.status(200).json({ success: true }); // Always return 200 so analytics never interferes with client
         }
     }
-    // Returns full aggregated stats for the dashboard
+    // Verifies admin password
+    static async verifyPassword(req, res) {
+        const { password } = req.body || {};
+        if ((0, analytics_service_js_1.verifyAdminPassword)(password)) {
+            res.status(200).json({ success: true, token: password });
+        }
+        else {
+            res.status(401).json({ success: false, error: 'Incorrect administrator password' });
+        }
+    }
+    // Returns full aggregated stats for the dashboard (PASSWORD PROTECTED)
     static async getStats(req, res) {
         try {
+            const authHeader = req.headers['authorization'];
+            const rawHeaderKey = req.headers['x-admin-key'];
+            const key = (typeof rawHeaderKey === 'string' ? rawHeaderKey : '') ||
+                (typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '') ||
+                (typeof req.query.key === 'string' ? req.query.key : '');
+            if (!(0, analytics_service_js_1.verifyAdminPassword)(key)) {
+                res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized: Admin password required to access analytics'
+                });
+                return;
+            }
             const stats = analytics_service_js_1.analyticsService.getStats();
             res.status(200).json({
                 success: true,

@@ -89,7 +89,7 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
       {/* Background glass scrim when sidebar is expanded */}
       <div
         className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 pointer-events-none hidden md:block ${
-          isExpanded ? 'opacity-100' : 'opacity-0'
+          isExpanded && currentTab !== ('analytics' as any) ? 'opacity-100' : 'opacity-0'
         }`}
       />
 

@@ -53,6 +53,9 @@ const ScreenFocusController: React.FC<{
       } else if (screen === 'settings') {
         window.scrollTo({ top: 0, behavior: 'auto' });
         setFocusedKey('settings-tab-updates');
+      } else if (screen === 'analytics') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+        setFocusedKey('analytics-password-input');
       }
     }, 60);
     return () => clearTimeout(timer);
@@ -534,8 +537,8 @@ export const App: React.FC = () => {
           <ProfileSelector onSelectProfile={handleSelectProfile} />
         )}
 
-        {/* Navigation (visible whenever logged in and not in full-screen player) */}
-        {currentScreen !== 'profiles' && currentScreen !== 'player' && (
+        {/* Navigation (visible whenever logged in and not in full-screen player or standalone analytics) */}
+        {currentScreen !== 'profiles' && currentScreen !== 'player' && currentScreen !== 'analytics' && (
           <>
             {/* Desktop & TV Sidebar Drawer (Tablets, Laptops & TV D-Pad) */}
             <NetflixSidebar

@@ -42,6 +42,7 @@ router.get('/subtitles/proxy', CatalogController.proxySubtitle);
 
 // Visitor Analytics (Anonymous telemetry & audience dashboard)
 router.post('/analytics/visit', AnalyticsController.recordVisit);
+router.post('/analytics/verify', AnalyticsController.verifyPassword);
 router.get('/analytics/stats', AnalyticsController.getStats);
 
 export default router;

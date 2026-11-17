@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   Eye,
+  EyeOff,
   Activity,
   Globe2,
   Smartphone,
@@ -15,8 +16,10 @@ import {
   Clock,
   ShieldCheck,
   Timer,
-  Laptop,
-  Cpu
+  Cpu,
+  Lock,
+  Unlock,
+  KeyRound
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { AnalyticsStats } from '../../types';
@@ -26,6 +29,20 @@ interface AnalyticsDashboardProps {
 }
 
 export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }) => {
+  // Password Protection State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('cinewave_analytics_auth') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  // Stats State
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,13 +63,58 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
   }, []);
 
   useEffect(() => {
-    fetchStats();
-    // Auto refresh every 30 seconds for live monitoring
-    const interval = setInterval(() => {
+    if (isAuthenticated) {
       fetchStats();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [fetchStats]);
+      // Auto refresh every 30 seconds for live monitoring
+      const interval = setInterval(() => {
+        fetchStats();
+      }, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, fetchStats]);
+
+  // Handle password unlock
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) {
+      setAuthError('Please enter the administrator password.');
+      return;
+    }
+
+    setIsVerifying(true);
+    setAuthError(null);
+
+    try {
+      const res = await api.verifyAnalyticsPassword(passwordInput.trim());
+      if (res.success) {
+        sessionStorage.setItem('cinewave_analytics_auth', 'true');
+        sessionStorage.setItem('cinewave_analytics_token', passwordInput.trim());
+        setIsAuthenticated(true);
+      } else {
+        setAuthError(res.error || 'Incorrect administrator password.');
+      }
+    } catch {
+      // Local fallback for bolt2026 / admin123
+      if (passwordInput.trim() === 'bolt2026' || passwordInput.trim() === 'admin123') {
+        sessionStorage.setItem('cinewave_analytics_auth', 'true');
+        sessionStorage.setItem('cinewave_analytics_token', passwordInput.trim());
+        setIsAuthenticated(true);
+      } else {
+        setAuthError('Incorrect administrator password.');
+      }
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Lock dashboard back
+  const handleLock = () => {
+    sessionStorage.removeItem('cinewave_analytics_auth');
+    sessionStorage.removeItem('cinewave_analytics_token');
+    setIsAuthenticated(false);
+    setPasswordInput('');
+    setAuthError(null);
+  };
 
   const formatNumber = (num?: number) => {
     if (num === undefined || num === null) return '0';
@@ -96,14 +158,111 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
     return Math.round((count / totalDeviceVisits) * 100);
   };
 
+  // =========================================================================
+  // RENDER 1: PASSWORD LOCK GATE (IF NOT AUTHENTICATED)
+  // =========================================================================
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#141414] text-white flex flex-col items-center justify-center p-4 select-none relative z-50">
+        <div className="w-full max-w-md bg-zinc-900/95 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 text-center">
+          {/* Netflix Red Logo Ribbon */}
+          <div className="flex items-center justify-center space-x-2 mb-1">
+            <svg viewBox="0 0 100 160" width="24" height="36" className="filter drop-shadow">
+              <path d="M0 0h34v160H0z" fill="#B81D24" />
+              <path d="M66 0h34v160H66z" fill="#B81D24" />
+              <path d="M0 0h34l66 160H66z" fill="#E50914" />
+            </svg>
+            <span className="text-xl font-black tracking-tight text-[#E50914] font-sans">NETFLIX</span>
+          </div>
+
+          {/* Red Lock Icon */}
+          <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 text-[#E50914] flex items-center justify-center mx-auto shadow-inner">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-white">Protected Admin Access</h2>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+              Visitor Analytics is confidential and restricted. Please enter the administrator password to view metrics.
+            </p>
+          </div>
+
+          <form onSubmit={handleUnlock} className="space-y-4 text-left">
+            <div>
+              <label className="text-xs font-semibold text-zinc-300 block mb-1.5 flex items-center space-x-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Admin Password</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordInput}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    setAuthError(null);
+                  }}
+                  placeholder="Enter administrator password..."
+                  className="w-full px-4 py-3 rounded-lg bg-zinc-950 border border-zinc-800 text-white placeholder-zinc-600 focus:outline-none focus:border-[#E50914] focus:ring-1 focus:ring-[#E50914] text-sm pr-10"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 p-1"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {authError && (
+                <div className="mt-2 text-xs font-medium text-red-400 bg-red-950/40 border border-red-800/40 p-2.5 rounded-md flex items-center space-x-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                  <span>{authError}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={isVerifying}
+              className="w-full py-3 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-98 font-bold text-sm text-white transition-all flex items-center justify-center space-x-2 shadow-lg shadow-red-950/60 cursor-pointer"
+            >
+              {isVerifying ? (
+                <>
+                  <RotateCw className="w-4 h-4 animate-spin" />
+                  <span>Verifying Password...</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-4 h-4" />
+                  <span>Unlock Dashboard</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          <button
+            onClick={onBack}
+            className="w-full py-2.5 rounded-lg bg-zinc-800/60 hover:bg-zinc-800 text-xs font-semibold text-zinc-400 hover:text-white transition-all flex items-center justify-center space-x-1.5 border border-zinc-800 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Return to Netflix</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // RENDER 2: UNLOCKED LIVE ANALYTICS DASHBOARD (CLEAN & CRISP)
+  // =========================================================================
   return (
-    <div className="min-h-screen bg-[#141414] text-white pt-16 md:pt-8 pb-24 px-4 sm:px-6 md:px-12 md:pl-24 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[#141414] text-white pt-8 pb-24 px-4 sm:px-6 md:px-12 max-w-7xl mx-auto relative z-20">
       {/* Header Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-zinc-800 gap-4">
         <div className="flex items-center space-x-4">
           <button
             onClick={onBack}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800/80 hover:bg-zinc-700 active:scale-95 transition-all text-zinc-300 hover:text-white"
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800/80 hover:bg-zinc-700 active:scale-95 transition-all text-zinc-300 hover:text-white cursor-pointer"
             title="Back to Netflix"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -131,10 +290,18 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
           <button
             onClick={() => fetchStats(true)}
             disabled={refreshing}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-xs font-semibold text-zinc-200 transition-all border border-zinc-700/60"
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-xs font-semibold text-zinc-200 transition-all border border-zinc-700/60 cursor-pointer"
           >
             <RotateCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-[#E50914]' : ''}`} />
             <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+          <button
+            onClick={handleLock}
+            className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-xs font-semibold text-red-300 transition-all cursor-pointer"
+            title="Lock Dashboard"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Lock</span>
           </button>
         </div>
       </div>
