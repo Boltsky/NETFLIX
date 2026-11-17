@@ -1488,11 +1488,15 @@ export const api = {
         token ||
         (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cinewave_analytics_token') : null) ||
         'bolt2026';
-      const res = await apiFetch<{ success: boolean; data: AnalyticsStats }>('/analytics/stats', {
-        headers: {
-          'x-admin-key': savedToken
+      const res = await apiFetch<{ success: boolean; data: AnalyticsStats }>(
+        `/analytics/stats?key=${encodeURIComponent(savedToken)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${savedToken}`,
+            'x-admin-key': savedToken
+          }
         }
-      });
+      );
       return res.data;
     } catch (err) {
       console.warn('[Analytics] Failed to fetch stats:', err);

@@ -13,7 +13,7 @@ function createApp() {
     app.use((0, cors_1.default)({
         origin: '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-admin-key', 'Accept']
     }));
     app.use(express_1.default.json());
     // Mount API (support both /api/v1 and /api)

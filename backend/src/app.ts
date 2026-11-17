@@ -9,7 +9,7 @@ export function createApp() {
   app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-admin-key', 'Accept']
   }));
   app.use(express.json());
 

@@ -188,4 +188,30 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.data.recentVisits[0].timeVisited).toBeDefined();
     expect(res.body.data.recentVisits[0].timeSpentFormatted).toBeDefined();
   });
+
+  it('should track movie playback and include in topTitles and recentWatchedMovies with query param key', async () => {
+    const moviePayload = {
+      visitorId: 'test-visitor-movie',
+      sessionId: 'test-session-movie',
+      device: 'desktop',
+      os: 'Windows',
+      screen: 'player',
+      titleName: 'The Notebook',
+      titleId: 11036,
+      durationSec: 120
+    };
+
+    const visitRes = await request(app)
+      .post('/api/v1/analytics/visit')
+      .send(moviePayload);
+    expect(visitRes.status).toBe(200);
+
+    // Verify retrieval via ?key=bolt2026 query param
+    const statsRes = await request(app)
+      .get('/api/v1/analytics/stats?key=bolt2026');
+    expect(statsRes.status).toBe(200);
+    expect(statsRes.body.success).toBe(true);
+    expect(statsRes.body.data.topTitles.some((t: any) => t.title === 'The Notebook')).toBe(true);
+    expect(statsRes.body.data.recentWatchedMovies.some((m: any) => m.title === 'The Notebook')).toBe(true);
+  });
 });

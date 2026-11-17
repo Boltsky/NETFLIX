@@ -1,14 +1,121 @@
 {
-  "allTimeVisits": 4,
+  "allTimeVisits": 9,
   "uniqueVisitors": {
     "test-visitor-123": {
       "firstSeen": "2026-11-17T10:33:51.635Z",
-      "lastSeen": "2026-11-17T11:27:04.732Z",
-      "count": 4,
+      "lastSeen": "2026-11-17T12:16:59.735Z",
+      "count": 8,
       "country": "Uganda"
+    },
+    "test-visitor-movie": {
+      "firstSeen": "2026-11-17T12:16:59.763Z",
+      "lastSeen": "2026-11-17T12:16:59.763Z",
+      "count": 1,
+      "country": "Localhost"
     }
   },
   "recentVisits": [
+    {
+      "id": "v_1794917819764_ffdim",
+      "visitorId": "test-visitor-movie",
+      "sessionId": "test-session-movie",
+      "timestamp": "2026-11-17T12:16:59.763Z",
+      "timeVisited": "3:16 PM",
+      "timeSpentSec": 120,
+      "timeSpentFormatted": "2m 0s",
+      "device": "desktop",
+      "screen": "player",
+      "titleName": "The Notebook",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "browser": "Unknown Browser",
+      "os": "Windows"
+    },
+    {
+      "id": "v_1794917819741_ec5kh",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T12:16:59.735Z",
+      "timeVisited": "3:16 PM",
+      "timeSpentSec": 185,
+      "timeSpentFormatted": "3m 5s",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "browser": "Unknown Browser",
+      "os": "iOS"
+    },
+    {
+      "id": "v_1794917767181_y5gc1",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T12:16:07.176Z",
+      "timeVisited": "3:16 PM",
+      "timeSpentSec": 185,
+      "timeSpentFormatted": "3m 5s",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "browser": "Unknown Browser",
+      "os": "iOS"
+    },
+    {
+      "id": "v_1794917081085_jct4s",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T12:04:41.081Z",
+      "timeVisited": "3:04 PM",
+      "timeSpentSec": 185,
+      "timeSpentFormatted": "3m 5s",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "browser": "Unknown Browser",
+      "os": "iOS"
+    },
+    {
+      "id": "v_1794916878363_7z7o6",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T12:01:18.358Z",
+      "timeVisited": "3:01 PM",
+      "timeSpentSec": 185,
+      "timeSpentFormatted": "3m 5s",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "browser": "Unknown Browser",
+      "os": "iOS"
+    },
     {
       "id": "v_1794914824736_o1i6z",
       "visitorId": "test-visitor-123",
@@ -91,35 +198,67 @@
   ],
   "dailyStats": {
     "2026-11-17": {
-      "visits": 4,
+      "visits": 9,
       "uniqueVisitors": 0
     }
   },
   "countryCounts": {
-    "Uganda": 4
+    "Uganda": 8,
+    "Localhost": 1
   },
   "cityCounts": {
     "Kampala, Uganda": {
       "city": "Kampala",
       "country": "Uganda",
       "flag": "🇺🇬",
-      "count": 4
+      "count": 8
+    },
+    "Local, Localhost": {
+      "city": "Local",
+      "country": "Localhost",
+      "flag": "🏠",
+      "count": 1
     }
   },
   "deviceCounts": {
-    "mobile": 4,
+    "mobile": 8,
     "tablet": 0,
-    "desktop": 0,
+    "desktop": 1,
     "tv": 0
   },
   "osCounts": {
-    "iOS": 3
+    "iOS": 7,
+    "Windows": 1
   },
   "sessionDurations": {
-    "test-session-456": 185
+    "test-session-456": 185,
+    "test-session-movie": 120
   },
   "screenCounts": {
-    "home": 4
+    "home": 8,
+    "player": 1
   },
-  "titleCounts": {}
+  "titleCounts": {
+    "The Notebook": 1
+  },
+  "watchedMovies": [
+    {
+      "id": "wm_1794917819764_37pvd",
+      "visitorId": "test-visitor-movie",
+      "title": "The Notebook",
+      "titleId": 11036,
+      "type": "video",
+      "timestamp": "2026-11-17T12:16:59.763Z",
+      "timeWatched": "3:16 PM",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "device": "desktop",
+      "os": "Windows"
+    }
+  ]
 }

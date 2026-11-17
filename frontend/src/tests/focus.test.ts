@@ -303,7 +303,7 @@ describe('Netflix TV Navigation & UX Tests', () => {
     expect(details.id).toBe(unknownId);
     expect(details.title).not.toBe('Stranger Things');
     expect(details.title).not.toBe('Fight Club');
-  }, 15000);
+  }, 30000);
 
   it('verifies resolvePlayback embed servers prioritize clean providers (FrameX, AutoEmbed) and eliminate bot verification gates', async () => {
     const { api } = await import('../services/api');

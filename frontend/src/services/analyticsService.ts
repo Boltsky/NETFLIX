@@ -124,6 +124,40 @@ class AnalyticsService {
     return Math.max(0, Math.floor((Date.now() - this.sessionStartTime) / 1000));
   }
 
+  // Dedicated movie & show playback tracker
+  public trackMovieWatch(
+    item: { id?: string | number; title: string; type?: string },
+    season?: number,
+    episode?: number
+  ): void {
+    if (typeof window === 'undefined' || !item?.title) return;
+
+    let fullTitle = item.title;
+    if (item.type === 'tv' || item.type === 'anime' || (season && episode)) {
+      fullTitle = `${item.title} (S${season || 1}:E${episode || 1})`;
+    }
+
+    const payload: VisitPayload = {
+      visitorId: this.visitorId,
+      sessionId: this.sessionId,
+      device: this.detectDevice(),
+      os: this.detectOS(),
+      screen: 'player',
+      titleName: fullTitle,
+      titleId: item.id,
+      timezone: Intl.DateTimeFormat?.().resolvedOptions?.().timeZone || undefined,
+      language: navigator.language || undefined,
+      screenResolution: `${window.screen?.width || window.innerWidth}x${window.screen?.height || window.innerHeight}`,
+      referrer: document.referrer || undefined,
+      durationSec: this.getSessionDurationSec(),
+      sessionStartTime: this.sessionStartTime
+    };
+
+    this.lastTrackedScreen = 'player';
+    this.lastTrackedTime = Date.now();
+    api.logVisit(payload).catch(() => {});
+  }
+
   public trackVisit(screen: string, titleName?: string, titleId?: string | number): void {
     if (typeof window === 'undefined') return;
 

@@ -221,6 +221,27 @@ export interface OSStat {
   percentage: number;
 }
 
+export interface WatchedMovieRecord {
+  id: string;
+  visitorId: string;
+  title: string;
+  titleId?: string | number;
+  type?: string;
+  season?: number;
+  episode?: number;
+  timestamp: string;
+  timeWatched: string;
+  location: LocationInfo;
+  device: 'mobile' | 'tablet' | 'desktop' | 'tv';
+  os: string;
+}
+
+export interface TopTitleStat {
+  title: string;
+  count: number;
+  percentage: number;
+}
+
 export interface AnalyticsStats {
   summary: {
     totalVisits: number;
@@ -242,7 +263,8 @@ export interface AnalyticsStats {
   topCountries: CountryStat[];
   topCities: CityStat[];
   topScreens: Array<{ screen: string; count: number }>;
-  topTitles: Array<{ title: string; count: number }>;
+  topTitles: TopTitleStat[];
+  recentWatchedMovies?: WatchedMovieRecord[];
   recentVisits: VisitRecord[];
   lastUpdated: string;
 }

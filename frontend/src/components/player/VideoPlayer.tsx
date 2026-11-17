@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import Hls from 'hls.js';
 import { PlaybackResolution, MediaItem, StreamSource, SubtitleTrack } from '../../types';
 import { api } from '../../services/api';
+import { analytics } from '../../services/analyticsService';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { parseSubtitles, SubtitleCue } from '../../utils/subtitleParser';
 import { getAppSettings } from '../../services/settingsService';
@@ -683,6 +684,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       clearTimeout(watchdogTimerRef.current);
       watchdogTimerRef.current = null;
     }
+
+    // Log movie / episode playback telemetry
+    analytics.trackMovieWatch(item, season, episode);
 
     api.resolvePlayback(item.id, item.type, season, episode, item.title)
       .then((res) => {

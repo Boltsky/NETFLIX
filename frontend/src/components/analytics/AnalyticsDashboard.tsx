@@ -19,7 +19,9 @@ import {
   Cpu,
   Lock,
   Unlock,
-  KeyRound
+  KeyRound,
+  Film,
+  PlayCircle
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { AnalyticsStats } from '../../types';
@@ -47,15 +49,21 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>('Just now');
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const fetchStats = useCallback(async (isManual = false) => {
+  const fetchStats = useCallback(async (isManual = false, token?: string) => {
     if (isManual) setRefreshing(true);
+    setFetchError(null);
     try {
-      const data = await api.getAnalyticsStats();
+      const data = await api.getAnalyticsStats(token);
       if (data) {
         setStats(data);
         setLastRefreshed(new Date().toLocaleTimeString());
+      } else {
+        setFetchError('Unable to load telemetry metrics. Please click Refresh or re-enter password.');
       }
+    } catch (err: any) {
+      setFetchError(err.message || 'Connection error to analytics backend.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -76,7 +84,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
   // Handle password unlock
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!passwordInput.trim()) {
+    const entered = passwordInput.trim();
+    if (!entered) {
       setAuthError('Please enter the administrator password.');
       return;
     }
@@ -85,20 +94,22 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
     setAuthError(null);
 
     try {
-      const res = await api.verifyAnalyticsPassword(passwordInput.trim());
+      const res = await api.verifyAnalyticsPassword(entered);
       if (res.success) {
         sessionStorage.setItem('cinewave_analytics_auth', 'true');
-        sessionStorage.setItem('cinewave_analytics_token', passwordInput.trim());
+        sessionStorage.setItem('cinewave_analytics_token', entered);
         setIsAuthenticated(true);
+        fetchStats(false, entered);
       } else {
         setAuthError(res.error || 'Incorrect administrator password.');
       }
     } catch {
       // Local fallback for bolt2026 / admin123
-      if (passwordInput.trim() === 'bolt2026' || passwordInput.trim() === 'admin123') {
+      if (entered === 'bolt2026' || entered === 'admin123') {
         sessionStorage.setItem('cinewave_analytics_auth', 'true');
-        sessionStorage.setItem('cinewave_analytics_token', passwordInput.trim());
+        sessionStorage.setItem('cinewave_analytics_token', entered);
         setIsAuthenticated(true);
+        fetchStats(false, entered);
       } else {
         setAuthError('Incorrect administrator password.');
       }
@@ -313,6 +324,21 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
         </div>
       ) : (
         <div className="mt-6 space-y-8">
+          {fetchError && (
+            <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span>{fetchError}</span>
+              </div>
+              <button
+                onClick={() => fetchStats(true)}
+                className="px-3 py-1.5 rounded bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs transition-all cursor-pointer"
+              >
+                Retry Now
+              </button>
+            </div>
+          )}
+
           {/* Top 5 Hero KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-5">
             {/* Card 1: Unique Visitors */}
@@ -662,6 +688,139 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
                 ) : (
                   <div className="py-8 text-center text-zinc-500 text-xs">
                     Screen metrics accumulating...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Watched Movies & TV Shows Analytics Section */}
+          <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-5 border-b border-zinc-800/80 gap-2">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-lg bg-red-600/15 text-[#E50914]">
+                  <Film className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <span>Movies & TV Shows Watched</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#E50914]/20 text-[#E50914] border border-[#E50914]/30">
+                      {stats?.recentWatchedMovies?.length || stats?.topTitles?.length || 0} Titles Tracked
+                    </span>
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    Live telemetry of movies and episodes played by viewers
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column (5 cols): Top Watched Titles Leaderboard */}
+              <div className="lg:col-span-5 flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    Most Popular Titles
+                  </span>
+                  <span className="text-[11px] font-mono text-zinc-500">Ranked by plays</span>
+                </div>
+
+                {stats?.topTitles && stats.topTitles.length > 0 ? (
+                  <div className="space-y-3">
+                    {stats.topTitles.map((t, idx) => (
+                      <div
+                        key={t.title}
+                        className="p-3 rounded-lg bg-zinc-800/40 hover:bg-zinc-800/70 border border-zinc-800/80 transition-all space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center space-x-2.5 truncate mr-2">
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center font-mono font-black text-[10px] flex-shrink-0 ${
+                                idx === 0
+                                  ? 'bg-[#E50914] text-white shadow-md shadow-red-950/80'
+                                  : idx === 1
+                                  ? 'bg-orange-500 text-white'
+                                  : idx === 2
+                                  ? 'bg-amber-500 text-black'
+                                  : 'bg-zinc-700 text-zinc-300'
+                              }`}
+                            >
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-white truncate text-sm">{t.title}</span>
+                          </div>
+                          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-200 flex-shrink-0">
+                            {t.count} {t.count === 1 ? 'play' : 'plays'}
+                          </span>
+                        </div>
+                        <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#E50914] to-orange-500 rounded-full"
+                            style={{ width: `${Math.max(t.percentage || 10, 8)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 px-4 text-center rounded-lg bg-zinc-800/20 border border-dashed border-zinc-800 my-auto text-zinc-500 text-xs">
+                    <Film className="w-8 h-8 mx-auto mb-2 opacity-30 text-[#E50914]" />
+                    <p className="font-semibold text-zinc-400">No titles watched yet</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      When viewers click play on movies or series, they will be ranked here.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column (7 cols): Recent Movie Watch Activity Feed */}
+              <div className="lg:col-span-7 flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    Recent Movie Playbacks
+                  </span>
+                  <span className="text-[11px] font-mono text-zinc-500">Live feed</span>
+                </div>
+
+                {stats?.recentWatchedMovies && stats.recentWatchedMovies.length > 0 ? (
+                  <div className="space-y-2 overflow-y-auto max-h-[340px] pr-1">
+                    {stats.recentWatchedMovies.map((wm) => (
+                      <div
+                        key={wm.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/40 hover:bg-zinc-800/70 border border-zinc-800/80 transition-all text-xs"
+                      >
+                        <div className="flex items-center space-x-3 truncate mr-2">
+                          <div className="w-8 h-8 rounded-lg bg-red-600/10 border border-red-600/20 flex items-center justify-center text-[#E50914] flex-shrink-0">
+                            <PlayCircle className="w-4 h-4" />
+                          </div>
+                          <div className="truncate">
+                            <p className="font-bold text-white truncate text-sm">{wm.title}</p>
+                            <div className="flex items-center space-x-2 text-[10px] text-zinc-400 mt-0.5">
+                              <span>{wm.location.flag || '🌐'} {wm.location.city && wm.location.city !== 'Unknown City' ? `${wm.location.city}, ` : ''}{wm.location.country}</span>
+                              <span>•</span>
+                              <span>{getOsIcon(wm.os)} {wm.os}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-mono font-semibold text-zinc-200 text-[11px]">
+                            {wm.timeWatched}
+                          </div>
+                          <div className="text-[10px] text-zinc-500">
+                            {getTimeAgo(wm.timestamp)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 px-4 text-center rounded-lg bg-zinc-800/20 border border-dashed border-zinc-800 my-auto text-zinc-500 text-xs">
+                    <PlayCircle className="w-8 h-8 mx-auto mb-2 opacity-30 text-[#E50914]" />
+                    <p className="font-semibold text-zinc-400">No playback sessions logged yet</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      As viewers start watching movies on the web, live stream entries will appear here.
+                    </p>
                   </div>
                 )}
               </div>

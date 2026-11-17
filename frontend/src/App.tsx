@@ -344,6 +344,7 @@ export const App: React.FC = () => {
 
   // Launch Player
   const handleLaunchPlayer = useCallback((item: MediaItem, season?: number, episode?: number) => {
+    analytics.trackMovieWatch(item, season, episode);
     navigateTo('player', { item, season, episode });
   }, [navigateTo]);
 

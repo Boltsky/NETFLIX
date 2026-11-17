@@ -21,7 +21,8 @@ const DEFAULT_STORE = {
     osCounts: {},
     sessionDurations: {},
     screenCounts: {},
-    titleCounts: {}
+    titleCounts: {},
+    watchedMovies: []
 };
 // Maximum number of recent granular visit logs kept in the rolling buffer
 const MAX_RECENT_VISITS = 2000;
@@ -101,7 +102,8 @@ class AnalyticsService {
                     sessionDurations: {
                         ...DEFAULT_STORE.sessionDurations,
                         ...(parsed.sessionDurations || {})
-                    }
+                    },
+                    watchedMovies: Array.isArray(parsed.watchedMovies) ? parsed.watchedMovies : []
                 };
             }
         }
@@ -377,9 +379,28 @@ class AnalyticsService {
         }
         // Screen Stats
         this.data.screenCounts[screen] = (this.data.screenCounts[screen] || 0) + 1;
-        // Title Stats
+        // Title & Watched Movies Stats
         if (payload.titleName) {
             this.data.titleCounts[payload.titleName] = (this.data.titleCounts[payload.titleName] || 0) + 1;
+            const movieRecord = {
+                id: `wm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                visitorId,
+                title: payload.titleName,
+                titleId: payload.titleId,
+                type: payload.screen === 'player' ? 'video' : 'title',
+                timestamp,
+                timeWatched: timeVisited,
+                location,
+                device,
+                os
+            };
+            if (!this.data.watchedMovies) {
+                this.data.watchedMovies = [];
+            }
+            this.data.watchedMovies.unshift(movieRecord);
+            if (this.data.watchedMovies.length > 500) {
+                this.data.watchedMovies.length = 500;
+            }
         }
         // Rolling Recent Visits (FIFO capped)
         this.data.recentVisits.unshift(record);
@@ -448,11 +469,16 @@ class AnalyticsService {
             .map(([screen, count]) => ({ screen, count }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 8);
-        // Top Titles
+        // Top Titles (with percentage)
+        const totalTitlePlays = Object.values(this.data.titleCounts).reduce((a, b) => a + b, 0) || 1;
         const topTitles = Object.entries(this.data.titleCounts)
-            .map(([title, count]) => ({ title, count }))
+            .map(([title, count]) => {
+            const percentage = Math.round((count / totalTitlePlays) * 1000) / 10;
+            return { title, count, percentage };
+        })
             .sort((a, b) => b.count - a.count)
-            .slice(0, 8);
+            .slice(0, 15);
+        const recentWatchedMovies = (this.data.watchedMovies || []).slice(0, 30);
         return {
             summary: {
                 totalVisits: this.data.allTimeVisits,
@@ -470,6 +496,7 @@ class AnalyticsService {
             topCities,
             topScreens,
             topTitles,
+            recentWatchedMovies,
             recentVisits: this.data.recentVisits.slice(0, 25),
             lastUpdated: new Date().toISOString()
         };
