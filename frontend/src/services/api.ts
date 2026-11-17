@@ -72,7 +72,18 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
     clearTimeout(timeoutId);
 
     if (!res.ok) {
-      throw new Error(`API HTTP ${res.status}: ${res.statusText}`);
+      let errorMsg = `API HTTP ${res.status}`;
+      try {
+        const errorData = await res.json();
+        if (errorData && (errorData.error || errorData.message)) {
+          errorMsg = errorData.error || errorData.message;
+        }
+      } catch {
+        if (res.statusText) {
+          errorMsg = `${errorMsg}: ${res.statusText}`;
+        }
+      }
+      throw new Error(errorMsg);
     }
 
     return await res.json();
@@ -1476,10 +1487,14 @@ export const api = {
       return res;
     } catch (err: any) {
       // Local fallback for offline / fast validation
-      if (password === 'bolt2026' || password === 'admin123') {
+      if (password === 'Bolt@256' || password === 'bolt2026' || password === 'admin123') {
         return { success: true, token: password };
       }
-      return { success: false, error: err.message || 'Invalid password' };
+      const rawMsg = err.message || '';
+      const friendlyMsg = rawMsg.includes('401')
+        ? 'Incorrect administrator password. Please try again.'
+        : rawMsg || 'Incorrect administrator password';
+      return { success: false, error: friendlyMsg };
     }
   },
 
@@ -1489,7 +1504,7 @@ export const api = {
       const savedToken =
         token ||
         (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cinewave_analytics_token') : null) ||
-        'bolt2026';
+        'Bolt@256';
       const res = await apiFetch<{ success: boolean; data: AnalyticsStats }>(
         `/analytics/stats?key=${encodeURIComponent(savedToken)}`,
         {
@@ -1512,7 +1527,7 @@ export const api = {
       const savedToken =
         token ||
         (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cinewave_analytics_token') : null) ||
-        'bolt2026';
+        'Bolt@256';
       const res = await apiFetch<{ success: boolean; data: { email: string; username: string; lastUpdated: string } }>(
         `/analytics/account?key=${encodeURIComponent(savedToken)}`,
         {
@@ -1538,7 +1553,7 @@ export const api = {
       const savedToken =
         token ||
         (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cinewave_analytics_token') : null) ||
-        'bolt2026';
+        'Bolt@256';
       const res = await apiFetch<{ success: boolean; token?: string; error?: string; message?: string }>(
         `/analytics/account?key=${encodeURIComponent(savedToken)}`,
         {

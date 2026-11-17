@@ -199,17 +199,18 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
         setIsAuthenticated(true);
         fetchStats(false, entered);
       } else {
-        setAuthError(res.error || 'Incorrect administrator password.');
+        const msg = res.error || 'Incorrect administrator password.';
+        setAuthError(msg.includes('401') ? 'Incorrect administrator password. Please check and try again.' : msg);
       }
     } catch {
-      // Local fallback for bolt2026 / admin123
-      if (entered === 'bolt2026' || entered === 'admin123') {
+      // Local fallback for Bolt@256 / bolt2026 / admin123
+      if (entered === 'Bolt@256' || entered === 'bolt2026' || entered === 'admin123') {
         sessionStorage.setItem('cinewave_analytics_auth', 'true');
         sessionStorage.setItem('cinewave_analytics_token', entered);
         setIsAuthenticated(true);
         fetchStats(false, entered);
       } else {
-        setAuthError('Incorrect administrator password.');
+        setAuthError('Incorrect administrator password. Please try again.');
       }
     } finally {
       setIsVerifying(false);
