@@ -273,8 +273,69 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const scrubberRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
 
-  // Cross-browser Fullscreen Toggle
+  // Screen orientation tracking (portrait vs landscape)
+  const [isPortrait, setIsPortrait] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerHeight > window.innerWidth;
+  });
+
+  useEffect(() => {
+    const checkOrientation = () => {
+      if (typeof window !== 'undefined') {
+        setIsPortrait(window.innerHeight > window.innerWidth);
+      }
+    };
+
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
+  // Screen Orientation Lock Helpers for Landscape Fullscreen
+  const lockLandscapeOrientation = useCallback(async () => {
+    try {
+      const screenObj: any = typeof window !== 'undefined' ? window.screen : null;
+      const orientation = screenObj?.orientation;
+      if (orientation && typeof orientation.lock === 'function') {
+        await orientation.lock('landscape').catch(() => {});
+      } else if (typeof screenObj?.lockOrientation === 'function') {
+        screenObj.lockOrientation('landscape');
+      } else if (typeof screenObj?.webkitLockOrientation === 'function') {
+        screenObj.webkitLockOrientation('landscape');
+      } else if (typeof screenObj?.mozLockOrientation === 'function') {
+        screenObj.mozLockOrientation('landscape');
+      } else if (typeof screenObj?.msLockOrientation === 'function') {
+        screenObj.msLockOrientation('landscape');
+      }
+    } catch (err) {
+      // Non-blocking fallback
+    }
+  }, []);
+
+  const unlockScreenOrientation = useCallback(() => {
+    try {
+      const screenObj: any = typeof window !== 'undefined' ? window.screen : null;
+      const orientation = screenObj?.orientation;
+      if (orientation && typeof orientation.unlock === 'function') {
+        orientation.unlock();
+      } else if (typeof screenObj?.unlockOrientation === 'function') {
+        screenObj.unlockOrientation();
+      } else if (typeof screenObj?.webkitUnlockOrientation === 'function') {
+        screenObj.webkitUnlockOrientation();
+      } else if (typeof screenObj?.mozUnlockOrientation === 'function') {
+        screenObj.mozUnlockOrientation();
+      } else if (typeof screenObj?.msUnlockOrientation === 'function') {
+        screenObj.msUnlockOrientation();
+      }
+    } catch (err) {}
+  }, []);
+
+  // Cross-browser Fullscreen Toggle with Landscape Switch
   const toggleFullscreen = useCallback(async () => {
     try {
       const doc: any = document;
@@ -283,38 +344,68 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         doc.fullscreenElement ||
         doc.webkitFullscreenElement ||
         doc.mozFullScreenElement ||
-        doc.msFullscreenElement
+        doc.msFullscreenElement ||
+        isFallbackFullscreen
       );
 
       if (!isFull) {
-        if (elem.requestFullscreen) {
-          await elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) {
-          await elem.webkitRequestFullscreen();
-        } else if (elem.mozRequestFullScreen) {
-          await elem.mozRequestFullScreen();
-        } else if (elem.msRequestFullscreen) {
-          await elem.msRequestFullscreen();
-        } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
-          (videoRef.current as any).webkitEnterFullscreen();
+        let enteredNative = false;
+        try {
+          if (elem.requestFullscreen) {
+            await elem.requestFullscreen();
+            enteredNative = true;
+          } else if (elem.webkitRequestFullscreen) {
+            await elem.webkitRequestFullscreen();
+            enteredNative = true;
+          } else if (elem.mozRequestFullScreen) {
+            await elem.mozRequestFullScreen();
+            enteredNative = true;
+          } else if (elem.msRequestFullscreen) {
+            await elem.msRequestFullscreen();
+            enteredNative = true;
+          } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
+            (videoRef.current as any).webkitEnterFullscreen();
+            enteredNative = true;
+          }
+        } catch (reqErr) {
+          console.warn('[Netflix Player] Native requestFullscreen blocked or unsupported:', reqErr);
+        }
+
+        // Lock screen orientation to landscape
+        await lockLandscapeOrientation();
+
+        setIsFullscreen(true);
+        if (!enteredNative) {
+          setIsFallbackFullscreen(true);
         }
       } else {
-        if (doc.exitFullscreen) {
-          await doc.exitFullscreen();
-        } else if (doc.webkitExitFullscreen) {
-          await doc.webkitExitFullscreen();
-        } else if (doc.mozCancelFullScreen) {
-          await doc.mozCancelFullScreen();
-        } else if (doc.msExitFullscreen) {
-          await doc.msExitFullscreen();
+        unlockScreenOrientation();
+        setIsFallbackFullscreen(false);
+        setIsFullscreen(false);
+
+        try {
+          if (doc.exitFullscreen) {
+            await doc.exitFullscreen();
+          } else if (doc.webkitExitFullscreen) {
+            await doc.webkitExitFullscreen();
+          } else if (doc.mozCancelFullScreen) {
+            await doc.mozCancelFullScreen();
+          } else if (doc.msExitFullscreen) {
+            await doc.msExitFullscreen();
+          }
+        } catch (exitErr) {
+          console.warn('[Netflix Player] exitFullscreen error:', exitErr);
         }
       }
     } catch (err) {
       console.warn('[Netflix Player] Fullscreen toggle error:', err);
+      setIsFallbackFullscreen((prev) => !prev);
+      setIsFullscreen((prev) => !prev);
+      lockLandscapeOrientation();
     }
-  }, []);
+  }, [isFallbackFullscreen, lockLandscapeOrientation, unlockScreenOrientation]);
 
-  // Sync fullscreen state
+  // Sync fullscreen state & orientation
   useEffect(() => {
     const updateFsState = () => {
       const doc: any = document;
@@ -322,9 +413,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         doc.fullscreenElement ||
         doc.webkitFullscreenElement ||
         doc.mozFullScreenElement ||
-        doc.msFullscreenElement
+        doc.msFullscreenElement ||
+        isFallbackFullscreen
       );
       setIsFullscreen(isFull);
+
+      if (isFull) {
+        lockLandscapeOrientation();
+      } else {
+        unlockScreenOrientation();
+        setIsFallbackFullscreen(false);
+      }
     };
 
     document.addEventListener('fullscreenchange', updateFsState);
@@ -337,8 +436,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       document.removeEventListener('webkitfullscreenchange', updateFsState);
       document.removeEventListener('mozfullscreenchange', updateFsState);
       document.removeEventListener('MSFullscreenChange', updateFsState);
+      unlockScreenOrientation();
     };
-  }, []);
+  }, [isFallbackFullscreen, lockLandscapeOrientation, unlockScreenOrientation]);
 
   // Save viewing progress
   const saveCurrentProgress = useCallback((posSec: number, durSec: number) => {
@@ -466,6 +566,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Clean exit: stops all media and audio
   const handleExit = useCallback(() => {
+    unlockScreenOrientation();
     if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     if (adFailoverTimerRef.current) clearTimeout(adFailoverTimerRef.current);
@@ -491,11 +592,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       iframeRef.current.src = 'about:blank';
     }
     onExit();
-  }, [saveCurrentProgress, onExit, currentTime, duration]);
+  }, [saveCurrentProgress, onExit, currentTime, duration, unlockScreenOrientation]);
 
   // Ensure media resources are fully released on unmount
   useEffect(() => {
     return () => {
+      unlockScreenOrientation();
       if (scrubCommitTimerRef.current) clearTimeout(scrubCommitTimerRef.current);
       if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
       if (adFailoverTimerRef.current) clearTimeout(adFailoverTimerRef.current);
@@ -1018,9 +1120,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const now = Date.now();
     const lastTap = lastTapRef.current;
     const rect = playerContainerRef.current?.getBoundingClientRect();
-    const width = rect?.width || (typeof window !== 'undefined' ? window.innerWidth : 1280);
-    const relX = clientX - (rect?.left || 0);
-    const ratio = width > 0 ? relX / width : 0.5;
+    const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0));
+    const isMobileScreen = typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 1024;
+    const isCssLandscape = isFullscreen && isPortrait && isTouchDevice && isMobileScreen;
+
+    const effectiveWidth = isCssLandscape
+      ? (typeof window !== 'undefined' ? window.innerHeight : 844)
+      : (rect?.width || (typeof window !== 'undefined' ? window.innerWidth : 1280));
+    const effectiveCoordX = isCssLandscape ? clientY : clientX - (rect?.left || 0);
+    const ratio = effectiveWidth > 0 ? effectiveCoordX / effectiveWidth : 0.5;
 
     if (lastTap && (now - lastTap.time < 350) && Math.abs(clientX - lastTap.x) < 80) {
       // Double tap detected!
@@ -1054,14 +1162,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         lastTapRef.current = null;
       }, 260);
     }
-  }, [handleScrubStep, togglePlayPause, isPlaying, triggerTouchFeedback, resetControlsTimeout]);
+  }, [handleScrubStep, togglePlayPause, isPlaying, triggerTouchFeedback, resetControlsTimeout, isFullscreen, isPortrait]);
 
   // Touch Scrubber Seeking for Phones & Tablets
-  const handleScrubberTouch = useCallback((clientX: number, commit: boolean) => {
+  const handleScrubberTouch = useCallback((clientX: number, clientY: number, commit: boolean) => {
     if (!scrubberRef.current) return;
     const rect = scrubberRef.current.getBoundingClientRect();
-    const offsetX = Math.max(0, Math.min(rect.width, clientX - rect.left));
-    const pct = rect.width > 0 ? offsetX / rect.width : 0;
+    const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0));
+    const isMobileScreen = typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 1024;
+    const isCssLandscape = isFullscreen && isPortrait && isTouchDevice && isMobileScreen;
+
+    let pct = 0;
+    if (isCssLandscape) {
+      const offset = Math.max(0, Math.min(rect.height, clientY - rect.top));
+      pct = rect.height > 0 ? offset / rect.height : 0;
+    } else {
+      const offset = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      pct = rect.width > 0 ? offset / rect.width : 0;
+    }
     const effectiveDuration = duration > 0 ? duration : 7200;
     const targetTime = Math.round(pct * effectiveDuration);
 
@@ -1071,7 +1189,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (commit) {
       commitSeek(targetTime);
     }
-  }, [duration, commitSeek]);
+  }, [duration, commitSeek, isFullscreen, isPortrait]);
 
   // Remote key controller for TV
   useEffect(() => {
@@ -1505,10 +1623,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const displayTime = isScrubbing ? scrubTargetTime : currentTime;
   const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
 
+  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0));
+  const isMobileScreen = typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) < 1024;
+  const isCssLandscape = isFullscreen && isPortrait && isTouchDevice && isMobileScreen;
+
   return (
     <div
       ref={playerContainerRef}
-      className="fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden"
+      style={
+        isCssLandscape
+          ? {
+              position: 'fixed',
+              width: '100vh',
+              height: '100vw',
+              top: 0,
+              left: '100vw',
+              transform: 'rotate(90deg)',
+              transformOrigin: 'top left',
+              zIndex: 9999,
+            }
+          : undefined
+      }
+      className={`fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
+        isCssLandscape ? 'css-landscape-fullscreen' : ''
+      }`}
     >
       {/* Loading Overlay */}
       {loading && (
@@ -1700,22 +1838,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             ref={scrubberRef}
             onClick={(e) => {
               setFocusedControl('scrubber');
-              handleScrubberTouch(e.clientX, true);
+              handleScrubberTouch(e.clientX, e.clientY, true);
             }}
             onTouchStart={(e) => {
               if (e.touches[0]) {
                 setFocusedControl('scrubber');
-                handleScrubberTouch(e.touches[0].clientX, false);
+                handleScrubberTouch(e.touches[0].clientX, e.touches[0].clientY, false);
               }
             }}
             onTouchMove={(e) => {
               if (e.touches[0]) {
-                handleScrubberTouch(e.touches[0].clientX, false);
+                handleScrubberTouch(e.touches[0].clientX, e.touches[0].clientY, false);
               }
             }}
             onTouchEnd={(e) => {
               if (e.changedTouches[0]) {
-                handleScrubberTouch(e.changedTouches[0].clientX, true);
+                handleScrubberTouch(e.changedTouches[0].clientX, e.changedTouches[0].clientY, true);
               } else {
                 commitSeek(scrubTargetTimeRef.current);
               }

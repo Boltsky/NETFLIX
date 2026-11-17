@@ -696,6 +696,14 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       // 4. Touch target accessibility (minimum 44px touch targets)
       expect(code).toMatch(/min-w-\[44px\]/);
       expect(code).toMatch(/min-h-\[44px\]/);
+
+      // 5. Landscape fullscreen lock & CSS landscape fallback
+      expect(code).toContain('lockLandscapeOrientation');
+      expect(code).toContain('unlockScreenOrientation');
+      expect(code).toMatch(/lock\(['"]landscape['"]\)/);
+      expect(code).toContain('isPortrait');
+      expect(code).toContain('isCssLandscape');
+      expect(code).toMatch(/rotate\(90deg\)/);
     });
   });
 });
