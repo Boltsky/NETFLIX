@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   SkipForward,
   Server,
-  MousePointerClick
+  MousePointerClick,
+  Maximize,
+  Minimize
 } from 'lucide-react';
 
 interface VideoPlayerProps {
@@ -119,7 +121,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const scrubMultiplierRef = useRef<number>(1);
 
   // TV D-pad focus state
-  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles';
+  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles' | 'fullscreen';
   const [focusedControl, setFocusedControlState] = useState<FocusedControl>('play');
   const focusedControlRef = useRef<FocusedControl>('play');
   const setFocusedControl = useCallback((ctrl: FocusedControl) => {
@@ -221,6 +223,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       list.push('server-controls');
     }
     list.push('subtitles');
+    list.push('fullscreen');
     return list;
   }, [isEpisodic, effectiveSeason, effectiveEpisode, onNextEpisode, useIframeFallback, servers.length]);
 
@@ -267,6 +270,75 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const controlsTimeoutRef = useRef<any>(null);
+  const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrubberRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Cross-browser Fullscreen Toggle
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      const doc: any = document;
+      const elem: any = playerContainerRef.current || document.documentElement;
+      const isFull = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+
+      if (!isFull) {
+        if (elem.requestFullscreen) {
+          await elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          await elem.webkitRequestFullscreen();
+        } else if (elem.mozRequestFullScreen) {
+          await elem.mozRequestFullScreen();
+        } else if (elem.msRequestFullscreen) {
+          await elem.msRequestFullscreen();
+        } else if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
+          (videoRef.current as any).webkitEnterFullscreen();
+        }
+      } else {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('[Netflix Player] Fullscreen toggle error:', err);
+    }
+  }, []);
+
+  // Sync fullscreen state
+  useEffect(() => {
+    const updateFsState = () => {
+      const doc: any = document;
+      const isFull = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+      setIsFullscreen(isFull);
+    };
+
+    document.addEventListener('fullscreenchange', updateFsState);
+    document.addEventListener('webkitfullscreenchange', updateFsState);
+    document.addEventListener('mozfullscreenchange', updateFsState);
+    document.addEventListener('MSFullscreenChange', updateFsState);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', updateFsState);
+      document.removeEventListener('webkitfullscreenchange', updateFsState);
+      document.removeEventListener('mozfullscreenchange', updateFsState);
+      document.removeEventListener('MSFullscreenChange', updateFsState);
+    };
+  }, []);
 
   // Save viewing progress
   const saveCurrentProgress = useCallback((posSec: number, durSec: number) => {
@@ -398,6 +470,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     if (adFailoverTimerRef.current) clearTimeout(adFailoverTimerRef.current);
     if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
+    if (singleTapTimeoutRef.current) clearTimeout(singleTapTimeoutRef.current);
+    if (touchFeedbackTimerRef.current) clearTimeout(touchFeedbackTimerRef.current);
     const finalPos = isScrubbingRef.current
       ? scrubTargetTimeRef.current
       : (videoRef.current ? videoRef.current.currentTime : currentTime);
@@ -426,6 +500,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
       if (adFailoverTimerRef.current) clearTimeout(adFailoverTimerRef.current);
       if (playerToastTimerRef.current) clearTimeout(playerToastTimerRef.current);
+      if (singleTapTimeoutRef.current) clearTimeout(singleTapTimeoutRef.current);
+      if (touchFeedbackTimerRef.current) clearTimeout(touchFeedbackTimerRef.current);
       if (videoRef.current) {
         try {
           if (videoRef.current.duration > 0) {
@@ -904,6 +980,99 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, 6000);
   }, []);
 
+  // Play / Pause Toggle
+  const togglePlayPause = useCallback(() => {
+    if (useIframeFallback) {
+      const action = isPlaying ? 'pause' : 'play';
+      iframeRef.current?.contentWindow?.postMessage({ action }, '*');
+      setIsPlaying(!isPlaying);
+    } else if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      } else {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    }
+  }, [useIframeFallback, isPlaying]);
+
+  // Mobile Touch Gestures & Visual Feedback
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const singleTapTimeoutRef = useRef<any>(null);
+  const [touchFeedback, setTouchFeedback] = useState<{
+    type: 'rewind' | 'forward' | 'play' | 'pause';
+    label?: string;
+  } | null>(null);
+  const touchFeedbackTimerRef = useRef<any>(null);
+
+  const triggerTouchFeedback = useCallback((type: 'rewind' | 'forward' | 'play' | 'pause', label?: string) => {
+    if (touchFeedbackTimerRef.current) clearTimeout(touchFeedbackTimerRef.current);
+    setTouchFeedback({ type, label });
+    touchFeedbackTimerRef.current = setTimeout(() => {
+      setTouchFeedback(null);
+    }, 700);
+  }, []);
+
+  const handlePlayerTap = useCallback((clientX: number, clientY: number) => {
+    const now = Date.now();
+    const lastTap = lastTapRef.current;
+    const rect = playerContainerRef.current?.getBoundingClientRect();
+    const width = rect?.width || (typeof window !== 'undefined' ? window.innerWidth : 1280);
+    const relX = clientX - (rect?.left || 0);
+    const ratio = width > 0 ? relX / width : 0.5;
+
+    if (lastTap && (now - lastTap.time < 350) && Math.abs(clientX - lastTap.x) < 80) {
+      // Double tap detected!
+      if (singleTapTimeoutRef.current) {
+        clearTimeout(singleTapTimeoutRef.current);
+        singleTapTimeoutRef.current = null;
+      }
+      lastTapRef.current = null;
+
+      if (ratio < 0.38) {
+        handleScrubStep('rewind');
+        triggerTouchFeedback('rewind', '-10s');
+      } else if (ratio > 0.62) {
+        handleScrubStep('forward');
+        triggerTouchFeedback('forward', '+10s');
+      } else {
+        togglePlayPause();
+        triggerTouchFeedback(isPlaying ? 'pause' : 'play');
+      }
+    } else {
+      // Single tap candidate
+      lastTapRef.current = { time: now, x: clientX, y: clientY };
+      if (singleTapTimeoutRef.current) clearTimeout(singleTapTimeoutRef.current);
+      singleTapTimeoutRef.current = setTimeout(() => {
+        setShowControls((prev) => {
+          const next = !prev;
+          showControlsRef.current = next;
+          if (next) resetControlsTimeout();
+          return next;
+        });
+        lastTapRef.current = null;
+      }, 260);
+    }
+  }, [handleScrubStep, togglePlayPause, isPlaying, triggerTouchFeedback, resetControlsTimeout]);
+
+  // Touch Scrubber Seeking for Phones & Tablets
+  const handleScrubberTouch = useCallback((clientX: number, commit: boolean) => {
+    if (!scrubberRef.current) return;
+    const rect = scrubberRef.current.getBoundingClientRect();
+    const offsetX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const pct = rect.width > 0 ? offsetX / rect.width : 0;
+    const effectiveDuration = duration > 0 ? duration : 7200;
+    const targetTime = Math.round(pct * effectiveDuration);
+
+    setIsScrubbing(true);
+    setScrubTargetTime(targetTime);
+
+    if (commit) {
+      commitSeek(targetTime);
+    }
+  }, [duration, commitSeek]);
+
   // Remote key controller for TV
   useEffect(() => {
     const handleRemoteKey = (e: KeyboardEvent) => {
@@ -1131,7 +1300,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setShowAudioSubtitleModal(true);
             setModalCol(1);
             setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
+          } else if (curCtrl === 'fullscreen') {
+            toggleFullscreen();
           }
+          break;
+
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
           break;
 
         case 's':
@@ -1177,25 +1354,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     commitSeek,
     handleSwitchServer,
     enterCursorMode,
-    useIframeFallback
+    useIframeFallback,
+    toggleFullscreen,
+    togglePlayPause
   ]);
-
-  // Play / Pause Toggle
-  const togglePlayPause = () => {
-    if (useIframeFallback) {
-      const action = isPlaying ? 'pause' : 'play';
-      iframeRef.current?.contentWindow?.postMessage({ action }, '*');
-      setIsPlaying(!isPlaying);
-    } else if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
-        setIsPlaying(true);
-      } else {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      }
-    }
-  };
 
   // Subtitle switch with 0ms instant clearing, asynchronous fetch/parse, and memory caching
   const selectSubtitle = useCallback(async (index: number) => {
@@ -1344,7 +1506,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const progressPercent = duration > 0 ? (displayTime / duration) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden">
+    <div
+      ref={playerContainerRef}
+      className="fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden"
+    >
       {/* Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 z-40 bg-black flex flex-col items-center justify-center space-y-4">
@@ -1469,6 +1634,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         activeSubtitle={activeSubtitle}
       />
 
+      {/* Mobile Screen Tap Surface when controls are hidden */}
+      {!showControls && !isCursorMode && (
+        <div
+          className="absolute inset-0 z-20 pointer-events-auto"
+          onClick={(e) => {
+            handlePlayerTap(e.clientX, e.clientY);
+          }}
+        />
+      )}
+
       {/* Netflix TV OSD Controls Overlay */}
       <div
         className={`absolute inset-0 z-30 transition-opacity duration-300 pointer-events-none flex flex-col justify-between p-3 sm:p-6 md:p-10 ${
@@ -1480,7 +1655,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="flex items-center space-x-2.5 sm:space-x-4">
             <button
               onClick={handleExit}
-              className={`p-2 sm:p-2.5 rounded-full transition-all ${
+              className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
                 focusedControl === 'back'
                   ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
                   : 'hover:bg-white/10 text-white'
@@ -1508,17 +1683,44 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
 
-
+        {/* Center Screen Tap Zone: allows single tap to hide controls, or double tap to seek/toggle */}
+        <div
+          className="flex-1 w-full pointer-events-auto cursor-pointer"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handlePlayerTap(e.clientX, e.clientY);
+            }
+          }}
+        />
 
         {/* Bottom Timeline & Netflix TV Controls */}
         <div className={`space-y-4 max-w-5xl mx-auto w-full ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
           {/* Netflix Scrubber Line */}
           <div
-            onClick={() => {
+            ref={scrubberRef}
+            onClick={(e) => {
               setFocusedControl('scrubber');
-              togglePlayPause();
+              handleScrubberTouch(e.clientX, true);
             }}
-            className={`cursor-pointer transition-all duration-150 py-2 ${
+            onTouchStart={(e) => {
+              if (e.touches[0]) {
+                setFocusedControl('scrubber');
+                handleScrubberTouch(e.touches[0].clientX, false);
+              }
+            }}
+            onTouchMove={(e) => {
+              if (e.touches[0]) {
+                handleScrubberTouch(e.touches[0].clientX, false);
+              }
+            }}
+            onTouchEnd={(e) => {
+              if (e.changedTouches[0]) {
+                handleScrubberTouch(e.changedTouches[0].clientX, true);
+              } else {
+                commitSeek(scrubTargetTimeRef.current);
+              }
+            }}
+            className={`cursor-pointer transition-all duration-150 py-3 sm:py-2 touch-none select-none ${
               focusedControl === 'scrubber' ? 'scale-y-105' : ''
             }`}
           >
@@ -1577,24 +1779,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           {/* Action Buttons Row */}
           <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-2 sm:space-x-6">
               {/* Play / Pause */}
               <button
                 onClick={() => {
                   setFocusedControl('play');
                   togglePlayPause();
                 }}
-                className={`p-2.5 rounded-full transition-all ${
+                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
                   focusedControl === 'play'
                     ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200'
+                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
                 }`}
                 title="Play/Pause (Enter)"
               >
                 {isPlaying ? (
-                  <Pause className={`w-7 h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                  <Pause className={`w-6 h-6 sm:w-7 sm:h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
                 ) : (
-                  <Play className={`w-7 h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                  <Play className={`w-6 h-6 sm:w-7 sm:h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
                 )}
               </button>
 
@@ -1604,14 +1806,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   setFocusedControl('rewind');
                   handleScrubStep('rewind');
                 }}
-                className={`p-2 rounded-full transition-all ${
+                className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
                   focusedControl === 'rewind'
                     ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200'
+                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
                 }`}
                 title="Rewind (Left)"
               >
-                <RotateCcw className={`w-6 h-6 ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`} />
+                <RotateCcw className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`} />
               </button>
 
               {/* Fast Forward */}
@@ -1620,14 +1822,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   setFocusedControl('forward');
                   handleScrubStep('forward');
                 }}
-                className={`p-2 rounded-full transition-all ${
+                className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
                   focusedControl === 'forward'
                     ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200'
+                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
                 }`}
                 title="Fast Forward (Right)"
               >
-                <RotateCw className={`w-6 h-6 ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`} />
+                <RotateCw className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`} />
               </button>
 
               {/* Next Episode (if series) */}
@@ -1637,14 +1839,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     setFocusedControl('next-ep');
                     onNextEpisode();
                   }}
-                  className={`p-2 rounded-full transition-all ${
+                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
                     focusedControl === 'next-ep'
                       ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                      : 'text-white hover:text-zinc-200'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
                   }`}
                   title="Next Episode"
                 >
-                  <SkipForward className={`w-6 h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
+                  <SkipForward className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
                 </button>
               )}
 
@@ -1655,15 +1857,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     setFocusedControl('server');
                     handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
                   }}
-                  className={`p-2 rounded-full transition-all flex items-center space-x-1.5 ${
+                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center space-x-1.5 ${
                     focusedControl === 'server'
                       ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                      : 'text-white hover:text-zinc-200'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
                   }`}
                   title="Switch Server (Enter)"
                 >
                   <Server className={`w-5 h-5 ${focusedControl === 'server' ? 'text-black' : 'text-white'}`} />
-                  <span className="text-[10px] font-bold uppercase">{servers[selectedServerIndex]?.name.split(' ')[1] || 'Server'}</span>
+                  <span className="text-[10px] font-bold uppercase hidden sm:inline">{servers[selectedServerIndex]?.name.split(' ')[1] || 'Server'}</span>
                 </button>
               )}
 
@@ -1674,21 +1876,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     setFocusedControl('server-controls');
                     enterCursorMode();
                   }}
-                  className={`p-2 rounded-full transition-all flex items-center space-x-1.5 ${
+                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center space-x-1.5 ${
                     focusedControl === 'server-controls'
                       ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                      : 'text-white hover:text-zinc-200'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
                   }`}
                   title="Server Controls / Mouse (Enter)"
                 >
                   <MousePointerClick className={`w-5 h-5 ${focusedControl === 'server-controls' ? 'text-black' : 'text-white'}`} />
-                  <span className="text-[10px] font-bold uppercase">Server Remote</span>
+                  <span className="text-[10px] font-bold uppercase hidden sm:inline">Remote</span>
                 </button>
               )}
             </div>
 
-            {/* Subtitles & Audio Dialog Launcher */}
-            <div className="flex items-center space-x-4">
+            {/* Subtitles & Audio Dialog Launcher + Fullscreen Toggle */}
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <button
                 onClick={() => {
                   setFocusedControl('subtitles');
@@ -1696,22 +1898,76 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   setModalCol(1);
                   setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
                 }}
-                className={`p-2 rounded-full transition-all flex items-center space-x-2 ${
+                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 ${
                   focusedControl === 'subtitles'
                     ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200'
+                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
                 }`}
                 title="Audio, Subtitles & Servers"
               >
-                <Subtitles className={`w-6 h-6 ${focusedControl === 'subtitles' ? 'text-black' : 'text-white'}`} />
-                <span className="text-xs font-semibold">
+                <Subtitles className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'subtitles' ? 'text-black' : 'text-white'}`} />
+                <span className="text-[11px] sm:text-xs font-semibold hidden sm:inline">
                   {activeSubtitle === -1 ? 'Off' : resolution?.subtitles?.[activeSubtitle]?.label || 'On'}
                 </span>
+              </button>
+
+              {/* Fullscreen Toggle */}
+              <button
+                onClick={() => {
+                  setFocusedControl('fullscreen');
+                  toggleFullscreen();
+                }}
+                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+                  focusedControl === 'fullscreen'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                }`}
+                title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+              >
+                {isFullscreen ? (
+                  <Minimize className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'fullscreen' ? 'text-black' : 'text-white'}`} />
+                ) : (
+                  <Maximize className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'fullscreen' ? 'text-black' : 'text-white'}`} />
+                )}
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Touch Gesture Ripple / Double-Tap Feedback Overlay */}
+      {touchFeedback && (
+        <div
+          className={`absolute z-40 pointer-events-none flex flex-col items-center justify-center transition-all animate-fadeIn ${
+            touchFeedback.type === 'rewind'
+              ? 'left-8 sm:left-24 top-1/2 -translate-y-1/2'
+              : touchFeedback.type === 'forward'
+              ? 'right-8 sm:right-24 top-1/2 -translate-y-1/2'
+              : 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'
+          }`}
+        >
+          <div className="bg-black/80 backdrop-blur-md border border-white/20 p-5 rounded-full flex flex-col items-center justify-center space-y-1.5 text-white shadow-2xl scale-110">
+            {touchFeedback.type === 'rewind' && (
+              <>
+                <RotateCcw className="w-8 h-8 text-white" />
+                <span className="text-xs font-black tracking-wider text-white">{touchFeedback.label || '-10s'}</span>
+              </>
+            )}
+            {touchFeedback.type === 'forward' && (
+              <>
+                <RotateCw className="w-8 h-8 text-white" />
+                <span className="text-xs font-black tracking-wider text-white">{touchFeedback.label || '+10s'}</span>
+              </>
+            )}
+            {touchFeedback.type === 'play' && (
+              <Play className="w-8 h-8 fill-white text-white" />
+            )}
+            {touchFeedback.type === 'pause' && (
+              <Pause className="w-8 h-8 fill-white text-white" />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Audio, Subtitles & Servers Modal Dialog */}
       {showAudioSubtitleModal && (

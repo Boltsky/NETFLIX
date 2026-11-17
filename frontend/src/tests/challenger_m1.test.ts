@@ -669,5 +669,33 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       isCursorMode = false;
       expect(isCursorMode).toBe(false);
     });
+
+    it('verifies VideoPlayer fullscreen button and mobile touch sensitivity implementation', () => {
+      const code = fs.readFileSync(videoPlayerPath, 'utf8');
+
+      // 1. Fullscreen toggle & D-pad navigation
+      expect(code).toContain('toggleFullscreen');
+      expect(code).toContain('isFullscreen');
+      expect(code).toContain("list.push('fullscreen')");
+      expect(code).toMatch(/focusedControl === 'fullscreen'/);
+      expect(code).toMatch(/<Maximize|<Minimize/);
+
+      // 2. Mobile touch sensitivity & double-tap gestures
+      expect(code).toContain('handlePlayerTap');
+      expect(code).toContain('handleScrubberTouch');
+      expect(code).toContain('touchFeedback');
+      expect(code).toContain('triggerTouchFeedback');
+      expect(code).toMatch(/ratio < 0\.38/); // Left double-tap seek rewind
+      expect(code).toMatch(/ratio > 0\.62/); // Right double-tap seek forward
+
+      // 3. Touch scrubber event handlers
+      expect(code).toContain('onTouchStart');
+      expect(code).toContain('onTouchMove');
+      expect(code).toContain('onTouchEnd');
+
+      // 4. Touch target accessibility (minimum 44px touch targets)
+      expect(code).toMatch(/min-w-\[44px\]/);
+      expect(code).toMatch(/min-h-\[44px\]/);
+    });
   });
 });
