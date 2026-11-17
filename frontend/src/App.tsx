@@ -13,6 +13,8 @@ import { SearchScreen } from './components/search/SearchScreen';
 import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
 import { CategoriesScreen } from './components/categories/CategoriesScreen';
 import { SettingsScreen } from './components/settings/SettingsScreen';
+import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
+import { analytics } from './services/analyticsService';
 import { updateService } from './services/updateService';
 import { getAppSettings } from './services/settingsService';
 import { AppUpdateManifest, CURRENT_APP_VERSION } from './version';
@@ -20,7 +22,7 @@ import { UpdateModal } from './components/common/UpdateModal';
 
 const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
-type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player' | 'settings';
+type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player' | 'settings' | 'analytics';
 
 const ScreenFocusController: React.FC<{
   screen: Screen;
@@ -258,7 +260,7 @@ export const App: React.FC = () => {
           }).catch(() => {});
         }
       } else {
-        const validScreens: Screen[] = ['home', 'series', 'movies', 'popular', 'watchlist', 'categories', 'search', 'settings'];
+        const validScreens: Screen[] = ['home', 'series', 'movies', 'popular', 'watchlist', 'categories', 'search', 'settings', 'analytics'];
         if (validScreens.includes(route as Screen)) {
           setCurrentScreen(route as Screen);
           window.history.replaceState({ screen: route }, '', initialHash);
@@ -322,6 +324,15 @@ export const App: React.FC = () => {
     window.addEventListener('keydown', handleGlobalBack);
     return () => window.removeEventListener('keydown', handleGlobalBack);
   }, [currentScreen, navigateBack]);
+
+  // Anonymous Visitor Telemetry tracking across app screens
+  useEffect(() => {
+    if (currentScreen !== 'profiles') {
+      const titleName = selectedTitle?.title || playerTarget?.item?.title;
+      const titleId = selectedTitle?.id || playerTarget?.item?.id;
+      analytics.trackVisit(currentScreen, titleName, titleId);
+    }
+  }, [currentScreen, selectedTitle?.id, selectedTitle?.title, playerTarget?.item?.id, playerTarget?.item?.title]);
 
   // Open Details Screen
   const handleOpenDetails = useCallback((item: MediaItem) => {
@@ -619,7 +630,13 @@ export const App: React.FC = () => {
           <SettingsScreen
             onBack={navigateBack}
             onCheckUpdates={handleManualCheckUpdate}
+            onOpenAnalytics={() => navigateTo('analytics')}
           />
+        )}
+
+        {/* SCREEN 7: Visitor Analytics Dashboard */}
+        {currentScreen === 'analytics' && (
+          <AnalyticsDashboard onBack={navigateBack} />
         )}
 
         {/* SCREEN 6: Main TV Browsing (Home, Series, Movies, New & Popular) */}

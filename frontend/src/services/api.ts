@@ -10,7 +10,9 @@ import {
   CategoryQueryParams,
   CategoryResponse,
   StreamSource,
-  SubtitleTrack
+  SubtitleTrack,
+  AnalyticsStats,
+  VisitPayload
 } from '../types';
 import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data';
 
@@ -40,6 +42,9 @@ function getBackendBaseUrl(): string {
     }
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return `http://${window.location.hostname}:8080`;
+    }
+    if (window.location.hostname.includes('onrender.com')) {
+      return 'https://netflix-api-yosg.onrender.com';
     }
   }
   return '';
@@ -1443,6 +1448,30 @@ export const api = {
       return res.progress || newProgress;
     } catch {
       return newProgress;
+    }
+  },
+
+  // Anonymous Visitor Telemetry & Analytics Logging
+  logVisit: async (payload: VisitPayload): Promise<{ success: boolean }> => {
+    try {
+      const res = await apiFetch<{ success: boolean }>('/analytics/visit', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      return res;
+    } catch {
+      return { success: false };
+    }
+  },
+
+  // Get Aggregated Visitor Analytics Dashboard Stats
+  getAnalyticsStats: async (): Promise<AnalyticsStats | null> => {
+    try {
+      const res = await apiFetch<{ success: boolean; data: AnalyticsStats }>('/analytics/stats');
+      return res.data;
+    } catch (err) {
+      console.warn('[Analytics] Failed to fetch stats:', err);
+      return null;
     }
   }
 };

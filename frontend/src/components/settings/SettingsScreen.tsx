@@ -12,7 +12,9 @@ import {
   Download,
   Server,
   Sliders,
-  Tv
+  Tv,
+  BarChart3,
+  Globe2
 } from 'lucide-react';
 import {
   getAppSettings,
@@ -24,15 +26,17 @@ import {
 import { updateService } from '../../services/updateService';
 import { CURRENT_APP_VERSION, AppUpdateManifest } from '../../version';
 import { resolveSubtitleCss } from '../player/SubtitleOverlay';
+import { AnalyticsDashboard } from '../analytics/AnalyticsDashboard';
 
 interface SettingsScreenProps {
   onBack: () => void;
   onCheckUpdates?: () => void;
+  onOpenAnalytics?: () => void;
 }
 
-type SettingsCategory = 'updates' | 'playback' | 'subtitles' | 'about';
+type SettingsCategory = 'updates' | 'playback' | 'subtitles' | 'analytics' | 'about';
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onOpenAnalytics }) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('updates');
   const [settings, setSettings] = useState<AppSettings>(() => getAppSettings());
   const { setFocusedKey } = useFocus();
@@ -157,6 +161,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
     { id: 'updates', label: 'App Updates', icon: Sparkles },
     { id: 'playback', label: 'Playback & Servers', icon: Film },
     { id: 'subtitles', label: 'Subtitle Appearance', icon: Subtitles },
+    { id: 'analytics', label: 'Visitor Analytics', icon: BarChart3 },
     { id: 'about', label: 'About & Diagnostics', icon: Info }
   ];
 
@@ -468,7 +473,36 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
             </div>
           )}
 
-          {/* CATEGORY 4: ABOUT & DIAGNOSTICS */}
+          {/* CATEGORY 4: VISITOR ANALYTICS */}
+          {activeCategory === 'analytics' && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-2 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-800/80 gap-2 mb-2">
+                  <div>
+                    <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                      <BarChart3 className="w-5 h-5 text-[#E50914]" />
+                      <span>Live Visitor Analytics</span>
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Real-time audience monitoring & geographic tracking (no sign-up required)
+                    </p>
+                  </div>
+                  {onOpenAnalytics && (
+                    <button
+                      onClick={onOpenAnalytics}
+                      className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white border border-zinc-700 transition-all self-start sm:self-auto"
+                    >
+                      Open Full Screen Dashboard
+                    </button>
+                  )}
+                </div>
+
+                <AnalyticsDashboard onBack={() => setActiveCategory('updates')} />
+              </div>
+            </div>
+          )}
+
+          {/* CATEGORY 5: ABOUT & DIAGNOSTICS */}
           {activeCategory === 'about' && (
             <div className="space-y-6 animate-fadeIn">
               <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-6 space-y-4">

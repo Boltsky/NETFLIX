@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const catalog_controller_js_1 = require("../controllers/catalog.controller.js");
+const analytics_controller_js_1 = require("../controllers/analytics.controller.js");
 const router = (0, express_1.Router)();
 // Health
 router.get('/health', catalog_controller_js_1.CatalogController.getHealth);
@@ -30,4 +31,7 @@ router.get('/settings', catalog_controller_js_1.CatalogController.getSettings);
 router.post('/settings', catalog_controller_js_1.CatalogController.updateSetting);
 // Subtitles CORS Proxy
 router.get('/subtitles/proxy', catalog_controller_js_1.CatalogController.proxySubtitle);
+// Visitor Analytics (Anonymous telemetry & audience dashboard)
+router.post('/analytics/visit', analytics_controller_js_1.AnalyticsController.recordVisit);
+router.get('/analytics/stats', analytics_controller_js_1.AnalyticsController.getStats);
 exports.default = router;

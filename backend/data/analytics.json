@@ -1,0 +1,57 @@
+{
+  "allTimeVisits": 1,
+  "uniqueVisitors": {
+    "test-visitor-123": {
+      "firstSeen": "2026-11-17T10:33:51.635Z",
+      "lastSeen": "2026-11-17T10:33:51.635Z",
+      "count": 1,
+      "country": "Uganda"
+    }
+  },
+  "recentVisits": [
+    {
+      "id": "v_1794911631636_22fye",
+      "visitorId": "test-visitor-123",
+      "sessionId": "test-session-456",
+      "timestamp": "2026-11-17T10:33:51.635Z",
+      "device": "mobile",
+      "screen": "home",
+      "location": {
+        "country": "Uganda",
+        "countryCode": "UG",
+        "city": "Kampala",
+        "region": "",
+        "flag": "🇺🇬"
+      },
+      "browser": "Unknown Browser",
+      "os": "Unknown OS"
+    }
+  ],
+  "dailyStats": {
+    "2026-11-17": {
+      "visits": 1,
+      "uniqueVisitors": 0
+    }
+  },
+  "countryCounts": {
+    "Uganda": 1
+  },
+  "cityCounts": {
+    "Kampala, Uganda": {
+      "city": "Kampala",
+      "country": "Uganda",
+      "flag": "🇺🇬",
+      "count": 1
+    }
+  },
+  "deviceCounts": {
+    "mobile": 1,
+    "tablet": 0,
+    "desktop": 0,
+    "tv": 0
+  },
+  "screenCounts": {
+    "home": 1
+  },
+  "titleCounts": {}
+}

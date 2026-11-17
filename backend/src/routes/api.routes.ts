@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { CatalogController } from '../controllers/catalog.controller.js';
+import { AnalyticsController } from '../controllers/analytics.controller.js';
 
 const router = Router();
 
@@ -38,5 +39,9 @@ router.post('/settings', CatalogController.updateSetting);
 
 // Subtitles CORS Proxy
 router.get('/subtitles/proxy', CatalogController.proxySubtitle);
+
+// Visitor Analytics (Anonymous telemetry & audience dashboard)
+router.post('/analytics/visit', AnalyticsController.recordVisit);
+router.get('/analytics/stats', AnalyticsController.getStats);
 
 export default router;
