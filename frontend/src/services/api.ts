@@ -742,7 +742,42 @@ export const api = {
       }
     }
 
-    // 3. Fallback to mock catalog
+    // Direct TMDB category fallback (CORS-friendly for web browsers)
+    try {
+      const isTv = type === 'tv' || category === 'tv' || category === 'popular_tv';
+      let tmdbUrl = '';
+      if (category === 'trending') {
+        tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
+      } else if (category === 'new_releases') {
+        tmdbUrl = `https://api.themoviedb.org/3/movie/now_playing?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
+      } else if (effectiveGenreId) {
+        tmdbUrl = `https://api.themoviedb.org/3/discover/${isTv ? 'tv' : 'movie'}?api_key=8265bd1679663a7ea12ac168da84d2e8&with_genres=${effectiveGenreId}&sort_by=popularity.desc&page=${page}`;
+      } else if (isTv) {
+        tmdbUrl = `https://api.themoviedb.org/3/tv/popular?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
+      } else {
+        tmdbUrl = `https://api.themoviedb.org/3/movie/popular?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
+      }
+
+      const tmdbRes = await fetch(tmdbUrl);
+      if (tmdbRes.ok) {
+        const tmdbData = await tmdbRes.json();
+        if (tmdbData && Array.isArray(tmdbData.results) && tmdbData.results.length > 0) {
+          return {
+            success: true,
+            category,
+            genreId: effectiveGenreId,
+            page: Number(tmdbData.page || page),
+            totalPages: Math.min(100, Number(tmdbData.total_pages || 100)),
+            totalResults: Number(tmdbData.total_results || (tmdbData.results.length * 10)),
+            results: tmdbData.results.map((r: any) => mapMediaItem(r, type))
+          };
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Netflix API] Direct TMDB category fallback failed:', e?.message);
+    }
+
+    // Fallback to mock catalog
     const allMock = (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items);
     const pageSize = 12;
     const startIndex = ((page - 1) * pageSize) % Math.max(1, allMock.length);
@@ -792,6 +827,23 @@ export const api = {
       }
     }
 
+    // Direct TMDB search fallback (CORS-friendly for web browsers)
+    try {
+      const tmdbRes = await fetch(
+        `https://api.themoviedb.org/3/search/multi?api_key=8265bd1679663a7ea12ac168da84d2e8&query=${encodeURIComponent(q)}&page=1`
+      );
+      if (tmdbRes.ok) {
+        const tmdbData = await tmdbRes.json();
+        if (tmdbData && Array.isArray(tmdbData.results) && tmdbData.results.length > 0) {
+          return tmdbData.results
+            .filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv' || !r.media_type)
+            .map((r: any) => mapMediaItem(r, r.media_type || 'movie'));
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Netflix API] Direct TMDB search failed:', e?.message);
+    }
+
     const lower = q.toLowerCase();
     return Object.values(MOCK_TITLES)
       .filter(t => t.title.toLowerCase().includes(lower) || t.overview?.toLowerCase().includes(lower))
@@ -832,6 +884,33 @@ export const api = {
       } catch (e: any) {
         console.warn(`[Netflix API] Details fallback on ${b} failed:`, e?.message);
       }
+    }
+
+    // Direct TMDB details fallback (CORS-friendly for web browsers)
+    try {
+      const isTv = effectiveType === 'tv';
+      const tmdbRes = await fetch(
+        `https://api.themoviedb.org/3/${isTv ? 'tv' : 'movie'}/${encodeURIComponent(id)}?api_key=8265bd1679663a7ea12ac168da84d2e8&append_to_response=credits,recommendations,similar`
+      );
+      if (tmdbRes.ok) {
+        const tmdbData = await tmdbRes.json();
+        if (tmdbData && (tmdbData.title || tmdbData.name)) {
+          const details = normalizeTitleDetails(
+            {
+              ...tmdbData,
+              cast: tmdbData.credits?.cast,
+              recommendations: tmdbData.recommendations?.results || tmdbData.similar?.results
+            },
+            id,
+            effectiveType
+          );
+          if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
+            return details;
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Netflix API] Direct TMDB details fallback failed for ${id}:`, e?.message);
     }
 
     // Fallback to cached media item if available (guarantees title & poster match the clicked poster!)
@@ -905,6 +984,29 @@ export const api = {
       } catch (e: any) {
         console.warn(`[Netflix API] Season episodes fallback on ${b} failed:`, e?.message);
       }
+    }
+
+    // Direct TMDB season episodes fallback (CORS-friendly for web browsers)
+    try {
+      const tmdbRes = await fetch(
+        `https://api.themoviedb.org/3/tv/${encodeURIComponent(id)}/season/${seasonNumber}?api_key=8265bd1679663a7ea12ac168da84d2e8`
+      );
+      if (tmdbRes.ok) {
+        const data = await tmdbRes.json();
+        if (data && Array.isArray(data.episodes)) {
+          return data.episodes.map((ep: any) => ({
+            id: ep.id || ep.episode_number,
+            number: ep.episode_number ?? ep.number ?? 1,
+            name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
+            overview: ep.overview || '',
+            still: ep.still_path ? `https://image.tmdb.org/t/p/w500${ep.still_path}` : (ep.still || undefined),
+            airDate: ep.air_date,
+            rating: ep.vote_average ?? ep.rating
+          }));
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Netflix API] Direct TMDB season episodes fallback failed for ${id}:`, e?.message);
     }
 
     return MOCK_SEASONS[`${id}-s${seasonNumber}`] || [];

@@ -19,6 +19,7 @@ import {
   getRichTitleDetails,
   RICH_ITEMS
 } from './richCatalog.data.js';
+import { tmdbService } from './tmdb.service.js';
 
 export class FrameXTVAdapter implements IContentProvider {
   public name = 'FrameXTV';
@@ -201,21 +202,31 @@ export class FrameXTVAdapter implements IContentProvider {
 
     try {
       const res = await this.fetchWithFailover(upstreamPath);
-      const data: any = await res.json();
-
-      if (data && Array.isArray(data.results) && data.results.length > 0) {
-        return {
-          success: true,
-          category,
-          genreId,
-          page: Number(data.page || page),
-          totalPages: Number(data.totalPages || 100),
-          totalResults: Number(data.totalResults || (data.results.length * 10)),
-          results: data.results.map((r: any) => this.mapMediaItem(r, type))
-        };
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data && Array.isArray(data.results) && data.results.length > 0) {
+          return {
+            success: true,
+            category,
+            genreId,
+            page: Number(data.page || page),
+            totalPages: Number(data.totalPages || 100),
+            totalResults: Number(data.totalResults || (data.results.length * 10)),
+            results: data.results.map((r: any) => this.mapMediaItem(r, type))
+          };
+        }
       }
     } catch (err: any) {
       console.warn(`[FrameXTV] getCategory failed for ${category} (page ${page}):`, err.message);
+    }
+
+    try {
+      const tmdbCat = await tmdbService.getCategory(options);
+      if (tmdbCat && tmdbCat.results && tmdbCat.results.length > 0) {
+        return tmdbCat;
+      }
+    } catch (e: any) {
+      console.warn('[TMDB] getCategory fallback error:', e.message);
     }
 
     return getRichCategory(options);
@@ -227,13 +238,23 @@ export class FrameXTVAdapter implements IContentProvider {
 
     try {
       const res = await this.fetchWithFailover(`/api/search?q=${encodeURIComponent(q)}`);
-      const data: any = await res.json();
-
-      if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
-        return data.results.map((r: any) => this.mapMediaItem(r, r.type || 'movie'));
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
+          return data.results.map((r: any) => this.mapMediaItem(r, r.type || 'movie'));
+        }
       }
     } catch (err: any) {
-      console.warn('[FrameXTV] search failed, searching rich catalog:', err.message);
+      console.warn('[FrameXTV] search failed, trying TMDB service:', err.message);
+    }
+
+    try {
+      const tmdbResults = await tmdbService.search(q);
+      if (tmdbResults && tmdbResults.length > 0) {
+        return tmdbResults;
+      }
+    } catch (e: any) {
+      console.warn('[TMDB] search fallback error:', e.message);
     }
 
     return searchRichCatalog(query);
@@ -244,7 +265,7 @@ export class FrameXTVAdapter implements IContentProvider {
       const res = await this.fetchWithFailover(`/api/details?id=${encodeURIComponent(id)}&type=${type === 'tv' ? 'tv' : 'movie'}`);
       const data: any = await res.json();
 
-      if (!data || !data.success) {
+      if (!data || !data.success || (!data.title && !data.name)) {
         throw new Error(data?.error || `Failed to retrieve title details for ${id}`);
       }
 
@@ -297,12 +318,22 @@ export class FrameXTVAdapter implements IContentProvider {
         seasons
       };
     } catch (err: any) {
-      console.warn(`[FrameXTV] getTitleDetails failed for ${id}, using rich title fallback:`, err.message);
-      if (MOCK_TITLES[id]) {
-        return MOCK_TITLES[id];
-      }
-      return getRichTitleDetails(id, type);
+      console.warn(`[FrameXTV] getTitleDetails failed for ${id}, trying TMDB fallback:`, err.message);
     }
+
+    try {
+      const tmdbDetails = await tmdbService.getTitleDetails(id, type);
+      if (tmdbDetails) {
+        return tmdbDetails;
+      }
+    } catch (e: any) {
+      console.warn(`[TMDB] getTitleDetails error for ${id}:`, e.message);
+    }
+
+    if (MOCK_TITLES[id]) {
+      return MOCK_TITLES[id];
+    }
+    return getRichTitleDetails(id, type);
   }
 
   async getSeasonEpisodes(id: string, seasonNumber: number): Promise<Episode[]> {
@@ -310,27 +341,35 @@ export class FrameXTVAdapter implements IContentProvider {
       const res = await this.fetchWithFailover(`/api/season?id=${encodeURIComponent(id)}&season=${seasonNumber}`);
       const data: any = await res.json();
 
-      if (!data || !data.success || !Array.isArray(data.episodes)) {
-        throw new Error(data?.error || `Failed to retrieve season ${seasonNumber} episodes for ${id}`);
+      if (data && data.success && Array.isArray(data.episodes) && data.episodes.length > 0) {
+        return data.episodes.map((ep: any) => ({
+          id: ep.id || ep.episode_number,
+          number: ep.episode_number ?? ep.number ?? 1,
+          name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
+          overview: ep.overview || '',
+          still: ep.still || ep.still_path,
+          airDate: ep.air_date,
+          rating: ep.vote_average ?? ep.rating
+        }));
       }
-
-      return data.episodes.map((ep: any) => ({
-        id: ep.id || ep.episode_number,
-        number: ep.episode_number ?? ep.number ?? 1,
-        name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
-        overview: ep.overview || '',
-        still: ep.still || ep.still_path,
-        airDate: ep.air_date,
-        rating: ep.vote_average ?? ep.rating
-      }));
     } catch (err: any) {
-      console.warn(`[FrameXTV] getSeasonEpisodes failed for ${id} S${seasonNumber}, checking mock seasons:`, err.message);
-      const mockKey = `${id}-s${seasonNumber}`;
-      if (MOCK_SEASONS[mockKey]) {
-        return MOCK_SEASONS[mockKey];
-      }
-      return [];
+      console.warn(`[FrameXTV] getSeasonEpisodes failed for ${id} S${seasonNumber}, trying TMDB fallback:`, err.message);
     }
+
+    try {
+      const tmdbEpisodes = await tmdbService.getSeasonEpisodes(id, seasonNumber);
+      if (tmdbEpisodes && tmdbEpisodes.length > 0) {
+        return tmdbEpisodes;
+      }
+    } catch (e: any) {
+      console.warn(`[TMDB] getSeasonEpisodes error for ${id}:`, e.message);
+    }
+
+    const mockKey = `${id}-s${seasonNumber}`;
+    if (MOCK_SEASONS[mockKey]) {
+      return MOCK_SEASONS[mockKey];
+    }
+    return [];
   }
 
   async resolvePlayback(
