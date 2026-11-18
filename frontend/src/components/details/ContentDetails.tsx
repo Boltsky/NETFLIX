@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { TitleDetails, Episode, MediaItem } from '../../types';
 import { api } from '../../services/api';
 import { useFocusable } from '../focus/FocusContext';
-import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw } from 'lucide-react';
+import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw, Cast } from 'lucide-react';
+import { CastModal } from '../player/CastModal';
 
 interface ContentDetailsProps {
   contentId: string;
@@ -30,6 +31,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [showCastModal, setShowCastModal] = useState(false);
 
   const savedProgress = useMemo(() => {
     return api.getItemProgress(contentId, profileId);
@@ -196,6 +198,10 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
               isInWatchlist={isInWatchlist}
               onClick={() => onToggleWatchlist(details)}
             />
+            <CastDetailButton
+              focusKey="detail-cast"
+              onClick={() => setShowCastModal(true)}
+            />
           </div>
 
           {/* Synopsis */}
@@ -278,6 +284,19 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
           </div>
         )}
       </div>
+
+      {/* Cast to TV or PC Modal */}
+      {details && (
+        <CastModal
+          isOpen={showCastModal}
+          onClose={() => setShowCastModal(false)}
+          item={details}
+          currentTime={(savedProgress?.positionMs || 0) / 1000}
+          duration={(savedProgress?.durationMs || 0) / 1000}
+          season={details.type === 'tv' ? (savedProgress?.season || selectedSeason) : undefined}
+          episode={details.type === 'tv' ? (savedProgress?.episode || 1) : undefined}
+        />
+      )}
     </div>
   );
 };
@@ -380,6 +399,33 @@ const MyListButton: React.FC<{
       title={isInWatchlist ? 'Remove from My List' : 'Add to My List'}
     >
       {isInWatchlist ? <Check className="w-5 h-5 text-emerald-400" /> : <Plus className="w-5 h-5" />}
+    </button>
+  );
+};
+
+const CastDetailButton: React.FC<{
+  focusKey: string;
+  onClick: () => void;
+}> = ({ focusKey, onClick }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey,
+    groupId: 'detail-actions',
+    onEnter: onClick
+  });
+
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      className={`flex items-center space-x-2 px-5 py-2.5 rounded-[4px] font-bold text-sm tracking-wide tv-focusable transition-all duration-200 cursor-pointer ${
+        isFocused
+          ? 'scale-108 bg-white text-black shadow-2xl ring-4 ring-white/50'
+          : 'bg-zinc-800 text-white hover:bg-zinc-700 border border-white/20'
+      }`}
+      title="Cast to TV or PC"
+    >
+      <Cast className="w-4 h-4 text-[#E50914]" />
+      <span>Cast</span>
     </button>
   );
 };

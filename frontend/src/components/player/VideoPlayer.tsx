@@ -20,14 +20,17 @@ import {
   Server,
   MousePointerClick,
   Maximize,
-  Minimize
+  Minimize,
+  Cast
 } from 'lucide-react';
+import { CastModal } from './CastModal';
 
 interface VideoPlayerProps {
   item: MediaItem;
   season?: number;
   episode?: number;
   profileId?: string;
+  initialTime?: number;
   onExit: () => void;
   onNextEpisode?: () => void;
 }
@@ -37,6 +40,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   season,
   episode,
   profileId,
+  initialTime,
   onExit,
   onNextEpisode
 }) => {
@@ -55,6 +59,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [item?.id, profileId, effectiveSeason, effectiveEpisode]);
 
   const initialResumeTimeSec = useMemo(() => {
+    if (typeof initialTime === 'number' && initialTime > 0) {
+      return initialTime;
+    }
     if (savedProgress && savedProgress.positionMs > 5000) {
       const pos = savedProgress.positionMs / 1000;
       const dur = savedProgress.durationMs / 1000;
@@ -63,7 +70,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     }
     return 0;
-  }, [savedProgress]);
+  }, [initialTime, savedProgress]);
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentTime, setCurrentTime] = useState(initialResumeTimeSec);
@@ -122,7 +129,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const scrubMultiplierRef = useRef<number>(1);
 
   // TV D-pad focus state
-  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles' | 'fullscreen';
+  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles' | 'cast' | 'fullscreen';
   const [focusedControl, setFocusedControlState] = useState<FocusedControl>('play');
   const focusedControlRef = useRef<FocusedControl>('play');
   const setFocusedControl = useCallback((ctrl: FocusedControl) => {
@@ -224,6 +231,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       list.push('server-controls');
     }
     list.push('subtitles');
+    list.push('cast');
     list.push('fullscreen');
     return list;
   }, [isEpisodic, effectiveSeason, effectiveEpisode, onNextEpisode, useIframeFallback, servers.length]);
@@ -277,6 +285,60 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
   const isFsHistoryPushedRef = useRef(false);
   const isHandlingPopRef = useRef(false);
+
+  // Cast & Picture-in-Picture State
+  const [showCastModal, setShowCastModal] = useState(false);
+  const [isCasting, setIsCasting] = useState(false);
+  const [isPipActive, setIsPipActive] = useState(false);
+
+  // Toggle Picture-in-Picture (floating desktop player)
+  const togglePip = useCallback(async () => {
+    try {
+      const doc: any = document;
+      if (doc.pictureInPictureElement) {
+        await doc.exitPictureInPicture();
+        setIsPipActive(false);
+      } else if (videoRef.current && doc.pictureInPictureEnabled) {
+        await (videoRef.current as any).requestPictureInPicture();
+        setIsPipActive(true);
+      }
+    } catch (err) {
+      console.warn('[VideoPlayer] PiP toggle error:', err);
+    }
+  }, []);
+
+  // PiP and Remote Playback Listeners
+  useEffect(() => {
+    const video: any = videoRef.current;
+    if (!video) return;
+
+    const onEnterPip = () => setIsPipActive(true);
+    const onLeavePip = () => setIsPipActive(false);
+
+    video.addEventListener('enterpictureinpicture', onEnterPip);
+    video.addEventListener('leavepictureinpicture', onLeavePip);
+
+    const remote = video.remote;
+    if (remote && typeof remote.addEventListener === 'function') {
+      const handleRemoteConnect = () => setIsCasting(true);
+      const handleRemoteDisconnect = () => setIsCasting(false);
+      remote.addEventListener('connect', handleRemoteConnect);
+      remote.addEventListener('disconnect', handleRemoteDisconnect);
+      if (remote.state === 'connected') setIsCasting(true);
+
+      return () => {
+        video.removeEventListener('enterpictureinpicture', onEnterPip);
+        video.removeEventListener('leavepictureinpicture', onLeavePip);
+        remote.removeEventListener('connect', handleRemoteConnect);
+        remote.removeEventListener('disconnect', handleRemoteDisconnect);
+      };
+    }
+
+    return () => {
+      video.removeEventListener('enterpictureinpicture', onEnterPip);
+      video.removeEventListener('leavepictureinpicture', onLeavePip);
+    };
+  }, []);
 
   // Screen orientation tracking (portrait vs landscape)
   const [isPortrait, setIsPortrait] = useState(() => {
@@ -1455,9 +1517,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setShowAudioSubtitleModal(true);
             setModalCol(1);
             setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
+          } else if (curCtrl === 'cast') {
+            setShowCastModal(true);
           } else if (curCtrl === 'fullscreen') {
             toggleFullscreen();
           }
+          break;
+
+        case 'c':
+        case 'C':
+          e.preventDefault();
+          setShowCastModal((prev) => !prev);
+          break;
+
+        case 'p':
+        case 'P':
+          e.preventDefault();
+          togglePip();
           break;
 
         case 'f':
@@ -1849,7 +1925,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <button
+              onClick={() => setShowCastModal(true)}
+              className={`p-2 rounded-full min-w-[40px] min-h-[40px] active:scale-95 transition-all flex items-center justify-center cursor-pointer ${
+                isCasting
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : 'hover:bg-white/10 text-white'
+              }`}
+              title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
+            >
+              <Cast className="w-5 h-5 sm:w-6 sm:h-6" />
+            </button>
             <svg viewBox="0 0 100 160" width="20" height="28" className="w-5 h-7 filter drop-shadow">
               <path d="M0 0h34v160H0z" fill="#B81D24" />
               <path d="M66 0h34v160H66z" fill="#B81D24" />
@@ -2086,6 +2173,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </span>
               </button>
 
+              {/* Cast to TV or PC Button */}
+              <button
+                onClick={() => {
+                  setFocusedControl('cast');
+                  setShowCastModal(true);
+                }}
+                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                  focusedControl === 'cast'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                    : isCasting
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
+                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                }`}
+                title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
+              >
+                <Cast className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'cast' ? 'text-black' : isCasting ? 'text-emerald-400' : 'text-white'}`} />
+                {isCasting && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
+                )}
+              </button>
+
               {/* Fullscreen Toggle */}
               <button
                 onClick={() => {
@@ -2306,6 +2414,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Cast to TV or PC Modal */}
+      <CastModal
+        isOpen={showCastModal}
+        onClose={() => setShowCastModal(false)}
+        item={item}
+        currentTime={currentTime}
+        duration={duration}
+        season={effectiveSeason}
+        episode={effectiveEpisode}
+        videoElement={videoRef.current}
+        onTogglePip={togglePip}
+        isPipActive={isPipActive}
+      />
     </div>
   );
 };

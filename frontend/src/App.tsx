@@ -84,6 +84,7 @@ export const App: React.FC = () => {
     item: MediaItem;
     season?: number;
     episode?: number;
+    initialTime?: number;
   } | null>(null);
 
   // App version control & update states
@@ -252,11 +253,24 @@ export const App: React.FC = () => {
           }).catch(() => {});
         }
       } else if (route.startsWith('watch/')) {
-        const id = route.split('/')[1];
+        const [pathPart, queryPart] = route.split('?');
+        const id = pathPart.split('/')[1];
+        const params = new URLSearchParams(queryPart || '');
+        const timeParam = params.get('time') || params.get('t');
+        const seasonParam = params.get('season') || params.get('s');
+        const episodeParam = params.get('episode') || params.get('e');
+        const typeParam = params.get('type') as 'movie' | 'tv' | 'anime' | null;
+
         if (id) {
-          api.getTitleDetails(id, 'movie').then((item) => {
+          const effectiveType = typeParam || 'movie';
+          api.getTitleDetails(id, effectiveType).then((item) => {
             if (item) {
-              setPlayerTarget({ item });
+              setPlayerTarget({
+                item,
+                season: seasonParam ? parseInt(seasonParam, 10) : undefined,
+                episode: episodeParam ? parseInt(episodeParam, 10) : undefined,
+                initialTime: timeParam ? parseFloat(timeParam) : undefined
+              });
               setCurrentScreen('player');
               window.history.replaceState({ screen: 'player', item }, '', initialHash);
             }
@@ -578,6 +592,7 @@ export const App: React.FC = () => {
             item={playerTarget.item}
             season={playerTarget.season}
             episode={playerTarget.episode}
+            initialTime={playerTarget.initialTime}
             profileId={activeProfile.id}
             onExit={handleExitPlayer}
           />
