@@ -5,6 +5,8 @@ import { api } from '../../services/api';
 import { Flame, Film, Tv, Zap, Rocket, Skull, Laugh, Ghost, Sparkles, Heart, ShieldAlert, Compass, Globe, Award, HelpCircle } from 'lucide-react';
 
 const GENRE_CATEGORIES: Array<GenreCategory & { icon: any }> = [
+  { id: 'cat-new-releases', label: 'New Releases', category: 'new_releases', icon: Sparkles },
+  { id: 'cat-upcoming', label: 'Coming Soon', category: 'upcoming', icon: Rocket },
   { id: 'cat-trending', label: 'Trending Now', category: 'trending', icon: Flame },
   { id: 'cat-popular', label: 'Popular Movies', category: 'popular', icon: Film },
   { id: 'cat-tv', label: 'TV Shows', category: 'tv', type: 'tv', icon: Tv },

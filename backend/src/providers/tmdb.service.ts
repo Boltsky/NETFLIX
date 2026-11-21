@@ -3,7 +3,9 @@ import {
   TitleDetails,
   Episode,
   CategoryQueryParams,
-  CategoryResponse
+  CategoryResponse,
+  HomeCatalog,
+  CatalogRail
 } from '../types/index.js';
 
 const TMDB_API_KEYS = [
@@ -14,6 +16,8 @@ const TMDB_API_KEYS = [
 ];
 
 let activeKeyIndex = 0;
+let homeCatalogCache: HomeCatalog | null = null;
+let homeCatalogCacheTime = 0;
 
 function getApiKey(): string {
   return TMDB_API_KEYS[activeKeyIndex % TMDB_API_KEYS.length];
@@ -33,12 +37,16 @@ async function tmdbFetch<T>(endpoint: string, params: Record<string, string | nu
     });
 
     const url = `https://api.themoviedb.org/3${endpoint}?${query.toString()}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
     try {
       const res = await fetch(url, {
+        signal: controller.signal,
         headers: {
           'Accept': 'application/json'
         }
       });
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         return (await res.json()) as T;
@@ -51,6 +59,7 @@ async function tmdbFetch<T>(endpoint: string, params: Record<string, string | nu
 
       return null;
     } catch (e: any) {
+      clearTimeout(timeoutId);
       console.warn(`[TMDB] Fetch error for ${endpoint}:`, e.message);
       rotateApiKey();
     }
@@ -98,6 +107,179 @@ export function mapTmdbMediaItem(raw: any, defaultType: 'movie' | 'tv' | 'anime'
 }
 
 export const tmdbService = {
+  async getHomeCatalog(): Promise<HomeCatalog | null> {
+    const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes in-memory cache
+    if (homeCatalogCache && (Date.now() - homeCatalogCacheTime < CACHE_TTL_MS)) {
+      return homeCatalogCache;
+    }
+
+    try {
+      const [
+        nowPlayingData,
+        trendingData,
+        popularMoviesData,
+        popularTvData,
+        upcomingData,
+        onTheAirData,
+        actionData,
+        scifiData,
+        thrillerData,
+        comedyData,
+        animeData
+      ] = await Promise.all([
+        tmdbFetch<any>('/movie/now_playing', { page: 1 }),
+        tmdbFetch<any>('/trending/all/day', { page: 1 }),
+        tmdbFetch<any>('/movie/popular', { page: 1 }),
+        tmdbFetch<any>('/tv/popular', { page: 1 }),
+        tmdbFetch<any>('/movie/upcoming', { page: 1 }),
+        tmdbFetch<any>('/tv/on_the_air', { page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 53, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc', page: 1 })
+      ]);
+
+      const rails: CatalogRail[] = [];
+
+      if (nowPlayingData && Array.isArray(nowPlayingData.results) && nowPlayingData.results.length > 0) {
+        rails.push({
+          id: 'rail-new-releases',
+          title: 'Newly Released in Theaters & Streaming',
+          type: 'movie',
+          category: 'new_releases',
+          items: nowPlayingData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (trendingData && Array.isArray(trendingData.results) && trendingData.results.length > 0) {
+        rails.push({
+          id: 'rail-trending',
+          title: 'Trending Now',
+          type: 'movie',
+          category: 'trending',
+          items: trendingData.results.map((r: any) => mapTmdbMediaItem(r, r.media_type === 'tv' ? 'tv' : 'movie'))
+        });
+      }
+
+      if (popularMoviesData && Array.isArray(popularMoviesData.results) && popularMoviesData.results.length > 0) {
+        rails.push({
+          id: 'rail-popular-movies',
+          title: 'Blockbuster Movies',
+          type: 'movie',
+          category: 'popular',
+          items: popularMoviesData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (popularTvData && Array.isArray(popularTvData.results) && popularTvData.results.length > 0) {
+        rails.push({
+          id: 'rail-popular-tv',
+          title: 'Popular TV Series',
+          type: 'tv',
+          category: 'tv',
+          items: popularTvData.results.map((r: any) => mapTmdbMediaItem(r, 'tv'))
+        });
+      }
+
+      if (upcomingData && Array.isArray(upcomingData.results) && upcomingData.results.length > 0) {
+        rails.push({
+          id: 'rail-upcoming',
+          title: 'Upcoming & In Theaters',
+          type: 'movie',
+          category: 'upcoming',
+          items: upcomingData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (actionData && Array.isArray(actionData.results) && actionData.results.length > 0) {
+        rails.push({
+          id: 'rail-action',
+          title: 'Action & Adventure',
+          type: 'movie',
+          category: 'action',
+          items: actionData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (scifiData && Array.isArray(scifiData.results) && scifiData.results.length > 0) {
+        rails.push({
+          id: 'rail-scifi',
+          title: 'Sci-Fi & Fantasy',
+          type: 'movie',
+          category: 'scifi',
+          items: scifiData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (thrillerData && Array.isArray(thrillerData.results) && thrillerData.results.length > 0) {
+        rails.push({
+          id: 'rail-thriller',
+          title: 'Thrillers & Suspense',
+          type: 'movie',
+          category: 'thriller',
+          items: thrillerData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (comedyData && Array.isArray(comedyData.results) && comedyData.results.length > 0) {
+        rails.push({
+          id: 'rail-comedy',
+          title: 'Comedy Hits',
+          type: 'movie',
+          category: 'comedy',
+          items: comedyData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+        });
+      }
+
+      if (animeData && Array.isArray(animeData.results) && animeData.results.length > 0) {
+        rails.push({
+          id: 'rail-anime',
+          title: 'Acclaimed Anime & Animation',
+          type: 'anime',
+          category: 'anime',
+          items: animeData.results.map((r: any) => mapTmdbMediaItem(r, 'anime'))
+        });
+      }
+
+      if (onTheAirData && Array.isArray(onTheAirData.results) && onTheAirData.results.length > 0) {
+        rails.push({
+          id: 'rail-tv-airing',
+          title: 'Currently Airing Series',
+          type: 'tv',
+          category: 'tv_airing',
+          items: onTheAirData.results.map((r: any) => mapTmdbMediaItem(r, 'tv'))
+        });
+      }
+
+      if (rails.length < 4) {
+        return null;
+      }
+
+      // Pick the best backdrop candidate for Hero Spotlight from trending or new releases
+      const heroPool = [
+        ...(trendingData?.results || []),
+        ...(nowPlayingData?.results || []),
+        ...(popularMoviesData?.results || [])
+      ];
+
+      const heroCandidate = heroPool.find((r: any) => r.backdrop_path && r.poster_path && r.overview && r.overview.length > 20) || heroPool[0];
+      const hero = heroCandidate ? mapTmdbMediaItem(heroCandidate, heroCandidate.media_type === 'tv' ? 'tv' : 'movie') : (rails[0]?.items[0] || null);
+
+      const catalog: HomeCatalog = {
+        hero,
+        rails
+      };
+
+      homeCatalogCache = catalog;
+      homeCatalogCacheTime = Date.now();
+      return catalog;
+    } catch (err: any) {
+      console.warn('[TMDB] getHomeCatalog error:', err.message);
+      return null;
+    }
+  },
+
   async search(query: string): Promise<MediaItem[]> {
     const q = query.trim();
     if (!q) return [];
@@ -128,8 +310,12 @@ export const tmdbService = {
 
     if (category === 'trending') {
       endpoint = '/trending/all/day';
-    } else if (category === 'new_releases') {
+    } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
       endpoint = '/movie/now_playing';
+    } else if (category === 'upcoming') {
+      endpoint = '/movie/upcoming';
+    } else if (category === 'tv_airing' || category === 'airing_tv' || category === 'on_the_air') {
+      endpoint = '/tv/on_the_air';
     } else if (options.genreId) {
       endpoint = isTv ? '/discover/tv' : '/discover/movie';
       params.with_genres = options.genreId;

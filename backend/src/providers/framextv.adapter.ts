@@ -141,7 +141,12 @@ export class FrameXTVAdapter implements IContentProvider {
       const hero = data.hero ? this.mapMediaItem(data.hero, data.hero.type || 'movie') : (rails[0]?.items[0] || null);
 
       if (rails.length < 5) {
-        console.warn(`[FrameXTV] Upstream returned only ${rails.length} rails, falling back to rich catalog`);
+        console.warn(`[FrameXTV] Upstream returned only ${rails.length} rails, attempting live TMDB home catalog`);
+        const tmdbCatalog = await tmdbService.getHomeCatalog();
+        if (tmdbCatalog && tmdbCatalog.rails.length >= 4) {
+          return tmdbCatalog;
+        }
+        console.warn('[FrameXTV] Upstream and TMDB returned insufficient rails, falling back to rich catalog');
         return getRichHomeCatalog();
       }
 
@@ -150,7 +155,15 @@ export class FrameXTVAdapter implements IContentProvider {
         rails
       };
     } catch (err: any) {
-      console.warn('[FrameXTV] getHomeCatalog failed, falling back to rich catalog:', err.message);
+      console.warn('[FrameXTV] getHomeCatalog failed, attempting live TMDB home catalog:', err.message);
+      try {
+        const tmdbCatalog = await tmdbService.getHomeCatalog();
+        if (tmdbCatalog && tmdbCatalog.rails.length >= 4) {
+          return tmdbCatalog;
+        }
+      } catch (tmdbErr: any) {
+        console.warn('[TMDB] getHomeCatalog fallback error:', tmdbErr.message);
+      }
       return getRichHomeCatalog();
     }
   }
@@ -192,6 +205,10 @@ export class FrameXTVAdapter implements IContentProvider {
       upstreamPath = `/api/discover?genre=${genreId}&page=${page}`;
     } else if (category === 'trending') {
       upstreamPath = `/api/trending?page=${page}`;
+    } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
+      upstreamPath = `/api/new-releases?page=${page}`;
+    } else if (category === 'upcoming') {
+      upstreamPath = `/api/upcoming?page=${page}`;
     } else if (category === 'popular_tv' || category === 'tv' || type === 'tv') {
       upstreamPath = `/api/tv?page=${page}`;
     } else if (category === 'popular' || category === 'popular_movies' || category === 'movies') {

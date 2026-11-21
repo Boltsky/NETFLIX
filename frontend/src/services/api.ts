@@ -433,9 +433,8 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
     }));
 
     let hero: MediaItem | null = raw.data.hero ? mapMediaItem(raw.data.hero, raw.data.hero.type || 'movie') : null;
-    // Replace unreleased/future hero with an acclaimed released title
-    if (!hero || (hero.year && parseInt(hero.year, 10) >= 2026)) {
-      hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
+    if (!hero || !hero.title || (!hero.backdrop && !hero.poster)) {
+      hero = rails[0]?.items?.[0] || verifiedHeroCandidates[0];
     }
 
     return { hero, rails: deduplicateRails(rails) };
@@ -449,8 +448,8 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
     }));
 
     let hero: MediaItem | null = raw.hero ? mapMediaItem(raw.hero, raw.hero.type || 'movie') : (rails[0]?.items?.[0] || null);
-    if (!hero || (hero.year && parseInt(hero.year, 10) >= 2026)) {
-      hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
+    if (!hero || !hero.title || (!hero.backdrop && !hero.poster)) {
+      hero = rails[0]?.items?.[0] || verifiedHeroCandidates[0];
     }
 
     return { hero, rails: deduplicateRails(rails) };
@@ -510,8 +509,8 @@ function normalizeHomeCatalog(raw: any): HomeCatalog {
 
     // Select a verified, released hero banner (never an unreleased future title)
     let hero: MediaItem | null = raw.hero ? mapMediaItem(raw.hero, raw.hero.type || 'movie') : null;
-    if (!hero || (hero.year && parseInt(hero.year, 10) >= 2026)) {
-      hero = rails[0]?.items.find((i) => !i.year || parseInt(i.year, 10) <= 2025) || verifiedHeroCandidates[0];
+    if (!hero || !hero.title || (!hero.backdrop && !hero.poster)) {
+      hero = rails[0]?.items?.[0] || verifiedHeroCandidates[0];
     }
 
     if (rails.length > 0) {
@@ -728,6 +727,10 @@ export const api = {
       upstreamPath = `/api/discover?genre=${effectiveGenreId}&page=${page}`;
     } else if (category === 'trending') {
       upstreamPath = `/api/trending?page=${page}`;
+    } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
+      upstreamPath = `/api/new-releases?page=${page}`;
+    } else if (category === 'upcoming') {
+      upstreamPath = `/api/upcoming?page=${page}`;
     } else if (category === 'popular_tv' || category === 'tv' || type === 'tv') {
       upstreamPath = `/api/tv?page=${page}`;
     } else if (category === 'popular' || category === 'popular_movies' || category === 'movies') {
@@ -766,8 +769,12 @@ export const api = {
       let tmdbUrl = '';
       if (category === 'trending') {
         tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
-      } else if (category === 'new_releases') {
+      } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
         tmdbUrl = `https://api.themoviedb.org/3/movie/now_playing?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
+      } else if (category === 'upcoming') {
+        tmdbUrl = `https://api.themoviedb.org/3/movie/upcoming?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
+      } else if (category === 'tv_airing' || category === 'airing_tv' || category === 'on_the_air') {
+        tmdbUrl = `https://api.themoviedb.org/3/tv/on_the_air?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
       } else if (effectiveGenreId) {
         tmdbUrl = `https://api.themoviedb.org/3/discover/${isTv ? 'tv' : 'movie'}?api_key=8265bd1679663a7ea12ac168da84d2e8&with_genres=${effectiveGenreId}&sort_by=popularity.desc&page=${page}`;
       } else if (isTv) {

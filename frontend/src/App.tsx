@@ -396,23 +396,43 @@ export const App: React.FC = () => {
     const nextPage = currentPage + 1;
 
     const RAIL_CONFIG_MAP: Record<string, { category?: string; genreId?: number; type?: 'movie' | 'tv' | 'anime' }> = {
-      'rail-trending_movies': { category: 'trending', type: 'movie' },
-      'rail-popular_movies': { category: 'popular', type: 'movie' },
-      'rail-popular_tv': { category: 'tv', type: 'tv' },
-      'rail-popular_anime': { category: 'anime', type: 'anime' },
+      'rail-new-releases': { category: 'new_releases', type: 'movie' },
       'rail-new_releases': { category: 'new_releases', type: 'movie' },
+      'rail-trending': { category: 'trending', type: 'movie' },
+      'rail-trending_movies': { category: 'trending', type: 'movie' },
+      'rail-popular-movies': { category: 'popular', type: 'movie' },
+      'rail-popular_movies': { category: 'popular', type: 'movie' },
+      'rail-popular-tv': { category: 'tv', type: 'tv' },
+      'rail-popular_tv': { category: 'tv', type: 'tv' },
+      'rail-popular-anime': { category: 'anime', type: 'anime', genreId: 16 },
+      'rail-popular_anime': { category: 'anime', type: 'anime', genreId: 16 },
+      'rail-anime': { category: 'anime', type: 'anime', genreId: 16 },
+      'rail-upcoming': { category: 'upcoming', type: 'movie' },
+      'rail-tv-airing': { category: 'tv_airing', type: 'tv' },
+      'rail-action': { genreId: 28, type: 'movie' },
       'rail-action_movies': { genreId: 28, type: 'movie' },
+      'rail-scifi': { genreId: 878, type: 'movie' },
       'rail-scifi_movies': { genreId: 878, type: 'movie' },
+      'rail-thriller': { genreId: 53, type: 'movie' },
       'rail-thriller_movies': { genreId: 53, type: 'movie' },
+      'rail-comedy': { genreId: 35, type: 'movie' },
       'rail-comedy_movies': { genreId: 35, type: 'movie' },
+      'rail-drama': { genreId: 18, type: 'movie' },
       'rail-drama_movies': { genreId: 18, type: 'movie' },
+      'rail-horror': { genreId: 27, type: 'movie' },
       'rail-horror_movies': { genreId: 27, type: 'movie' },
+      'rail-animation': { genreId: 16, type: 'movie' },
       'rail-animation_movies': { genreId: 16, type: 'movie' },
+      'rail-crime': { genreId: 80, type: 'movie' },
       'rail-crime_movies': { genreId: 80, type: 'movie' },
       'rail-trending_tv': { category: 'tv', type: 'tv' }
     };
 
-    const config = RAIL_CONFIG_MAP[railId] || { category: railId.replace('rail-', ''), type: 'movie' };
+    const railObj = catalog?.rails.find((r) => r.id === railId);
+    const config = RAIL_CONFIG_MAP[railId] || {
+      category: railObj?.category || railId.replace('rail-', '').replace(/-/g, '_'),
+      type: railObj?.type || 'movie'
+    };
 
     try {
       const res = await api.getCategoryMovies({
@@ -447,7 +467,7 @@ export const App: React.FC = () => {
     } finally {
       railLoadingRef.current[railId] = false;
     }
-  }, [railPages]);
+  }, [railPages, catalog?.rails]);
 
   // Watchlist Toggle
   const handleToggleWatchlist = async (item: MediaItem) => {
@@ -491,10 +511,97 @@ export const App: React.FC = () => {
       if (r.id === 'rail-top-10' || r.category === 'top-10') return false;
       if (currentScreen === 'series') return r.type === 'tv' || r.type === 'anime';
       if (currentScreen === 'movies') return r.type === 'movie';
-      if (currentScreen === 'popular') return r.category === 'trending' || r.category === 'popular';
+      if (currentScreen === 'popular') return r.category === 'trending' || r.category === 'popular' || r.category === 'new_releases' || r.category === 'upcoming';
       return true; // 'home'
     });
   }, [catalog?.rails, currentScreen]);
+
+  // Extra dynamic rails loaded upon scrolling down (Continuous Vertical Infinite Scroll)
+  const ADDITIONAL_RAILS_QUEUE = useMemo(() => [
+    { id: 'rail-drama', title: 'Critically Acclaimed Dramas', genreId: 18, type: 'movie' as const, category: 'drama' },
+    { id: 'rail-horror', title: 'Chilling Horror & Thrills', genreId: 27, type: 'movie' as const, category: 'horror' },
+    { id: 'rail-crime', title: 'Gripping Crime Stories', genreId: 80, type: 'movie' as const, category: 'crime' },
+    { id: 'rail-adventure', title: 'Epic Adventures', genreId: 12, type: 'movie' as const, category: 'adventure' },
+    { id: 'rail-family', title: 'Fun for the Whole Family', genreId: 10751, type: 'movie' as const, category: 'family' },
+    { id: 'rail-mystery', title: 'Mind-Bending Mysteries', genreId: 9648, type: 'movie' as const, category: 'mystery' },
+    { id: 'rail-romance', title: 'Romantic Favorites', genreId: 10749, type: 'movie' as const, category: 'romance' },
+    { id: 'rail-documentary', title: 'Eye-Opening Documentaries', genreId: 99, type: 'movie' as const, category: 'documentary' }
+  ], []);
+
+  const [loadedExtraRailIndex, setLoadedExtraRailIndex] = useState(0);
+  const loadingExtraRailRef = useRef(false);
+
+  useEffect(() => {
+    const handleScroll = async () => {
+      if (
+        currentScreen !== 'home' &&
+        currentScreen !== 'movies' &&
+        currentScreen !== 'series' &&
+        currentScreen !== 'popular'
+      ) {
+        return;
+      }
+      if (loadingExtraRailRef.current) return;
+      if (loadedExtraRailIndex >= ADDITIONAL_RAILS_QUEUE.length) return;
+
+      const scrollBottom = window.innerHeight + window.scrollY;
+      const threshold = document.documentElement.scrollHeight - 900;
+
+      if (scrollBottom >= threshold) {
+        loadingExtraRailRef.current = true;
+        const targetRail = ADDITIONAL_RAILS_QUEUE[loadedExtraRailIndex];
+        if (!targetRail) {
+          loadingExtraRailRef.current = false;
+          return;
+        }
+
+        const existingRail = catalog?.rails?.some((r) => r.id === targetRail.id);
+        if (existingRail) {
+          setLoadedExtraRailIndex((prev) => prev + 1);
+          loadingExtraRailRef.current = false;
+          return;
+        }
+
+        try {
+          const res = await api.getCategoryMovies({
+            category: targetRail.genreId ? undefined : targetRail.category,
+            genreId: targetRail.genreId,
+            type: targetRail.type,
+            page: 1
+          });
+
+          if (res && Array.isArray(res.results) && res.results.length > 0) {
+            setCatalog((prev) => {
+              if (!prev) return prev;
+              const alreadyHas = prev.rails.some((r) => r.id === targetRail.id);
+              if (alreadyHas) return prev;
+              return {
+                ...prev,
+                rails: [
+                  ...prev.rails,
+                  {
+                    id: targetRail.id,
+                    title: targetRail.title,
+                    type: targetRail.type,
+                    category: targetRail.category,
+                    items: res.results
+                  }
+                ]
+              };
+            });
+          }
+          setLoadedExtraRailIndex((prev) => prev + 1);
+        } catch (err) {
+          console.warn('[App] Failed to load vertical rail:', err);
+        } finally {
+          loadingExtraRailRef.current = false;
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [currentScreen, loadedExtraRailIndex, catalog?.rails, ADDITIONAL_RAILS_QUEUE]);
 
   // Continue Watching Rail with catalog poster & title enrichment and strict deduplication by contentId
   const continueWatchingItems: MediaItem[] = useMemo(() => {
