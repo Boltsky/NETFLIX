@@ -1062,8 +1062,8 @@ export const api = {
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.me/embed/tv/${contentId}/${s}/${e}`
-          : `https://player.autoembed.me/embed/movie/${contentId}`
+          ? `https://vidlink.pro/tv/${contentId}/${s}/${e}?primaryColor=e50914&autoplay=true`
+          : `https://vidlink.pro/movie/${contentId}?primaryColor=e50914&autoplay=true`
       },
       {
         name: 'Server 3 (MultiEmbed)',
@@ -1074,14 +1074,14 @@ export const api = {
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://vidup.to/tv/${contentId}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
-          : `https://vidup.to/movie/${contentId}?autoPlay=true&theme=e50914`
+          ? `https://www.2embed.cc/embedtv/${contentId}&s=${s}&e=${e}`
+          : `https://www.2embed.cc/embed/${contentId}`
       },
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${contentId}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${contentId}`
+          ? `https://vidsrc.net/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.net/embed/movie/${contentId}`
       }
     ];
 

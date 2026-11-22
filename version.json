@@ -1,18 +1,18 @@
 {
-  "versionCode": 27,
-  "versionName": "1.4.4",
+  "versionCode": 28,
+  "versionName": "1.4.5",
   "commitHash": "latest",
-  "releaseDate": "2026-11-16",
+  "releaseDate": "2026-11-22",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.4",
+  "title": "Netflix TV v1.4.5",
   "changelog": [
+    "Added Automatic Next Episode autoplay for TV Series and Anime with Netflix-style 10s post-play countdown overlay and TV remote control (OK: Play Now, Back: Cancel)",
     "Added Virtual TV Cursor & Native Touch Engine enabling Android TV remotes to interact with embedded server player buttons (FrameX Backup player, server dropdowns, video controls)",
+    "Upgraded streaming server architecture with active VidLink, 2Embed, and VidSrc endpoints resolving titles like The Good Lawyer",
     "Added 'Server Remote' mode toggle to bottom player controls with high-visibility cursor and guidance HUD",
     "Enabled D-pad spatial velocity acceleration and boundary-clamped cursor targeting",
-    "Synthesized OS-level MotionEvent touch down/up events penetrating cross-origin iframe sandboxes",
-    "Eliminated CTV video ads on Android TV by standardizing Desktop Chrome User-Agent across devices",
-    "Fixed Next.js SSR hydration exception on AutoEmbed server"
+    "Synthesized OS-level MotionEvent touch down/up events penetrating cross-origin iframe sandboxes"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

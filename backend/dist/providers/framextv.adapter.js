@@ -379,14 +379,14 @@ class FrameXTVAdapter {
             {
                 name: 'Server 4 (2Embed)',
                 url: isEpisodic
-                    ? `https://vidup.to/tv/${id}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
-                    : `https://vidup.to/movie/${id}?autoPlay=true&theme=e50914`
+                    ? `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`
+                    : `https://www.2embed.cc/embed/${id}`
             },
             {
                 name: 'Server 5 (VidSrc)',
                 url: isEpisodic
-                    ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
-                    : `https://vidsrc.to/embed/movie/${id}`
+                    ? `https://vidsrc.net/embed/tv/${id}/${s}/${e}`
+                    : `https://vidsrc.net/embed/movie/${id}`
             }
         ];
         const normalizeUrl = (rawUrl) => {

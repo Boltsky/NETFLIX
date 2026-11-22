@@ -1,0 +1,27 @@
+{
+  "allTimeVisits": 0,
+  "uniqueVisitors": {},
+  "recentVisits": [],
+  "dailyStats": {},
+  "countryCounts": {},
+  "cityCounts": {},
+  "deviceCounts": {
+    "mobile": 0,
+    "tablet": 0,
+    "desktop": 0,
+    "tv": 0
+  },
+  "osCounts": {},
+  "sessionDurations": {},
+  "sessionDurationsByVisitor": {},
+  "userProfiles": {},
+  "screenCounts": {},
+  "titleCounts": {},
+  "watchedMovies": [],
+  "adminAccount": {
+    "email": "admin@cinewave.tv",
+    "username": "Administrator",
+    "password": "bolt2026",
+    "lastUpdated": "2026-11-22T20:37:47.114Z"
+  }
+}

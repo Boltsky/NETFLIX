@@ -3,6 +3,7 @@ import Hls from 'hls.js';
 import { PlaybackResolution, MediaItem, StreamSource, SubtitleTrack } from '../../types';
 import { api } from '../../services/api';
 import { analytics } from '../../services/analyticsService';
+import { adblockService } from '../../services/adblockService';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { parseSubtitles, SubtitleCue } from '../../utils/subtitleParser';
 import { getAppSettings } from '../../services/settingsService';
@@ -302,8 +303,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.me/embed/tv/${item.id}/${s}/${e}`
-          : `https://player.autoembed.me/embed/movie/${item.id}`
+          ? `https://vidlink.pro/tv/${item.id}/${s}/${e}?primaryColor=e50914&autoplay=true`
+          : `https://vidlink.pro/movie/${item.id}?primaryColor=e50914&autoplay=true`
       },
       {
         name: 'Server 3 (MultiEmbed)',
@@ -314,14 +315,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://vidup.to/tv/${item.id}/${s}/${e}?autoPlay=true&theme=e50914&nextButton=true&autoNext=true`
-          : `https://vidup.to/movie/${item.id}?autoPlay=true&theme=e50914`
+          ? `https://www.2embed.cc/embedtv/${item.id}&s=${s}&e=${e}`
+          : `https://www.2embed.cc/embed/${item.id}`
       },
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.to/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.to/embed/movie/${item.id}`
+          ? `https://vidsrc.net/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.net/embed/movie/${item.id}`
       }
     ];
   }, [resolution, item, season, episode]);
@@ -444,6 +445,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return () => {
       video.removeEventListener('enterpictureinpicture', onEnterPip);
       video.removeEventListener('leavepictureinpicture', onLeavePip);
+    };
+  }, []);
+
+  // AdBlock Engine integration: Intercept popups, block ad frames, and install Google IMA surrogates
+  useEffect(() => {
+    adblockService.installWindowOpenGuard();
+    adblockService.installSurrogates();
+    return () => {
+      adblockService.uninstallWindowOpenGuard();
     };
   }, []);
 
@@ -973,11 +983,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         hls.on(Hls.Events.FRAG_LOADED, (_event: any, data: any) => {
           const fragUrl = data?.frag?.url || '';
-          if (fragUrl.includes('atlantic.st') || fragUrl.includes('classroom.best') || fragUrl.includes('dummy_stream')) {
-            console.warn('[Netflix Player] Dummy warning slide fragment detected in direct HLS stream');
+          if (adblockService.filterHlsAdFragments(fragUrl) || fragUrl.includes('atlantic.st') || fragUrl.includes('classroom.best') || fragUrl.includes('dummy_stream')) {
+            console.warn('[Netflix Player] Dummy warning slide fragment or ad detected in direct HLS stream');
             try { hls.destroy(); } catch {}
             hlsRef.current = null;
-            handleDirectStreamFailure('Dummy warning slide fragment detected');
+            handleDirectStreamFailure('Dummy warning slide fragment or ad detected');
           }
         });
 
@@ -1016,13 +1026,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const onTimeUpdate = () => {
       const src = video.currentSrc || video.src || '';
-      if (src.includes('atlantic.st') || src.includes('classroom.best') || src.includes('dummy_stream')) {
-        console.warn('[Netflix Player] Warning slide source detected on video tag');
+      if (adblockService.isAdUrl(src) || src.includes('atlantic.st') || src.includes('classroom.best') || src.includes('dummy_stream')) {
+        console.warn('[Netflix Player] Ad or warning slide source detected on video tag');
         if (hlsRef.current) {
           try { hlsRef.current.destroy(); } catch {}
           hlsRef.current = null;
         }
-        handleDirectStreamFailure('Warning slide source detected');
+        handleDirectStreamFailure('Ad or warning slide source detected');
         return;
       }
       const dur = video.duration || 0;
@@ -2040,13 +2050,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {useIframeFallback && currentEmbedUrl && (
         <iframe
           key={currentEmbedUrl}
-          ref={(el) => {
-            iframeRef.current = el;
-            if (el) {
-              try { el.removeAttribute('sandbox'); } catch {}
-            }
-          }}
+          ref={iframeRef}
           src={currentEmbedUrl}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
           className="w-full h-full border-0 select-none"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           title="Netflix Player"
