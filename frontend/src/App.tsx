@@ -382,6 +382,52 @@ export const App: React.FC = () => {
     navigateBack();
   }, [activeProfile.id, navigateBack]);
 
+  // Next Episode handler for TV series / Anime
+  const handleNextEpisode = useCallback(async () => {
+    if (!playerTarget || !playerTarget.item) return;
+    const isEpisodic = playerTarget.item.type === 'tv' || playerTarget.item.type === 'anime';
+    if (!isEpisodic) return;
+
+    const currentSeason = playerTarget.season || 1;
+    const currentEpisode = playerTarget.episode || 1;
+
+    let nextSeason = currentSeason;
+    let nextEpisode = currentEpisode + 1;
+
+    try {
+      const details = await api.getTitleDetails(playerTarget.item.id, playerTarget.item.type);
+      if (details?.seasons && details.seasons.length > 0) {
+        const thisSeason = details.seasons.find((s) => s.number === currentSeason);
+        if (thisSeason && thisSeason.episodeCount && currentEpisode >= thisSeason.episodeCount) {
+          const nextSeasonObj = details.seasons.find((s) => s.number === currentSeason + 1);
+          if (nextSeasonObj) {
+            nextSeason = currentSeason + 1;
+            nextEpisode = 1;
+          } else {
+            console.log(`[App] Series finale reached for ${playerTarget.item.title}`);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Failed to fetch season details for next episode:', err);
+    }
+
+    console.log(`[App] Transitioning to Next Episode: S${nextSeason}:E${nextEpisode} for ${playerTarget.item.title}`);
+    analytics.trackMovieWatch(playerTarget.item, nextSeason, nextEpisode);
+    setPlayerTarget({
+      item: playerTarget.item,
+      season: nextSeason,
+      episode: nextEpisode,
+      initialTime: 0
+    });
+
+    try {
+      const hash = `#/watch/${playerTarget.item.id}?s=${nextSeason}&e=${nextEpisode}`;
+      window.history.replaceState({ screen: 'player', item: playerTarget.item, season: nextSeason, episode: nextEpisode }, '', hash);
+    } catch {}
+  }, [playerTarget]);
+
   // Continuous horizontal rail pagination
   const [railPages, setRailPages] = useState<Record<string, number>>({});
   const railLoadingRef = useRef<Record<string, boolean>>({});
@@ -696,12 +742,14 @@ export const App: React.FC = () => {
         {/* SCREEN 1: Netflix Video Player */}
         {currentScreen === 'player' && playerTarget && (
           <VideoPlayer
+            key={`${playerTarget.item.id}-s${playerTarget.season || 1}-e${playerTarget.episode || 1}`}
             item={playerTarget.item}
             season={playerTarget.season}
             episode={playerTarget.episode}
             initialTime={playerTarget.initialTime}
             profileId={activeProfile.id}
             onExit={handleExitPlayer}
+            onNextEpisode={handleNextEpisode}
           />
         )}
 

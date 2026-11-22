@@ -172,6 +172,113 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     showControlsRef.current = true;
   }, []);
 
+  // Next Episode Info (Pre-fetched to know Season, Episode, Title, and if Series Finale)
+  const [nextEpisodeInfo, setNextEpisodeInfo] = useState<{ season: number; episode: number; title?: string } | null>(null);
+
+  useEffect(() => {
+    if (!isEpisodic || !item?.id) {
+      setNextEpisodeInfo(null);
+      return;
+    }
+
+    let isMounted = true;
+    const curSeason = effectiveSeason || 1;
+    const curEpisode = effectiveEpisode || 1;
+
+    api.getTitleDetails(item.id, item.type)
+      .then((details) => {
+        if (!isMounted) return;
+        if (details?.seasons && details.seasons.length > 0) {
+          const thisSeason = details.seasons.find((s) => s.number === curSeason);
+          if (thisSeason && thisSeason.episodeCount && curEpisode >= thisSeason.episodeCount) {
+            const nextSeasonObj = details.seasons.find((s) => s.number === curSeason + 1);
+            if (nextSeasonObj) {
+              setNextEpisodeInfo({ season: curSeason + 1, episode: 1 });
+            } else {
+              setNextEpisodeInfo(null); // Reached end of entire series
+            }
+          } else {
+            setNextEpisodeInfo({ season: curSeason, episode: curEpisode + 1 });
+          }
+        } else {
+          setNextEpisodeInfo({ season: curSeason, episode: curEpisode + 1 });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setNextEpisodeInfo({ season: curSeason, episode: curEpisode + 1 });
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item?.id, item?.type, isEpisodic, effectiveSeason, effectiveEpisode]);
+
+  // Automatic Next Episode & Post-Play Countdown State
+  const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState<number | null>(null);
+  const nextEpisodeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasTriggeredNextEpisodeRef = useRef(false);
+  const nextEpisodeDismissedRef = useRef(false);
+
+  const triggerNextEpisode = useCallback(() => {
+    if (hasTriggeredNextEpisodeRef.current) return;
+    hasTriggeredNextEpisodeRef.current = true;
+    setNextEpisodeCountdown(null);
+    if (nextEpisodeTimerRef.current) {
+      clearInterval(nextEpisodeTimerRef.current);
+      nextEpisodeTimerRef.current = null;
+    }
+
+    if (onNextEpisode) {
+      const nextSNum = nextEpisodeInfo?.season ?? (effectiveSeason || 1);
+      const nextEpNum = nextEpisodeInfo?.episode ?? ((effectiveEpisode || 1) + 1);
+      showPlayerToast(`Playing Next Episode (S${nextSNum}:E${nextEpNum})...`, 'play', 3500);
+      onNextEpisode();
+    }
+  }, [nextEpisodeInfo, effectiveSeason, effectiveEpisode, onNextEpisode, showPlayerToast]);
+
+  const startNextEpisodeCountdown = useCallback(() => {
+    if (
+      !isEpisodic ||
+      !onNextEpisode ||
+      nextEpisodeInfo === null ||
+      hasTriggeredNextEpisodeRef.current ||
+      nextEpisodeDismissedRef.current ||
+      nextEpisodeTimerRef.current !== null
+    ) {
+      return;
+    }
+
+    const appSettings = getAppSettings();
+    if (!appSettings.playback.autoplayNextEpisode) return;
+
+    let secondsLeft = 10;
+    setNextEpisodeCountdown(secondsLeft);
+
+    nextEpisodeTimerRef.current = setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        if (nextEpisodeTimerRef.current) {
+          clearInterval(nextEpisodeTimerRef.current);
+          nextEpisodeTimerRef.current = null;
+        }
+        triggerNextEpisode();
+      } else {
+        setNextEpisodeCountdown(secondsLeft);
+      }
+    }, 1000);
+  }, [isEpisodic, onNextEpisode, nextEpisodeInfo, triggerNextEpisode]);
+
+  const dismissNextEpisodePrompt = useCallback(() => {
+    nextEpisodeDismissedRef.current = true;
+    setNextEpisodeCountdown(null);
+    if (nextEpisodeTimerRef.current) {
+      clearInterval(nextEpisodeTimerRef.current);
+      nextEpisodeTimerRef.current = null;
+    }
+  }, []);
+
   const showControlsRef = useRef(true);
   showControlsRef.current = showControls;
 
@@ -221,7 +328,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const bottomControls = useMemo<Array<FocusedControl>>(() => {
     const list: Array<FocusedControl> = ['play', 'rewind', 'forward'];
-    if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode) {
+    if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && nextEpisodeInfo !== null) {
       list.push('next-ep');
     }
     if (useIframeFallback && servers.length > 1) {
@@ -234,7 +341,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     list.push('cast');
     list.push('fullscreen');
     return list;
-  }, [isEpisodic, effectiveSeason, effectiveEpisode, onNextEpisode, useIframeFallback, servers.length]);
+  }, [isEpisodic, effectiveSeason, effectiveEpisode, onNextEpisode, nextEpisodeInfo, useIframeFallback, servers.length]);
 
   const bottomControlsRef = useRef(bottomControls);
   bottomControlsRef.current = bottomControls;
@@ -742,6 +849,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setSelectedServerIndex(0);
     setUseIframeFallback(false);
     hasPlaybackStartedRef.current = false;
+    hasTriggeredNextEpisodeRef.current = false;
+    nextEpisodeDismissedRef.current = false;
+    setNextEpisodeCountdown(null);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(true);
+    if (nextEpisodeTimerRef.current) {
+      clearInterval(nextEpisodeTimerRef.current);
+      nextEpisodeTimerRef.current = null;
+    }
     if (watchdogTimerRef.current) {
       clearTimeout(watchdogTimerRef.current);
       watchdogTimerRef.current = null;
@@ -776,7 +893,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       });
 
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      if (nextEpisodeTimerRef.current) {
+        clearInterval(nextEpisodeTimerRef.current);
+        nextEpisodeTimerRef.current = null;
+      }
+    };
   }, [item.id, item.type, season, episode]);
 
   // Initialize Native / HLS Player
@@ -915,6 +1038,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (!isScrubbingRef.current) {
         setCurrentTime(video.currentTime);
         setDuration(video.duration || 0);
+
+        // Auto-play next episode countdown when approaching end of episode (credits)
+        if (isEpisodic && onNextEpisode && video.duration > 40) {
+          const timeLeft = video.duration - video.currentTime;
+          if (timeLeft <= 15 && timeLeft > 0) {
+            startNextEpisodeCountdown();
+          }
+        }
       }
     };
 
@@ -931,8 +1062,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         saveCurrentProgress(video.currentTime, video.duration);
       }
       const appSettings = getAppSettings();
-      if (appSettings.playback.autoplayNextEpisode && onNextEpisode) {
-        onNextEpisode();
+      if (isEpisodic && onNextEpisode && appSettings.playback.autoplayNextEpisode) {
+        triggerNextEpisode();
       }
     };
     const onLoadedMetadata = () => {
@@ -1051,6 +1182,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const data = event.data;
       if (!data) return;
 
+      let eventData = data;
+      if (typeof data === 'string') {
+        try {
+          eventData = JSON.parse(data);
+        } catch {
+          // Plain string message
+        }
+      }
+
       // Detect and block dummy warning slide from atlantic.st or dead stream notices
       const rawMsg = typeof data === 'string' ? data : (typeof data === 'object' ? JSON.stringify(data) : '');
       const isWarning =
@@ -1081,6 +1221,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           setError('All streaming servers are currently unavailable. Please try again later or select another server.');
         } else {
           handleSwitchServer((selectedServerIndex + 1) % servers.length, false);
+        }
+        return;
+      }
+
+      // Check for playback ended events across embed providers (FrameX, AutoEmbed, VidSrc, Plyr, JWPlayer, etc.)
+      const isEnded =
+        eventData?.event === 'ended' ||
+        eventData?.event === 'frameXTV:ended' ||
+        eventData?.event === 'complete' ||
+        eventData?.event === 'player:ended' ||
+        eventData?.type === 'ended' ||
+        eventData?.type === 'complete' ||
+        eventData?.type === 'MEDIA_ENDED' ||
+        eventData?.data === 'ended' ||
+        (eventData?.type === 'PLAYER_EVENT' && (eventData?.data?.event === 'ended' || eventData?.data?.event === 'complete')) ||
+        (typeof eventData === 'string' && (eventData === 'ended' || eventData.includes('"event":"ended"') || eventData.includes('"type":"ended"')));
+
+      if (isEnded) {
+        console.log('[Netflix Player] Embed telemetry reported video ended, triggering next episode for series');
+        const appSettings = getAppSettings();
+        if (isEpisodic && onNextEpisode && appSettings.playback.autoplayNextEpisode) {
+          triggerNextEpisode();
         }
         return;
       }
@@ -1130,6 +1292,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!isScrubbingRef.current && cur >= 0) {
           setCurrentTime(cur);
           if (dur > 0) setDuration(dur);
+
+          // Auto-play next episode when iframe approaches end of video
+          if (isEpisodic && onNextEpisode && dur > 40) {
+            const appSettings = getAppSettings();
+            if (appSettings.playback.autoplayNextEpisode) {
+              if (cur >= dur - 2) {
+                triggerNextEpisode();
+              } else if (dur - cur <= 15) {
+                startNextEpisodeCountdown();
+              }
+            }
+          }
         }
 
         if (cur > 0 || dur > 0) {
@@ -1493,6 +1667,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 'Enter':
         case 'Select':
           e.preventDefault();
+          if (nextEpisodeCountdown !== null) {
+            triggerNextEpisode();
+            return;
+          }
           if (curCtrl === 'back') {
             handleExit();
           } else if (curCtrl === 'scrubber') {
@@ -1508,7 +1686,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           } else if (curCtrl === 'forward') {
             handleScrubStep('forward');
           } else if (curCtrl === 'next-ep') {
-            if (onNextEpisode) onNextEpisode();
+            triggerNextEpisode();
           } else if (curCtrl === 'server') {
             handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
           } else if (curCtrl === 'server-controls') {
@@ -1560,9 +1738,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
           break;
 
+        case 'n':
+        case 'N':
+          e.preventDefault();
+          if (isEpisodic && onNextEpisode) {
+            triggerNextEpisode();
+          }
+          break;
+
         case 'Back':
         case 'Escape':
           e.preventDefault();
+          if (nextEpisodeCountdown !== null) {
+            dismissNextEpisodePrompt();
+            return;
+          }
           handleExit();
           break;
       }
@@ -2099,14 +2289,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button
                   onClick={() => {
                     setFocusedControl('next-ep');
-                    onNextEpisode();
+                    triggerNextEpisode();
                   }}
                   className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
                     focusedControl === 'next-ep'
                       ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
                       : 'text-white hover:text-zinc-200 hover:bg-white/10'
                   }`}
-                  title="Next Episode"
+                  title={nextEpisodeInfo ? `Next: Season ${nextEpisodeInfo.season} · Episode ${nextEpisodeInfo.episode} (N)` : 'Next Episode (N)'}
                 >
                   <SkipForward className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
                 </button>
@@ -2411,6 +2601,76 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             {/* Target red dot at tip */}
             <div className="absolute top-0 left-0 w-2 h-2 rounded-full bg-[#E50914] shadow-sm transform -translate-x-1/2 -translate-y-1/2" />
+          </div>
+        </div>
+      )}
+
+      {/* Netflix Next Episode Post-Play Countdown Card */}
+      {nextEpisodeCountdown !== null && isEpisodic && onNextEpisode && (
+        <div className="absolute bottom-20 right-6 sm:bottom-24 sm:right-10 z-50 animate-fadeIn pointer-events-auto">
+          <div className="bg-[#141414]/95 backdrop-blur-xl border border-white/20 rounded-xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] max-w-sm sm:max-w-md text-white flex flex-col space-y-4">
+            <div className="flex items-start justify-between space-x-4">
+              <div>
+                <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#E50914] flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#E50914] animate-ping inline-block" />
+                  <span>Next Episode In {nextEpisodeCountdown}s</span>
+                </span>
+                <h4 className="text-base sm:text-lg font-black text-white mt-1 line-clamp-1">
+                  {item.title}
+                </h4>
+                <p className="text-xs sm:text-sm font-semibold text-zinc-300">
+                  {nextEpisodeInfo
+                    ? `Season ${nextEpisodeInfo.season} · Episode ${nextEpisodeInfo.episode}${nextEpisodeInfo.title ? `: ${nextEpisodeInfo.title}` : ''}`
+                    : `Episode ${(effectiveEpisode || 1) + 1}`}
+                </p>
+              </div>
+
+              {/* Countdown circle */}
+              <div className="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
+                <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 48 48">
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r="20"
+                    stroke="currentColor"
+                    strokeWidth="3.5"
+                    className="text-zinc-800"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r="20"
+                    stroke="#E50914"
+                    strokeWidth="3.5"
+                    strokeDasharray={125.6}
+                    strokeDashoffset={125.6 * (1 - (nextEpisodeCountdown / 10))}
+                    strokeLinecap="round"
+                    className="transition-all duration-1000 ease-linear"
+                    fill="transparent"
+                  />
+                </svg>
+                <span className="absolute text-sm font-black text-white">{nextEpisodeCountdown}</span>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center space-x-3 pt-1">
+              <button
+                onClick={triggerNextEpisode}
+                className="flex-1 bg-[#E50914] hover:bg-[#b80710] active:scale-95 text-white font-black text-xs sm:text-sm py-2.5 px-4 rounded-md shadow-lg transition-all flex items-center justify-center space-x-2"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>Play Now</span>
+              </button>
+              <button
+                onClick={dismissNextEpisodePrompt}
+                className="bg-white/10 hover:bg-white/20 active:scale-95 text-zinc-300 hover:text-white font-semibold text-xs sm:text-sm py-2.5 px-4 rounded-md transition-all flex items-center justify-center space-x-1.5"
+              >
+                <X className="w-4 h-4" />
+                <span>Stay Here</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
