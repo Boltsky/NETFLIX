@@ -321,22 +321,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.net/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.net/embed/movie/${item.id}`
+          ? `https://vidsrc.me/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.me/embed/movie/${item.id}`
       }
     ];
   }, [resolution, item, season, episode]);
 
   const bottomControls = useMemo<Array<FocusedControl>>(() => {
+    if (useIframeFallback) {
+      const list: Array<FocusedControl> = ['back'];
+      if (servers.length > 1) {
+        list.push('server');
+      }
+      list.push('server-controls');
+      list.push('cast');
+      list.push('fullscreen');
+      return list;
+    }
     const list: Array<FocusedControl> = ['play', 'rewind', 'forward'];
     if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && nextEpisodeInfo !== null) {
       list.push('next-ep');
-    }
-    if (useIframeFallback && servers.length > 1) {
-      list.push('server');
-    }
-    if (useIframeFallback) {
-      list.push('server-controls');
     }
     list.push('subtitles');
     list.push('cast');
@@ -1389,7 +1393,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Toast guidance when streaming from embedded player / backup player
   useEffect(() => {
     if (useIframeFallback) {
-      showPlayerToast("Server Controls active: Select 'Server Remote' to click buttons", 'server', 4000);
+      showPlayerToast("Direct Server Controls: Click player directly, or select 'Server Remote' for TV", 'server', 4000);
     }
   }, [useIframeFallback, showPlayerToast]);
 
@@ -2123,8 +2127,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         activeSubtitle={activeSubtitle}
       />
 
-      {/* Mobile Screen Tap Surface when controls are hidden */}
-      {!showControls && !isCursorMode && (
+      {/* Mobile Screen Tap Surface when controls are hidden - ONLY for direct video, NEVER for iframes */}
+      {!showControls && !isCursorMode && !useIframeFallback && (
         <div
           className="absolute inset-0 z-20 pointer-events-auto"
           onClick={(e) => {
@@ -2133,328 +2137,398 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         />
       )}
 
-      {/* Netflix TV OSD Controls Overlay */}
-      <div
-        className={`absolute inset-0 z-30 transition-opacity duration-300 pointer-events-none flex flex-col justify-between p-3 sm:p-6 md:p-10 ${
-          showControls && !isCursorMode ? 'opacity-100 bg-gradient-to-t from-black/90 via-transparent to-black/80' : 'opacity-0'
-        }`}
-      >
-        {/* Top Header */}
-        <div className={`flex items-center justify-between ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
-          <div className="flex items-center space-x-2.5 sm:space-x-4">
+      {/* Engine 2: Direct Streaming Server Controls Floating Bar (Top-only, non-obtrusive, auto-dimming) */}
+      {useIframeFallback && !isCursorMode && (
+        <div
+          className={`absolute top-0 left-0 right-0 z-30 transition-all duration-300 pointer-events-none p-3 sm:p-5 flex items-center justify-between ${
+            showControls
+              ? 'opacity-100 translate-y-0 bg-gradient-to-b from-black/85 via-black/40 to-transparent'
+              : 'opacity-0 -translate-y-2 hover:opacity-100 hover:translate-y-0'
+          }`}
+        >
+          {/* Top Left: Exit & Title */}
+          <div className="flex items-center space-x-2.5 sm:space-x-4 pointer-events-auto">
             <button
               onClick={handleExit}
-              className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+              className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] bg-black/60 hover:bg-black/90 text-white backdrop-blur-md border border-white/20 active:scale-95 transition-all flex items-center justify-center shadow-lg ${
                 focusedControl === 'back'
-                  ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                  : 'hover:bg-white/10 text-white'
+                  ? 'bg-white text-black ring-4 ring-white/60 scale-110 font-bold'
+                  : ''
               }`}
               title="Exit (Back)"
             >
               <ArrowLeft className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'back' ? 'text-black' : 'text-white'}`} />
             </button>
-            <div>
-              <h2 className="text-base sm:text-xl md:text-2xl font-black text-white drop-shadow tracking-tight truncate max-w-[200px] sm:max-w-md md:max-w-none">{item.title}</h2>
+            <div className="bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 max-w-[200px] sm:max-w-md">
+              <h2 className="text-sm sm:text-base md:text-lg font-black text-white drop-shadow tracking-tight truncate">{item.title}</h2>
               {isEpisodic && effectiveSeason && effectiveEpisode && (
-                <p className="text-[11px] sm:text-xs font-bold text-zinc-300">
+                <p className="text-[10px] sm:text-xs font-bold text-zinc-300">
                   S{effectiveSeason}:E{effectiveEpisode}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Top Right: Server Switcher Pill, Server Remote, Cast, Fullscreen */}
+          <div className="flex items-center space-x-2 sm:space-x-3 pointer-events-auto">
+            {/* Server Switcher Pill */}
+            {servers.length > 1 && (
+              <button
+                onClick={() => {
+                  setFocusedControl('server');
+                  handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+                }}
+                className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
+                  focusedControl === 'server'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
+                    : ''
+                }`}
+                title="Switch Server (Enter)"
+              >
+                <Server className={`w-4 h-4 ${focusedControl === 'server' ? 'text-black' : 'text-[#E50914]'}`} />
+                <span className="text-xs font-bold uppercase">{servers[selectedServerIndex]?.name || 'Server'}</span>
+              </button>
+            )}
+
+            {/* Server Controls / TV Virtual Remote Cursor */}
+            <button
+              onClick={() => {
+                setFocusedControl('server-controls');
+                enterCursorMode();
+              }}
+              className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-1.5 shadow-lg ${
+                focusedControl === 'server-controls'
+                  ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
+                  : ''
+              }`}
+              title="Server Controls / Mouse (Enter) - Server Remote"
+            >
+              <MousePointerClick className={`w-4 h-4 ${focusedControl === 'server-controls' ? 'text-black' : 'text-zinc-200'}`} />
+              <span className="text-xs font-bold hidden sm:inline">Server Remote</span>
+            </button>
+
+            {/* Cast Button */}
             <button
               onClick={() => setShowCastModal(true)}
-              className={`p-2 rounded-full min-w-[40px] min-h-[40px] active:scale-95 transition-all flex items-center justify-center cursor-pointer ${
+              className={`p-2 rounded-full min-w-[40px] min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-lg ${
                 isCasting
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                  : 'hover:bg-white/10 text-white'
+                  : 'text-white'
               }`}
               title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
             >
-              <Cast className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Cast className="w-5 h-5" />
             </button>
-            <svg viewBox="0 0 100 160" width="20" height="28" className="w-5 h-7 filter drop-shadow">
-              <path d="M0 0h34v160H0z" fill="#B81D24" />
-              <path d="M66 0h34v160H66z" fill="#B81D24" />
-              <path d="M0 0h34l66 160H66z" fill="#E50914" />
-            </svg>
+
+            {/* Fullscreen Toggle */}
+            <button
+              onClick={() => {
+                setFocusedControl('fullscreen');
+                toggleFullscreen();
+              }}
+              className={`p-2 rounded-full min-w-[40px] min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 active:scale-95 transition-all flex items-center justify-center shadow-lg ${
+                focusedControl === 'fullscreen'
+                  ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
+                  : 'text-white'
+              }`}
+              title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+            >
+              {isFullscreen ? (
+                <Minimize className="w-4 h-4" />
+              ) : (
+                <Maximize className="w-4 h-4" />
+              )}
+            </button>
           </div>
         </div>
+      )}
 
-        {/* Center Screen Tap Zone: allows single tap to hide controls, or double tap to seek/toggle */}
+      {/* Netflix TV OSD Controls Overlay (Direct Video Streams Only) */}
+      {!useIframeFallback && (
         <div
-          className="flex-1 w-full pointer-events-auto cursor-pointer"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              handlePlayerTap(e.clientX, e.clientY);
-            }
-          }}
-        />
-
-        {/* Bottom Timeline & Netflix TV Controls */}
-        <div className={`space-y-4 max-w-5xl mx-auto w-full ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
-          {/* Netflix Scrubber Line */}
-          <div
-            ref={scrubberRef}
-            onClick={(e) => {
-              setFocusedControl('scrubber');
-              handleScrubberTouch(e.clientX, e.clientY, true);
-            }}
-            onTouchStart={(e) => {
-              if (e.touches[0]) {
-                setFocusedControl('scrubber');
-                handleScrubberTouch(e.touches[0].clientX, e.touches[0].clientY, false);
-              }
-            }}
-            onTouchMove={(e) => {
-              if (e.touches[0]) {
-                handleScrubberTouch(e.touches[0].clientX, e.touches[0].clientY, false);
-              }
-            }}
-            onTouchEnd={(e) => {
-              if (e.changedTouches[0]) {
-                handleScrubberTouch(e.changedTouches[0].clientX, e.changedTouches[0].clientY, true);
-              } else {
-                commitSeek(scrubTargetTimeRef.current);
-              }
-            }}
-            className={`cursor-pointer transition-all duration-150 py-3 sm:py-2 touch-none select-none ${
-              focusedControl === 'scrubber' ? 'scale-y-105' : ''
-            }`}
-          >
-            <div className="flex items-center space-x-4">
-              {/* Netflix Time Played */}
-              <span
-                className={`text-xs font-mono font-bold w-16 text-left transition-colors ${
-                  focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
-                }`}
-              >
-                {formatDisplayTime(displayTime)}
-              </span>
-
-              <div
-                className={`relative flex-1 rounded-full overflow-visible transition-all ${
-                  focusedControl === 'scrubber'
-                    ? 'h-3 bg-zinc-600 ring-2 ring-[#E50914] shadow-lg'
-                    : 'h-1.5 bg-zinc-700/80'
-                }`}
-              >
-                {/* Buffer / progress */}
-                <div
-                  className="h-full bg-[#E50914] rounded-full transition-all duration-150 relative"
-                  style={{ width: `${progressPercent}%` }}
-                >
-                  {/* Floating Seek Target & Offset Badge when scrubbing */}
-                  {isScrubbing && (
-                    <div className="absolute -top-11 right-0 translate-x-1/2 bg-[#E50914] text-white text-xs font-mono font-bold px-3 py-1 rounded shadow-2xl flex items-center space-x-1.5 z-40 whitespace-nowrap pointer-events-none animate-fadeIn">
-                      <span>{formatDisplayTime(displayTime)}</span>
-                      <span className="text-[10px] text-zinc-200 font-sans">
-                        ({displayTime >= currentTime ? `+${formatDiff(displayTime - currentTime)}` : `-${formatDiff(currentTime - displayTime)}`})
-                      </span>
-                    </div>
-                  )}
-
-                  {/* White scrub head handle */}
-                  <div
-                    className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-white transform translate-x-1/2 transition-all ${
-                      focusedControl === 'scrubber'
-                        ? 'w-5 h-5 ring-2 ring-[#E50914] shadow-2xl scale-125'
-                        : 'w-4 h-4 shadow-md'
-                    }`}
-                  />
-                </div>
-              </div>
-              {/* Netflix Time Remaining */}
-              <span
-                className={`text-xs font-mono font-bold w-16 text-right transition-colors ${
-                  focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
-                }`}
-              >
-                {formatRemainingTime(displayTime, duration)}
-              </span>
-            </div>
-          </div>
-
-          {/* Action Buttons Row */}
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center space-x-2 sm:space-x-6">
-              {/* Play / Pause */}
+          className={`absolute inset-0 z-30 transition-opacity duration-300 pointer-events-none flex flex-col justify-between p-3 sm:p-6 md:p-10 ${
+            showControls && !isCursorMode ? 'opacity-100 bg-gradient-to-t from-black/90 via-transparent to-black/80' : 'opacity-0'
+          }`}
+        >
+          {/* Top Header */}
+          <div className={`flex items-center justify-between ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+            <div className="flex items-center space-x-2.5 sm:space-x-4">
               <button
-                onClick={() => {
-                  setFocusedControl('play');
-                  togglePlayPause();
-                }}
+                onClick={handleExit}
                 className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
-                  focusedControl === 'play'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  focusedControl === 'back'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                    : 'hover:bg-white/10 text-white'
                 }`}
-                title="Play/Pause (Enter)"
+                title="Exit (Back)"
               >
-                {isPlaying ? (
-                  <Pause className={`w-6 h-6 sm:w-7 sm:h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
-                ) : (
-                  <Play className={`w-6 h-6 sm:w-7 sm:h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                <ArrowLeft className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'back' ? 'text-black' : 'text-white'}`} />
+              </button>
+              <div>
+                <h2 className="text-base sm:text-xl md:text-2xl font-black text-white drop-shadow tracking-tight truncate max-w-[200px] sm:max-w-md md:max-w-none">{item.title}</h2>
+                {isEpisodic && effectiveSeason && effectiveEpisode && (
+                  <p className="text-[11px] sm:text-xs font-bold text-zinc-300">
+                    S{effectiveSeason}:E{effectiveEpisode}
+                  </p>
                 )}
-              </button>
-
-              {/* Rewind */}
-              <button
-                onClick={() => {
-                  setFocusedControl('rewind');
-                  handleScrubStep('rewind');
-                }}
-                className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
-                  focusedControl === 'rewind'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                }`}
-                title="Rewind (Left)"
-              >
-                <RotateCcw className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`} />
-              </button>
-
-              {/* Fast Forward */}
-              <button
-                onClick={() => {
-                  setFocusedControl('forward');
-                  handleScrubStep('forward');
-                }}
-                className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
-                  focusedControl === 'forward'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                }`}
-                title="Fast Forward (Right)"
-              >
-                <RotateCw className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`} />
-              </button>
-
-              {/* Next Episode (if series) */}
-              {isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && (
-                <button
-                  onClick={() => {
-                    setFocusedControl('next-ep');
-                    triggerNextEpisode();
-                  }}
-                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
-                    focusedControl === 'next-ep'
-                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
-                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                  }`}
-                  title={nextEpisodeInfo ? `Next: Season ${nextEpisodeInfo.season} · Episode ${nextEpisodeInfo.episode} (N)` : 'Next Episode (N)'}
-                >
-                  <SkipForward className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
-                </button>
-              )}
-
-              {/* Server Switch (if fallback) */}
-              {useIframeFallback && servers.length > 1 && (
-                <button
-                  onClick={() => {
-                    setFocusedControl('server');
-                    handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
-                  }}
-                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center space-x-1.5 ${
-                    focusedControl === 'server'
-                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                  }`}
-                  title="Switch Server (Enter)"
-                >
-                  <Server className={`w-5 h-5 ${focusedControl === 'server' ? 'text-black' : 'text-white'}`} />
-                  <span className="text-[10px] font-bold uppercase hidden sm:inline">{servers[selectedServerIndex]?.name.split(' ')[1] || 'Server'}</span>
-                </button>
-              )}
-
-              {/* Server Controls / Virtual Cursor Mode (if fallback) */}
-              {useIframeFallback && (
-                <button
-                  onClick={() => {
-                    setFocusedControl('server-controls');
-                    enterCursorMode();
-                  }}
-                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center space-x-1.5 ${
-                    focusedControl === 'server-controls'
-                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                  }`}
-                  title="Server Controls / Mouse (Enter)"
-                >
-                  <MousePointerClick className={`w-5 h-5 ${focusedControl === 'server-controls' ? 'text-black' : 'text-white'}`} />
-                  <span className="text-[10px] font-bold uppercase hidden sm:inline">Remote</span>
-                </button>
-              )}
+              </div>
             </div>
 
-            {/* Subtitles & Audio Dialog Launcher + Fullscreen Toggle */}
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               <button
-                onClick={() => {
-                  setFocusedControl('subtitles');
-                  setShowAudioSubtitleModal(true);
-                  setModalCol(1);
-                  setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
-                }}
-                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 ${
-                  focusedControl === 'subtitles'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                }`}
-                title="Audio, Subtitles & Servers"
-              >
-                <Subtitles className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'subtitles' ? 'text-black' : 'text-white'}`} />
-                <span className="text-[11px] sm:text-xs font-semibold hidden sm:inline">
-                  {activeSubtitle === -1 ? 'Off' : resolution?.subtitles?.[activeSubtitle]?.label || 'On'}
-                </span>
-              </button>
-
-              {/* Cast to TV or PC Button */}
-              <button
-                onClick={() => {
-                  setFocusedControl('cast');
-                  setShowCastModal(true);
-                }}
-                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
-                  focusedControl === 'cast'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                    : isCasting
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
-                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                onClick={() => setShowCastModal(true)}
+                className={`p-2 rounded-full min-w-[40px] min-h-[40px] active:scale-95 transition-all flex items-center justify-center cursor-pointer ${
+                  isCasting
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                    : 'hover:bg-white/10 text-white'
                 }`}
                 title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
               >
-                <Cast className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'cast' ? 'text-black' : isCasting ? 'text-emerald-400' : 'text-white'}`} />
-                {isCasting && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
-                )}
+                <Cast className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
+              <svg viewBox="0 0 100 160" width="20" height="28" className="w-5 h-7 filter drop-shadow">
+                <path d="M0 0h34v160H0z" fill="#B81D24" />
+                <path d="M66 0h34v160H66z" fill="#B81D24" />
+                <path d="M0 0h34l66 160H66z" fill="#E50914" />
+              </svg>
+            </div>
+          </div>
 
-              {/* Fullscreen Toggle */}
-              <button
-                onClick={() => {
-                  setFocusedControl('fullscreen');
-                  toggleFullscreen();
-                }}
-                className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
-                  focusedControl === 'fullscreen'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                    : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                }`}
-                title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-              >
-                {isFullscreen ? (
-                  <Minimize className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'fullscreen' ? 'text-black' : 'text-white'}`} />
-                ) : (
-                  <Maximize className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'fullscreen' ? 'text-black' : 'text-white'}`} />
+          {/* Center Screen Tap Zone: allows single tap to hide controls, or double tap to seek/toggle */}
+          <div
+            className="flex-1 w-full pointer-events-auto cursor-pointer"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                handlePlayerTap(e.clientX, e.clientY);
+              }
+            }}
+          />
+
+          {/* Bottom Timeline & Netflix TV Controls */}
+          <div className={`space-y-4 max-w-5xl mx-auto w-full ${showControls && !isCursorMode ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+            {/* Netflix Scrubber Line */}
+            <div
+              ref={scrubberRef}
+              onClick={(e) => {
+                setFocusedControl('scrubber');
+                handleScrubberTouch(e.clientX, e.clientY, true);
+              }}
+              onTouchStart={(e) => {
+                if (e.touches[0]) {
+                  setFocusedControl('scrubber');
+                  handleScrubberTouch(e.touches[0].clientX, e.touches[0].clientY, false);
+                }
+              }}
+              onTouchMove={(e) => {
+                if (e.touches[0]) {
+                  handleScrubberTouch(e.touches[0].clientX, e.touches[0].clientY, false);
+                }
+              }}
+              onTouchEnd={(e) => {
+                if (e.changedTouches[0]) {
+                  handleScrubberTouch(e.changedTouches[0].clientX, e.changedTouches[0].clientY, true);
+                } else {
+                  commitSeek(scrubTargetTimeRef.current);
+                }
+              }}
+              className={`cursor-pointer transition-all duration-150 py-3 sm:py-2 touch-none select-none ${
+                focusedControl === 'scrubber' ? 'scale-y-105' : ''
+              }`}
+            >
+              <div className="flex items-center space-x-4">
+                {/* Netflix Time Played */}
+                <span
+                  className={`text-xs font-mono font-bold w-16 text-left transition-colors ${
+                    focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
+                  }`}
+                >
+                  {formatDisplayTime(displayTime)}
+                </span>
+
+                <div
+                  className={`relative flex-1 rounded-full overflow-visible transition-all ${
+                    focusedControl === 'scrubber'
+                      ? 'h-3 bg-zinc-600 ring-2 ring-[#E50914] shadow-lg'
+                      : 'h-1.5 bg-zinc-700/80'
+                  }`}
+                >
+                  {/* Buffer / progress */}
+                  <div
+                    className="h-full bg-[#E50914] rounded-full transition-all duration-150 relative"
+                    style={{ width: `${progressPercent}%` }}
+                  >
+                    {/* Floating Seek Target & Offset Badge when scrubbing */}
+                    {isScrubbing && (
+                      <div className="absolute -top-11 right-0 translate-x-1/2 bg-[#E50914] text-white text-xs font-mono font-bold px-3 py-1 rounded shadow-2xl flex items-center space-x-1.5 z-40 whitespace-nowrap pointer-events-none animate-fadeIn">
+                        <span>{formatDisplayTime(displayTime)}</span>
+                        <span className="text-[10px] text-zinc-200 font-sans">
+                          ({displayTime >= currentTime ? `+${formatDiff(displayTime - currentTime)}` : `-${formatDiff(currentTime - displayTime)}`})
+                        </span>
+                      </div>
+                    )}
+
+                    {/* White scrub head handle */}
+                    <div
+                      className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-white transform translate-x-1/2 transition-all ${
+                        focusedControl === 'scrubber'
+                          ? 'w-5 h-5 ring-2 ring-[#E50914] shadow-2xl scale-125'
+                          : 'w-4 h-4 shadow-md'
+                      }`}
+                    />
+                  </div>
+                </div>
+                {/* Netflix Time Remaining */}
+                <span
+                  className={`text-xs font-mono font-bold w-16 text-right transition-colors ${
+                    focusedControl === 'scrubber' ? 'text-white' : 'text-zinc-300'
+                  }`}
+                >
+                  {formatRemainingTime(displayTime, duration)}
+                </span>
+              </div>
+            </div>
+
+            {/* Action Buttons Row */}
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center space-x-2 sm:space-x-6">
+                {/* Play / Pause */}
+                <button
+                  onClick={() => {
+                    setFocusedControl('play');
+                    togglePlayPause();
+                  }}
+                  className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+                    focusedControl === 'play'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  }`}
+                  title="Play/Pause (Enter)"
+                >
+                  {isPlaying ? (
+                    <Pause className={`w-6 h-6 sm:w-7 sm:h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                  ) : (
+                    <Play className={`w-6 h-6 sm:w-7 sm:h-7 ${focusedControl === 'play' ? 'fill-black text-black' : 'fill-white text-white'}`} />
+                  )}
+                </button>
+
+                {/* Rewind */}
+                <button
+                  onClick={() => {
+                    setFocusedControl('rewind');
+                    handleScrubStep('rewind');
+                  }}
+                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+                    focusedControl === 'rewind'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  }`}
+                  title="Rewind (Left)"
+                >
+                  <RotateCcw className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'rewind' ? 'text-black' : 'text-white'}`} />
+                </button>
+
+                {/* Fast Forward */}
+                <button
+                  onClick={() => {
+                    setFocusedControl('forward');
+                    handleScrubStep('forward');
+                  }}
+                  className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+                    focusedControl === 'forward'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  }`}
+                  title="Fast Forward (Right)"
+                >
+                  <RotateCw className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'forward' ? 'text-black' : 'text-white'}`} />
+                </button>
+
+                {/* Next Episode (if series) */}
+                {isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && (
+                  <button
+                    onClick={() => {
+                      setFocusedControl('next-ep');
+                      triggerNextEpisode();
+                    }}
+                    className={`p-2 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+                      focusedControl === 'next-ep'
+                        ? 'bg-white text-black ring-4 ring-white/60 scale-115 shadow-2xl font-bold'
+                        : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                    }`}
+                    title={nextEpisodeInfo ? `Next: Season ${nextEpisodeInfo.season} · Episode ${nextEpisodeInfo.episode} (N)` : 'Next Episode (N)'}
+                  >
+                    <SkipForward className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'next-ep' ? 'text-black' : 'text-white'}`} />
+                  </button>
                 )}
-              </button>
+              </div>
+
+              {/* Subtitles & Audio Dialog Launcher + Fullscreen Toggle */}
+              <div className="flex items-center space-x-2 sm:space-x-4">
+                <button
+                  onClick={() => {
+                    setFocusedControl('subtitles');
+                    setShowAudioSubtitleModal(true);
+                    setModalCol(1);
+                    setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
+                  }}
+                  className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 ${
+                    focusedControl === 'subtitles'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  }`}
+                  title="Audio, Subtitles & Servers"
+                >
+                  <Subtitles className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'subtitles' ? 'text-black' : 'text-white'}`} />
+                  <span className="text-[11px] sm:text-xs font-semibold hidden sm:inline">
+                    {activeSubtitle === -1 ? 'Off' : resolution?.subtitles?.[activeSubtitle]?.label || 'On'}
+                  </span>
+                </button>
+
+                {/* Cast to TV or PC Button */}
+                <button
+                  onClick={() => {
+                    setFocusedControl('cast');
+                    setShowCastModal(true);
+                  }}
+                  className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                    focusedControl === 'cast'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                      : isCasting
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  }`}
+                  title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
+                >
+                  <Cast className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'cast' ? 'text-black' : isCasting ? 'text-emerald-400' : 'text-white'}`} />
+                  {isCasting && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
+                  )}
+                </button>
+
+                {/* Fullscreen Toggle */}
+                <button
+                  onClick={() => {
+                    setFocusedControl('fullscreen');
+                    toggleFullscreen();
+                  }}
+                  className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center ${
+                    focusedControl === 'fullscreen'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
+                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
+                  }`}
+                  title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+                >
+                  {isFullscreen ? (
+                    <Minimize className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'fullscreen' ? 'text-black' : 'text-white'}`} />
+                  ) : (
+                    <Maximize className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'fullscreen' ? 'text-black' : 'text-white'}`} />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Touch Gesture Ripple / Double-Tap Feedback Overlay */}
       {touchFeedback && (

@@ -729,5 +729,59 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(playerCode).toMatch(/window\.history\.pushState\(\s*\{[\s\S]*isFullscreen:\s*true/);
       expect(playerCode).toMatch(/window\.addEventListener\(['"]popstate['"]/);
     });
+
+    it('verifies VideoPlayer auto-hides bottom controls and removes tap shield in iframe fallback mode for direct server control interaction', () => {
+      const playerCode = fs.readFileSync(videoPlayerPath, 'utf8');
+
+      // 1. Mobile tap shield is strictly disabled during iframe fallback
+      expect(playerCode).toContain('!showControls && !isCursorMode && !useIframeFallback');
+
+      // 2. Direct streaming server floating bar exists with Back, Server Switch, Remote, and Fullscreen
+      expect(playerCode).toContain('useIframeFallback && !isCursorMode');
+      expect(playerCode).toContain('Direct Streaming Server Controls Floating Bar');
+
+      // 3. Bottom controls bar is hidden during iframe fallback
+      expect(playerCode).toContain('!useIframeFallback && (');
+      expect(playerCode).toContain('Netflix TV OSD Controls Overlay (Direct Video Streams Only)');
+
+      // 4. Remote cursor mode HUD strings remain intact
+      expect(playerCode).toContain('isCursorMode');
+      expect(playerCode).toContain('enterCursorMode');
+      expect(playerCode).toContain('cursorPos');
+      expect(playerCode).toContain('server-controls');
+      expect(playerCode).toContain('Server Remote');
+      expect(playerCode).toContain('Click Server Button');
+    });
+
+    it('verifies Admin Analytics authentication accepts Bolt@256, case-insensitive bolt@256, and avoids trailing colon in error messages', () => {
+      const apiPath = path.resolve(__dirname, '../services/api.ts');
+      const apiCode = fs.readFileSync(apiPath, 'utf8');
+      const analyticsDashPath = path.resolve(__dirname, '../components/analytics/AnalyticsDashboard.tsx');
+      const dashCode = fs.readFileSync(analyticsDashPath, 'utf8');
+      const bePath = path.resolve(__dirname, '../../../backend/src/services/analytics.service.ts');
+      const beCode = fs.readFileSync(bePath, 'utf8');
+
+      // 1. api.ts verifies Bolt@256, bolt@256, bolt2026, admin123
+      expect(apiCode).toContain("trimmed === 'Bolt@256'");
+      expect(apiCode).toContain("trimmed.toLowerCase() === 'bolt@256'");
+      expect(apiCode).toContain("trimmed === 'bolt2026'");
+      expect(apiCode).toContain("trimmed === 'admin123'");
+
+      // 2. apiFetch formats non-ok responses cleanly without trailing colons
+      expect(apiCode).toMatch(/if\s*\(res\.statusText\s*&&\s*res\.statusText\.trim\(\)\)/);
+      expect(apiCode).not.toContain('`API HTTP ${res.status}: ${res.statusText}`');
+
+      // 3. AnalyticsDashboard has immediate client-side master password bypass
+      expect(dashCode).toContain("entered === 'Bolt@256'");
+      expect(dashCode).toContain("entered.toLowerCase() === 'bolt@256'");
+      expect(dashCode).toContain("entered === 'bolt2026'");
+      expect(dashCode).toContain("entered === 'admin123'");
+
+      // 4. Backend service verifies Bolt@256 and case-insensitive bolt@256
+      expect(beCode).toContain("trimmed === 'Bolt@256'");
+      expect(beCode).toContain("trimmed.toLowerCase() === 'bolt@256'");
+      expect(beCode).toContain("trimmed === 'bolt2026'");
+      expect(beCode).toContain("trimmed === 'admin123'");
+    });
   });
 });

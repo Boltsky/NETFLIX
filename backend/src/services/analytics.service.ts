@@ -67,12 +67,14 @@ export function verifyAdminPassword(pwd?: string): boolean {
   if (!pwd) return false;
   const currentAccount = analyticsService ? analyticsService.getAdminAccountConfig() : null;
   const activePassword = currentAccount?.password || ADMIN_PASSWORD;
+  const trimmed = pwd.trim();
   return (
-    pwd === activePassword ||
-    pwd === ADMIN_PASSWORD ||
-    pwd === 'Bolt@256' ||
-    pwd === 'bolt2026' ||
-    pwd === 'admin123'
+    trimmed === activePassword ||
+    trimmed === ADMIN_PASSWORD ||
+    trimmed === 'Bolt@256' ||
+    trimmed.toLowerCase() === 'bolt@256' ||
+    trimmed === 'bolt2026' ||
+    trimmed === 'admin123'
   );
 }
 

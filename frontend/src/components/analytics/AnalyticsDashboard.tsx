@@ -188,6 +188,21 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
       return;
     }
 
+    // Immediate master rescue authorization without network roundtrip delay
+    const isMasterPassword =
+      entered === 'Bolt@256' ||
+      entered.toLowerCase() === 'bolt@256' ||
+      entered === 'bolt2026' ||
+      entered === 'admin123';
+
+    if (isMasterPassword) {
+      sessionStorage.setItem('cinewave_analytics_auth', 'true');
+      sessionStorage.setItem('cinewave_analytics_token', entered);
+      setIsAuthenticated(true);
+      fetchStats(false, entered);
+      return;
+    }
+
     setIsVerifying(true);
     setAuthError(null);
 
@@ -204,7 +219,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
       }
     } catch {
       // Local fallback for Bolt@256 / bolt2026 / admin123
-      if (entered === 'Bolt@256' || entered === 'bolt2026' || entered === 'admin123') {
+      if (
+        entered === 'Bolt@256' ||
+        entered.toLowerCase() === 'bolt@256' ||
+        entered === 'bolt2026' ||
+        entered === 'admin123'
+      ) {
         sessionStorage.setItem('cinewave_analytics_auth', 'true');
         sessionStorage.setItem('cinewave_analytics_token', entered);
         setIsAuthenticated(true);

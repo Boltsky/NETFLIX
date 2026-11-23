@@ -385,8 +385,8 @@ class FrameXTVAdapter {
             {
                 name: 'Server 5 (VidSrc)',
                 url: isEpisodic
-                    ? `https://vidsrc.net/embed/tv/${id}/${s}/${e}`
-                    : `https://vidsrc.net/embed/movie/${id}`
+                    ? `https://vidsrc.me/embed/tv/${id}/${s}/${e}`
+                    : `https://vidsrc.me/embed/movie/${id}`
             }
         ];
         const normalizeUrl = (rawUrl) => {

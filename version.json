@@ -1,18 +1,17 @@
 {
-  "versionCode": 28,
-  "versionName": "1.4.5",
+  "versionCode": 29,
+  "versionName": "1.4.6",
   "commitHash": "latest",
-  "releaseDate": "2026-11-22",
+  "releaseDate": "2026-11-23",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.5",
+  "title": "Netflix TV v1.4.6",
   "changelog": [
-    "Added Automatic Next Episode autoplay for TV Series and Anime with Netflix-style 10s post-play countdown overlay and TV remote control (OK: Play Now, Back: Cancel)",
-    "Added Virtual TV Cursor & Native Touch Engine enabling Android TV remotes to interact with embedded server player buttons (FrameX Backup player, server dropdowns, video controls)",
-    "Upgraded streaming server architecture with active VidLink, 2Embed, and VidSrc endpoints resolving titles like The Good Lawyer",
-    "Added 'Server Remote' mode toggle to bottom player controls with high-visibility cursor and guidance HUD",
-    "Enabled D-pad spatial velocity acceleration and boundary-clamped cursor targeting",
-    "Synthesized OS-level MotionEvent touch down/up events penetrating cross-origin iframe sandboxes"
+    "Automatically hide Netflix OSD controls and timeline scrubber during embedded streaming server playback for direct native interaction",
+    "Removed invisible tap interceptor overlay in iframe mode so clicks, scrubbing, volume, and server buttons work directly on the embedded player",
+    "Added non-intrusive auto-dimming floating Exit/Back header and Server Switcher pill in top bar for seamless catalog navigation",
+    "Fixed Protected Admin Access authentication for master password Bolt@256 (case-insensitive) with instant client-side authorization and clean error formatting",
+    "Preserved Virtual Remote Cursor support for TV D-Pad remotes and full Netflix custom OSD for direct streams"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

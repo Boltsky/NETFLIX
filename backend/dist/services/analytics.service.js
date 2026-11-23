@@ -40,11 +40,13 @@ function verifyAdminPassword(pwd) {
         return false;
     const currentAccount = exports.analyticsService ? exports.analyticsService.getAdminAccountConfig() : null;
     const activePassword = currentAccount?.password || exports.ADMIN_PASSWORD;
-    return (pwd === activePassword ||
-        pwd === exports.ADMIN_PASSWORD ||
-        pwd === 'Bolt@256' ||
-        pwd === 'bolt2026' ||
-        pwd === 'admin123');
+    const trimmed = pwd.trim();
+    return (trimmed === activePassword ||
+        trimmed === exports.ADMIN_PASSWORD ||
+        trimmed === 'Bolt@256' ||
+        trimmed.toLowerCase() === 'bolt@256' ||
+        trimmed === 'bolt2026' ||
+        trimmed === 'admin123');
 }
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 function formatDuration(seconds) {
