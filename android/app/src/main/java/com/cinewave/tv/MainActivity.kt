@@ -135,8 +135,11 @@ class MainActivity : AppCompatActivity() {
                 super.onPageStarted(view, url, favicon)
                 val js = "try{Object.defineProperty(window,'top',{get:function(){return window.self;},configurable:true});}catch(e){}" +
                     "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
+                    "try{window.isReallySandboxed=function(){return false;};Object.defineProperty(window,'isReallySandboxed',{get:()=>()=>false,set:()=>{},configurable:true});}catch(e){}" +
+                    "try{window.open=function(){return null;};}catch(e){}" +
                     "try{if(window.PluginArray&&window.PluginArray.prototype)PluginArray.prototype.namedItem=function(){return null;};}catch(e){}" +
-                    "try{window.DisableDevtool={isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};Object.defineProperty(window,'DisableDevtool',{get:function(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};},configurable:true});}catch(e){}"
+                    "try{window.DisableDevtool={isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};Object.defineProperty(window,'DisableDevtool',{get:function(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};},configurable:true});}catch(e){}" +
+                    ";" + VIDEO_AD_DEFUSER_JS
                 view?.evaluateJavascript(js, null)
             }
 
@@ -156,7 +159,7 @@ class MainActivity : AppCompatActivity() {
                         } catch(e) {}
                     })();
                 """.trimIndent()
-                view?.evaluateJavascript(antiAdJs, null)
+                view?.evaluateJavascript(antiAdJs + ";" + VIDEO_AD_DEFUSER_JS + ";" + EMBED_AUTO_PLAY_AND_WATCHDOG_JS, null)
             }
 
             override fun shouldOverrideUrlLoading(
@@ -281,7 +284,7 @@ class MainActivity : AppCompatActivity() {
                 // 4. Intercept and block ad networks, tracking scripts, popunders, and rogue domains
                 if (isAdOrBlockedUrl(url)) {
                     Log.d("CineWaveAdBlock", "Blocked ad or rogue resource request: $url")
-                    return createEmptyResourceResponse()
+                    return dispatchAdBlockResponse(url)
                 }
 
                 // 5. Direct media stream proxying with CORS unblocking (vidrock, themoviebox proxy unwrapping, bcdnw, hakunaymatata, slowcloud)
@@ -806,7 +809,6 @@ class MainActivity : AppCompatActivity() {
             host.contains("multiembed") ||
             host.contains("streamingnow.mov") ||
             host.contains("enc-dec.app") ||
-            host.contains("totallyacdn.cc") ||
             host.contains("fprime.at") ||
             host.contains("cinejoy.pk") ||
             host.contains("movy.sx") ||
@@ -818,11 +820,17 @@ class MainActivity : AppCompatActivity() {
             host.contains("strem.io") ||
             host.contains("rezesubs.com") ||
             host.contains("slowcloud.live") ||
-            host.contains("hybrows.workers.dev") ||
             host.contains("wsrv.nl") ||
             host.contains("cloudflare") ||
             host.contains("gstatic.com") ||
-            host.contains("googleapis.com")
+            host.contains("googleapis.com") ||
+            host.contains("vidsrc.me") ||
+            host.contains("vidsrc.pm") ||
+            host.contains("vidsrc.xyz") ||
+            host.contains("stellarconductornexus") ||
+            host.contains("2vcdn.skin") ||
+            host.contains("streamsrcs.2embed") ||
+            host.contains("autoembed.co")
 
         if (!isAllowedStreamingHost || isAdOrBlockedUrl(uri)) {
             Log.w("CineWaveAdBlock", "Blocked subframe external/ad redirect: $urlStr")
@@ -868,6 +876,7 @@ class MainActivity : AppCompatActivity() {
     private fun neutralizeHtml(rawHtml: String): String {
         val antiSandboxScript = "<script>" +
             "try{let _d=window.location.hostname;Object.defineProperty(document,'domain',{get:()=>_d,set:v=>{_d=v;return _d;},configurable:true});}catch(e){}" +
+            "try{window.isReallySandboxed=function(){return false;};Object.defineProperty(window,'isReallySandboxed',{get:()=>()=>false,set:()=>{},configurable:true});}catch(e){}" +
             "try{window.open=function(){return null;};window.alert=function(){};window.confirm=function(){return false;};}catch(e){}" +
             "try{" +
             "function _noopDevtool(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}}};" +
@@ -935,6 +944,14 @@ class MainActivity : AppCompatActivity() {
                     "for(var j=0;j<skipBtns.length;j++){try{skipBtns[j].click();}catch(e){}}" +
                     "var backupBtns=document.querySelectorAll('button[aria-label*=\"Backup\" i],.backup-server-btn,button[class*=\"backup\" i]');" +
                     "for(var b=0;b<backupBtns.length;b++){try{backupBtns[b].click();}catch(e){}}" +
+                    "var playBtns=document.querySelectorAll('.playbtnx,#playbtn,.vjs-big-play-button,.jw-display-icon-container');" +
+                    "for(var p=0;p<playBtns.length;p++){try{playBtns[p].click();}catch(e){}}" +
+                    "var ifr=document.getElementById('iframesrc');" +
+                    "if(ifr&&(ifr.src==='about:blank'||!ifr.src)&&ifr.getAttribute('data-src')){" +
+                        "ifr.src=ifr.getAttribute('data-src');" +
+                        "var bg=document.getElementById('bgImage');if(bg)bg.remove();" +
+                        "var pb=document.querySelector('.playbtnx');if(pb)pb.style.display='none';" +
+                    "}" +
                     "var gifts=document.querySelectorAll('[class*=\"gift\" i],[id*=\"gift\" i],img[src*=\"gift\" i],[class*=\"reward\" i],[class*=\"bonus\" i],[class*=\"present\" i],[class*=\"floating-ad\" i],div[style*=\"position: fixed\"][style*=\"bottom:\"]');" +
                     "for(var g=0;g<gifts.length;g++){try{gifts[g].style.setProperty('display','none','important');gifts[g].style.setProperty('visibility','hidden','important');}catch(e){}}" +
                 "}catch(e){}" +
@@ -1049,6 +1066,98 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
+    private fun createNoopVastResponse(): WebResourceResponse {
+        val xml = """<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"/>"""
+        val headers = mutableMapOf(
+            "Access-Control-Allow-Origin" to "*",
+            "Access-Control-Allow-Methods" to "GET, OPTIONS",
+            "Content-Type" to "application/xml; charset=UTF-8"
+        )
+        return WebResourceResponse("application/xml", "UTF-8", 200, "OK", headers, xml.byteInputStream(Charsets.UTF_8))
+    }
+
+    private fun createGoogleImaResponse(): WebResourceResponse {
+        val js = """
+            window.google = window.google || {};
+            window.google.ima = window.google.ima || {};
+            window.google.ima.AdDisplayContainer = function() {
+                return { initialize: function() {}, destroy: function() {} };
+            };
+            window.google.ima.AdsLoader = function() {
+                var self = this;
+                this.contentComplete = function() {};
+                this.requestAds = function() {
+                    setTimeout(function() {
+                        var e = {
+                            type: 'allAdsCompleted',
+                            getAd: function() { return null; },
+                            getError: function() { return null; }
+                        };
+                        var listeners = (self._listeners && self._listeners['allAdsCompleted']) || [];
+                        listeners.forEach(function(cb) { cb(e); });
+                    }, 10);
+                };
+                this._listeners = {};
+                this.addEventListener = function(type, cb) {
+                    self._listeners[type] = self._listeners[type] || [];
+                    self._listeners[type].push(cb);
+                };
+                this.removeEventListener = function() {};
+            };
+            window.google.ima.AdsRequest = function() {};
+            window.google.ima.AdsManagerLoadedEvent = { Type: { ADS_MANAGER_LOADED: 'adsManagerLoaded' } };
+            window.google.ima.AdErrorEvent = { Type: { AD_ERROR: 'adError' } };
+            window.google.ima.AdEvent = { Type: { ALL_ADS_COMPLETED: 'allAdsCompleted', CONTENT_RESUME_REQUESTED: 'contentResumeRequested' } };
+            window.google.ima.ViewMode = { NORMAL: 'normal', FULLSCREEN: 'fullscreen' };
+            window.google.ima.settings = { setVpaidMode: function() {}, setLocale: function() {}, setDisableCustomPlaybackForIOS10Plus: function() {} };
+        """.trimIndent()
+        val headers = mutableMapOf(
+            "Access-Control-Allow-Origin" to "*",
+            "Content-Type" to "application/javascript; charset=UTF-8"
+        )
+        return WebResourceResponse("application/javascript", "UTF-8", 200, "OK", headers, js.byteInputStream(Charsets.UTF_8))
+    }
+
+    private fun createPixelResponse(): WebResourceResponse {
+        val headers = mutableMapOf(
+            "Access-Control-Allow-Origin" to "*",
+            "Content-Type" to "image/png"
+        )
+        val pngBytes = byteArrayOf(
+            0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte(),
+            0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x0D.toByte(), 0x49.toByte(), 0x48.toByte(), 0x44.toByte(), 0x52.toByte(),
+            0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x01.toByte(),
+            0x08.toByte(), 0x06.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x1F.toByte(), 0x15.toByte(), 0xC4.toByte(),
+            0x89.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x0A.toByte(), 0x49.toByte(), 0x44.toByte(), 0x41.toByte(),
+            0x54.toByte(), 0x78.toByte(), 0x9C.toByte(), 0x63.toByte(), 0x00.toByte(), 0x01.toByte(), 0x00.toByte(), 0x00.toByte(),
+            0x05.toByte(), 0x00.toByte(), 0x01.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x2D.toByte(), 0xB4.toByte(), 0x00.toByte(),
+            0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x49.toByte(), 0x45.toByte(), 0x4E.toByte(), 0x44.toByte(), 0xAE.toByte(),
+            0x42.toByte(), 0x60.toByte(), 0x82.toByte()
+        )
+        return WebResourceResponse("image/png", null, 200, "OK", headers, ByteArrayInputStream(pngBytes))
+    }
+
+    private fun createNoopJsResponse(): WebResourceResponse {
+        val js = "/* [AdBlock] No-op surrogate */"
+        val headers = mutableMapOf(
+            "Access-Control-Allow-Origin" to "*",
+            "Content-Type" to "application/javascript; charset=UTF-8"
+        )
+        return WebResourceResponse("application/javascript", "UTF-8", 200, "OK", headers, js.byteInputStream(Charsets.UTF_8))
+    }
+
+    private fun dispatchAdBlockResponse(url: Uri): WebResourceResponse {
+        val urlStr = url.toString().lowercase()
+        val path = url.path?.lowercase() ?: ""
+        return when {
+            urlStr.contains("ima3.js") || urlStr.contains("imasdk.googleapis.com") -> createGoogleImaResponse()
+            urlStr.contains("vast") || urlStr.contains("vpaid") || path.endsWith(".xml") -> createNoopVastResponse()
+            path.endsWith(".png") || path.endsWith(".gif") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".webp") -> createPixelResponse()
+            path.endsWith(".js") || urlStr.contains(".js?") -> createNoopJsResponse()
+            else -> createEmptyResourceResponse()
+        }
+    }
+
     private fun createEmptyResourceResponse(): WebResourceResponse {
         val emptyBytes = ByteArray(0)
         val headers = mutableMapOf<String, String>()
@@ -1084,7 +1193,13 @@ class MainActivity : AppCompatActivity() {
             path.contains("sbx.js") ||
             path.contains("sandbox.php") ||
             path.contains("asb.html") ||
-            urlStr.contains("asb.html")
+            urlStr.contains("asb.html") ||
+            path.contains("bigtits") ||
+            path.contains("ad_segment") ||
+            path.contains("preroll") ||
+            path.contains("midroll") ||
+            path.contains("vast.xml") ||
+            path.contains("vmap.xml")
         ) {
             return true
         }
@@ -1109,7 +1224,6 @@ class MainActivity : AppCompatActivity() {
             host.contains("multiembed") ||
             host.contains("streamingnow.mov") ||
             host.contains("enc-dec.app") ||
-            host.contains("totallyacdn.cc") ||
             host.contains("fprime.at") ||
             host.contains("cinejoy.pk") ||
             host.contains("movy.sx") ||
@@ -1121,8 +1235,14 @@ class MainActivity : AppCompatActivity() {
             host.contains("strem.io") ||
             host.contains("rezesubs.com") ||
             host.contains("slowcloud.live") ||
-            host.contains("hybrows.workers.dev") ||
-            host.contains("wsrv.nl")
+            host.contains("wsrv.nl") ||
+            host.contains("vidsrc.me") ||
+            host.contains("vidsrc.pm") ||
+            host.contains("vidsrc.xyz") ||
+            host.contains("stellarconductornexus") ||
+            host.contains("2vcdn.skin") ||
+            host.contains("streamsrcs.2embed") ||
+            host.contains("autoembed.co")
 
         if (isWhitelistedHost) {
             // Even on whitelisted hosts, block known ad routes or sandbox redirect traps
@@ -1254,8 +1374,88 @@ class MainActivity : AppCompatActivity() {
             "1xbet",
             "mostbet",
             "melbet",
-            "parimatch"
+            "parimatch",
+            "tiktokcdn.com",
+            "ngcloud.tech",
+            "rivestream.app",
+            "vidzee.wtf",
+            "hybrows.workers.dev",
+            "spotx.tv",
+            "googleadservices.com",
+            "pagead2.googlesyndication.com",
+            "imasdk.googleapis.com"
         )
+
+        private const val VIDEO_AD_DEFUSER_JS = """
+            (function() {
+                try {
+                    window.open = function() { return null; };
+                    function defuseAdVideos() {
+                        var vs = document.querySelectorAll('video');
+                        for (var i = 0; i < vs.length; i++) {
+                            var v = vs[i];
+                            var vsrc = (v.currentSrc || v.src || '').toLowerCase();
+                            if (vsrc.indexOf('atlantic.st') !== -1 || vsrc.indexOf('classroom.best') !== -1 || vsrc.indexOf('dummy') !== -1 || vsrc.indexOf('notfound') !== -1 || vsrc.indexOf('media_not_found') !== -1) {
+                                try { v.pause(); v.src = ''; } catch(e) {}
+                                continue;
+                            }
+                            if (v.duration > 0 && v.duration <= 135) {
+                                try { v.muted = true; v.volume = 0; } catch(e) {}
+                                try {
+                                    if (v.currentTime < v.duration - 0.2) {
+                                        v.currentTime = v.duration;
+                                    }
+                                } catch(e) {}
+                                try { v.playbackRate = 16.0; } catch(e) {}
+                                try { v.dispatchEvent(new Event('ended')); } catch(e) {}
+                            }
+                        }
+                    }
+                    setInterval(defuseAdVideos, 300);
+                } catch(e) {}
+            })();
+        """
+
+        private const val EMBED_AUTO_PLAY_AND_WATCHDOG_JS = """
+            (function() {
+                try {
+                    var ifr = document.getElementById('iframesrc');
+                    if (ifr && (ifr.src === 'about:blank' || !ifr.src) && ifr.getAttribute('data-src')) {
+                        ifr.src = ifr.getAttribute('data-src');
+                        var bg = document.getElementById('bgImage');
+                        if (bg) bg.remove();
+                        var pb = document.querySelector('.playbtnx');
+                        if (pb) pb.style.display = 'none';
+                    }
+                    var playBtn = document.querySelector('.playbtnx, #playbtn, .vjs-big-play-button, .jw-display-icon-container, [aria-label*="play" i]');
+                    if (playBtn && playBtn.offsetParent !== null) {
+                        try { playBtn.click(); } catch(e) {}
+                    }
+                    function cwCheck() {
+                        try {
+                            var txt = ((document.body && document.body.innerText) ? document.body.innerText : '') + ' ' + document.title;
+                            var low = txt.toLowerCase();
+                            var isDead = low.indexOf('a client-side exception has occurred') !== -1 ||
+                                low.indexOf('application error: a client-side exception has occurred') !== -1 ||
+                                low.indexOf('could not find this content') !== -1 ||
+                                low.indexOf("couldn't find this content") !== -1 ||
+                                low.indexOf('media not found') !== -1 ||
+                                low.indexOf('404 not found') !== -1 ||
+                                low.indexOf('video unavailable') !== -1 ||
+                                low.indexOf('content unavailable') !== -1 ||
+                                low.indexOf('no streams found') !== -1 ||
+                                low.indexOf('playback crashed') !== -1;
+                            if (isDead) {
+                                var p = { type: 'warning_slide', event: 'warning_slide', currentTime: 0, duration: 0, playing: false, src: window.location.href };
+                                if (window.parent && window.parent !== window) window.parent.postMessage(p, '*');
+                                if (window.top && window.top !== window.parent && window.top !== window) window.top.postMessage(p, '*');
+                            }
+                        } catch(e) {}
+                    }
+                    setInterval(cwCheck, 500);
+                } catch(e) {}
+            })();
+        """
     }
 }
 
