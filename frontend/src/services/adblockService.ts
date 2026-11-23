@@ -39,11 +39,13 @@ const KNOWN_AD_DOMAINS: string[] = [
   'statcounter.com', 'scorecardresearch.com', 'yandex.ru/metrika', 'mc.yandex.ru',
   'clarity.ms', 'segment.io', 'mixpanel.com', 'amplitude.com',
 
-  // Known Ad Delivery Hosts in Stream Embeds
+  // Known Ad Delivery Hosts in Stream Embeds & Fake Clip CDNs
   'atlantic.st', 'classroom.best', 'totallyacdn.cc', 'dummy_stream', 'ad-delivery.net',
   'serving-sys.com', 'flashtalking.com', 'adform.net', 'innovid.com', 'undertone.com',
   'adroll.com', 'media.net', 'exponential.com', 'lijit.com', 'contextweb.com',
-  'vidoomy.com', 'seedtag.com', 'vi-serve.com', 'a-ads.com', 'coinhive.com'
+  'vidoomy.com', 'seedtag.com', 'vi-serve.com', 'a-ads.com', 'coinhive.com',
+  'tiktokcdn.com', 'ngcloud.tech', 'rivestream.app', 'vidzee.wtf', 'hybrows.workers.dev',
+  'bigtits', 'fprime.at', 'transcode.cfd'
 ];
 
 export class AdBlockEngine {
@@ -52,6 +54,8 @@ export class AdBlockEngine {
   private originalWindowOpen: typeof window.open | null = null;
   private isGuardInstalled = false;
   private surrogatesInstalled = false;
+  private originalFetch: typeof window.fetch | null = null;
+  private isNetworkGuardInstalled = false;
 
   private constructor() {
     this.buildTokenBucket();
@@ -110,10 +114,19 @@ export class AdBlockEngine {
       lower.includes('pagead') ||
       lower.includes('popunder') ||
       lower.includes('preroll') ||
+      lower.includes('midroll') ||
       lower.includes('ad_break') ||
+      lower.includes('ad_segment') ||
       lower.includes('ima3.js') ||
       lower.includes('vast.xml') ||
-      lower.includes('vmap.xml')
+      lower.includes('vmap.xml') ||
+      lower.includes('tiktokcdn') ||
+      lower.includes('ngcloud.tech') ||
+      lower.includes('rivestream.app') ||
+      lower.includes('vidzee.wtf') ||
+      lower.includes('bigtits') ||
+      lower.includes('spotx') ||
+      lower.includes('springserve')
     ) {
       return true;
     }
@@ -146,11 +159,17 @@ export class AdBlockEngine {
       lower.includes('preroll') ||
       lower.includes('midroll') ||
       lower.includes('/ad/') ||
+      lower.includes('/ads/') ||
       lower.includes('spotx') ||
       lower.includes('aniview') ||
       lower.includes('atlantic.st') ||
       lower.includes('classroom.best') ||
-      lower.includes('dummy_stream')
+      lower.includes('dummy_stream') ||
+      lower.includes('tiktokcdn') ||
+      lower.includes('ngcloud.tech') ||
+      lower.includes('rivestream.app') ||
+      lower.includes('vidzee.wtf') ||
+      lower.includes('bigtits')
     ) {
       return true;
     }
@@ -212,6 +231,69 @@ export class AdBlockEngine {
       this.originalWindowOpen = null;
     }
     this.isGuardInstalled = false;
+  }
+
+  /**
+   * Installs network-level request interceptor for window.fetch.
+   * Emulates adblock-rust / uBlock Origin surrogate redirection:
+   * - VAST / VPAID ad XMLs -> returns empty <VAST version="2.0"/>
+   * - Ad scripts -> returns empty JS
+   * - Ad tracking / beacons -> returns empty 200 response
+   */
+  public installNetworkAdGuard(): void {
+    if (this.isNetworkGuardInstalled || typeof window === 'undefined') return;
+
+    this.originalFetch = window.fetch;
+    const self = this;
+
+    window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      const urlStr = typeof input === 'string'
+        ? input
+        : (input instanceof URL ? input.toString() : (input as Request)?.url || '');
+
+      if (self.isAdUrl(urlStr)) {
+        console.warn(`[AdBlock] Intercepted network fetch to ad endpoint: ${urlStr}`);
+        const lower = urlStr.toLowerCase();
+
+        // 1. VAST / VPAID XML Ad requests -> return no-op VAST 2.0 XML
+        if (lower.includes('vast') || lower.includes('vpaid') || lower.endsWith('.xml') || lower.includes('.xml?')) {
+          return new Response('<?xml version="1.0" encoding="UTF-8"?><VAST version="2.0"/>', {
+            status: 200,
+            headers: { 'Content-Type': 'application/xml' }
+          });
+        }
+
+        // 2. Ad scripts -> return no-op JS
+        if (lower.endsWith('.js') || lower.includes('.js?') || lower.includes('pagead') || lower.includes('ima3')) {
+          return new Response('/* [AdBlock] No-op surrogate */', {
+            status: 200,
+            headers: { 'Content-Type': 'application/javascript' }
+          });
+        }
+
+        // 3. Other ad tracking / image beacons -> return empty 200 response
+        return new Response('', { status: 200 });
+      }
+
+      if (self.originalFetch) {
+        return self.originalFetch.call(window, input, init);
+      }
+      return new Response('', { status: 200 });
+    };
+
+    this.isNetworkGuardInstalled = true;
+  }
+
+  /**
+   * Restores original window.fetch.
+   */
+  public uninstallNetworkAdGuard(): void {
+    if (!this.isNetworkGuardInstalled || typeof window === 'undefined') return;
+    if (this.originalFetch) {
+      window.fetch = this.originalFetch;
+      this.originalFetch = null;
+    }
+    this.isNetworkGuardInstalled = false;
   }
 
   /**

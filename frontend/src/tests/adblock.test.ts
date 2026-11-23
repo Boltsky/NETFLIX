@@ -33,7 +33,11 @@ describe('AdBlock Engine & REA Anti-Ad Security Suite', () => {
         'https://redirect.1xbet.com/landing?tag=affiliate',
         'https://promo.bet365.com/bonus/offer',
         'https://cdn.spotxchange.com/ad/vast.xml',
-        'https://aniview.com/player/vpaid.js'
+        'https://aniview.com/player/vpaid.js',
+        'https://api.framextv.tech/api/proxy?url=https%3A%2F%2Fcdn.ngcloud.tech%2Fmovie%2F123%2Fbigtits.m3u8',
+        'https://p16-sg.tiktokcdn.com/obj/tos-alisg-v-af8c41-sg/6ffc983597f53ceda9db1486cbbb8b83',
+        'https://www.rivestream.app/ad_break.xml',
+        'https://player.vidzee.wtf/ad_stream.m3u8'
       ];
 
       for (const url of adUrls) {
@@ -106,7 +110,7 @@ describe('AdBlock Engine & REA Anti-Ad Security Suite', () => {
       if (typeof (global as any).window === 'undefined') {
         (global as any).window = {
           open: vi.fn(),
-          location: { origin: 'https://netflix.bolt.onrender.com' }
+          location: { origin: 'https://netflix.bolt.onrender.com', hostname: 'netflix.bolt.onrender.com' }
         };
       }
       adblockService.uninstallWindowOpenGuard();
@@ -149,7 +153,7 @@ describe('AdBlock Engine & REA Anti-Ad Security Suite', () => {
       if (typeof (global as any).window === 'undefined') {
         (global as any).window = {
           open: vi.fn(),
-          location: { origin: 'https://netflix.bolt.onrender.com' }
+          location: { origin: 'https://netflix.bolt.onrender.com', hostname: 'netflix.bolt.onrender.com' }
         };
       }
     });
@@ -186,7 +190,76 @@ describe('AdBlock Engine & REA Anti-Ad Security Suite', () => {
   });
 
   // =========================================================================
-  // 5. VideoPlayer.tsx Security Sandbox Enforcement
+  // 5. Network Fetch Ad Interceptor Guard
+  // =========================================================================
+  describe('Network Fetch Ad Interceptor Guard', () => {
+    beforeEach(() => {
+      if (typeof (global as any).window === 'undefined') {
+        (global as any).window = {
+          open: vi.fn(),
+          fetch: vi.fn(),
+          location: { origin: 'https://netflix.bolt.onrender.com', hostname: 'netflix.bolt.onrender.com' }
+        };
+      }
+      adblockService.uninstallNetworkAdGuard();
+    });
+
+    afterEach(() => {
+      adblockService.uninstallNetworkAdGuard();
+    });
+
+    it('intercepts VAST / VPAID ad requests and returns clean empty VAST 2.0 XML', async () => {
+      adblockService.installNetworkAdGuard();
+
+      const vastRes = await window.fetch('https://cdn.spotxchange.com/ad/vast.xml');
+      expect(vastRes.status).toBe(200);
+      const text = await vastRes.text();
+      expect(text).toContain('<VAST version="2.0"/>');
+    });
+
+    it('intercepts ad script requests and returns no-op script', async () => {
+      adblockService.installNetworkAdGuard();
+
+      const scriptRes = await window.fetch('https://pagead2.googlesyndication.com/pagead/show_ads.js');
+      expect(scriptRes.status).toBe(200);
+      const text = await scriptRes.text();
+      expect(text).toContain('[AdBlock] No-op surrogate');
+    });
+
+    it('passes through non-ad requests to original fetch', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(new Response('{"status":"ok"}', { status: 200 }));
+      window.fetch = mockFetch;
+
+      adblockService.installNetworkAdGuard();
+
+      const res = await window.fetch('https://api.themoviedb.org/3/movie/23438');
+      expect(mockFetch).toHaveBeenCalled();
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // =========================================================================
+  // 6. Direct Stream Classifier Rejects Fake Clip CDNs
+  // =========================================================================
+  describe('Stream Accuracy & Fake Ad Clip Rejection', () => {
+    it('verifies fake ad clip CDNs (tiktokcdn, ngcloud, bigtits) are strictly rejected', async () => {
+      const { isStreamUrlAccurate } = await import('../services/api');
+
+      const fakeStreams = [
+        'https://api.framextv.tech/api/proxy?origin=https%3A%2F%2Fwww.rivestream.app&url=https%3A%2F%2Fcdn.ngcloud.tech%2Fmovie%2F123%2Fbigtits.m3u8',
+        'https://p16-sg.tiktokcdn.com/obj/tos-alisg-v-af8c41-sg/6ffc983597f53ceda9db1486cbbb8b83',
+        'https://stream.example.com/movie/test/ad_segment_01.m3u8',
+        'https://player.vidzee.wtf/stream.m3u8'
+      ];
+
+      for (const streamUrl of fakeStreams) {
+        expect(isStreamUrlAccurate(streamUrl, "Wild Hearts Can't Be Broken")).toBe(false);
+      }
+    });
+  });
+
+  // =========================================================================
+  // 7. VideoPlayer.tsx Security Sandbox Enforcement
   // =========================================================================
   describe('VideoPlayer.tsx Sandbox & Security Integration', () => {
     it('verifies strict sandbox attribute is present directly on embed iframe', () => {
@@ -220,8 +293,10 @@ describe('AdBlock Engine & REA Anti-Ad Security Suite', () => {
       const code = fs.readFileSync(videoPlayerPath, 'utf8');
       expect(code).toContain("import { adblockService } from '../../services/adblockService'");
       expect(code).toContain('adblockService.installWindowOpenGuard()');
+      expect(code).toContain('adblockService.installNetworkAdGuard()');
       expect(code).toContain('adblockService.installSurrogates()');
       expect(code).toContain('adblockService.uninstallWindowOpenGuard()');
+      expect(code).toContain('adblockService.uninstallNetworkAdGuard()');
       expect(code).toContain('adblockService.filterHlsAdFragments');
     });
   });

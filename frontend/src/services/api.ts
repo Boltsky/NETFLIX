@@ -39,13 +39,14 @@ function getBackendBaseUrl(): string {
     return (import.meta.env.VITE_API_URL as string).replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined' && window.location) {
-    if (window.location.hostname === 'appassets.androidplatform.net') {
+    const host = window.location.hostname || '';
+    if (host === 'appassets.androidplatform.net') {
       return ''; // Intercepted and proxied natively by MainActivity
     }
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return `http://${window.location.hostname}:8080`;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `http://${host}:8080`;
     }
-    if (window.location.hostname.includes('onrender.com')) {
+    if (host.includes('onrender.com')) {
       return 'https://netflix-api-yosg.onrender.com';
     }
   }
@@ -163,7 +164,19 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
     'fprime.at',
     'transcode.cfd',
     'totallyacdn.cc',
-    'amnestyinternational.dev'
+    'amnestyinternational.dev',
+    'tiktokcdn.com',
+    'ngcloud.tech',
+    'rivestream.app',
+    'vidzee.wtf',
+    'hybrows.workers.dev',
+    'bigtits',
+    'ad_segment',
+    'spotx',
+    'springserve',
+    'aniview',
+    'preroll',
+    'midroll'
   ];
   if (BLACKLIST.some((b) => decoded.includes(b))) {
     return false;
@@ -177,6 +190,9 @@ export function isStreamUrlAccurate(sourceUrl: string, expectedTitle?: string): 
     const rawSlug = slugMatch[1].toLowerCase();
     // Do not treat playlist/segment media files as movie title slugs
     if (rawSlug.endsWith('.m3u8') || rawSlug.endsWith('.mp4') || rawSlug.endsWith('.ts') || rawSlug.endsWith('.mkv')) {
+      if (rawSlug.includes('ad_') || rawSlug.includes('preroll') || rawSlug.includes('promo') || rawSlug.includes('bigtits')) {
+        return false;
+      }
       return true;
     }
     const streamTitleSlug = rawSlug.replace(/[+_.-]+/g, ' ').trim();

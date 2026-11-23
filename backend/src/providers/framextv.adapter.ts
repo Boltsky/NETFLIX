@@ -453,7 +453,24 @@ export class FrameXTVAdapter implements IContentProvider {
     const isBlacklisted = (rawUrl: string): boolean => {
       if (!rawUrl) return true;
       const lower = rawUrl.toLowerCase();
-      return lower.includes('atlantic.st') || lower.includes('totallyacdn.cc') || lower.includes('amnestyinternational.dev') || lower.includes('dummy_stream') || lower.includes('/error.m3u8');
+      return (
+        lower.includes('atlantic.st') ||
+        lower.includes('totallyacdn.cc') ||
+        lower.includes('amnestyinternational.dev') ||
+        lower.includes('dummy_stream') ||
+        lower.includes('/error.m3u8') ||
+        lower.includes('tiktokcdn.com') ||
+        lower.includes('ngcloud.tech') ||
+        lower.includes('rivestream.app') ||
+        lower.includes('vidzee.wtf') ||
+        lower.includes('hybrows.workers.dev') ||
+        lower.includes('bigtits') ||
+        lower.includes('ad_segment') ||
+        lower.includes('preroll') ||
+        lower.includes('spotx') ||
+        lower.includes('springserve') ||
+        lower.includes('aniview')
+      );
     };
 
 

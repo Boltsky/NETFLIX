@@ -448,12 +448,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, []);
 
-  // AdBlock Engine integration: Intercept popups, block ad frames, and install Google IMA surrogates
+  // AdBlock Engine integration: Intercept popups, block ad network requests, and install Google IMA surrogates
   useEffect(() => {
     adblockService.installWindowOpenGuard();
+    adblockService.installNetworkAdGuard();
     adblockService.installSurrogates();
     return () => {
       adblockService.uninstallWindowOpenGuard();
+      adblockService.uninstallNetworkAdGuard();
     };
   }, []);
 
@@ -941,6 +943,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setCurrentSourceIndex(nextIndex);
       } else if (resolution.embedUrl || (resolution.embedServers && resolution.embedServers.length > 0)) {
         console.warn('[Netflix Player] All direct sources exhausted, switching to clean iframe fallback');
+        if (detail.toLowerCase().includes('ad')) {
+          const cleanIdx = servers.findIndex((s) => s.name.includes('AutoEmbed') || s.name.includes('VidLink'));
+          if (cleanIdx >= 0) {
+            setSelectedServerIndex(cleanIdx);
+          }
+        }
         setUseIframeFallback(true);
         setIsPlaying(true);
       } else {
@@ -978,6 +986,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           if (activeSubtitleRef.current === -1) {
             hls.subtitleTrack = -1;
             hls.subtitleDisplay = false;
+          }
+        });
+
+        hls.on(Hls.Events.LEVEL_LOADED, (_event: any, data: any) => {
+          const totalDuration = data?.details?.totalduration || 0;
+          if (totalDuration > 0 && totalDuration <= 300 && item.type === 'movie') {
+            console.warn(`[Netflix Player] Pre-playback duration check: detected short ad video (${totalDuration}s), terminating`);
+            try { hls.destroy(); } catch {}
+            hlsRef.current = null;
+            handleDirectStreamFailure('Short ad duration stream detected');
+          }
+        });
+
+        hls.on(Hls.Events.FRAG_LOADING, (_event: any, data: any) => {
+          const fragUrl = data?.frag?.url || '';
+          if (adblockService.filterHlsAdFragments(fragUrl)) {
+            console.warn('[Netflix Player] Intercepted ad fragment load:', fragUrl);
+            try { hls.destroy(); } catch {}
+            hlsRef.current = null;
+            handleDirectStreamFailure('Ad fragment detected');
           }
         });
 
@@ -1036,7 +1064,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
       const dur = video.duration || 0;
-      if (dur > 0 && dur <= 210 && item.type === 'movie') {
+      if (dur > 0 && dur <= 300 && item.type === 'movie') {
         console.warn(`[Netflix Player] Direct video reported short ad duration (${dur}s), failing over`);
         if (hlsRef.current) {
           try { hlsRef.current.destroy(); } catch {}
@@ -1077,6 +1105,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
     };
     const onLoadedMetadata = () => {
+      const dur = video.duration || 0;
+      if (dur > 0 && dur <= 300 && item.type === 'movie') {
+        console.warn(`[Netflix Player] Video loadedmetadata detected short ad stream (${dur}s), failing over`);
+        try {
+          video.pause();
+          video.src = '';
+        } catch {}
+        if (hlsRef.current) {
+          try { hlsRef.current.destroy(); } catch {}
+          hlsRef.current = null;
+        }
+        handleDirectStreamFailure('Short ad duration stream detected');
+        return;
+      }
       enforceSubtitles();
       applyResumeIfAvailable(video);
     };
