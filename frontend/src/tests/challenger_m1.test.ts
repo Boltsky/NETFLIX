@@ -830,8 +830,14 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(detailsCode).not.toContain('md:pl-24');
       expect(detailsCode).not.toContain('md:pl-18');
 
-      // 3. Main layout container spans up to 7xl / full width
-      expect(detailsCode).toContain('max-w-7xl');
+      // 3. Displays opened movie poster card with poster image and Netflix N ribbon
+      expect(detailsCode).toContain('details.poster || details.backdrop');
+      expect(detailsCode).toContain('aspect-[2/3]');
+      expect(detailsCode).toContain('Opened Movie Poster Card');
+
+      // 4. More Like This recommendations properly fit the screen horizontally with w-full
+      expect(detailsCode).toMatch(/More Like This[\s\S]*border-t border-white\/10 w-full/);
+      expect(detailsCode).toMatch(/grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 w-full/);
     });
 
     it('verifies clicking Netflix icon anywhere across the site routes to home page', () => {

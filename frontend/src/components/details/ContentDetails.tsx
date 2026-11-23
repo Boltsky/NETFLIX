@@ -98,14 +98,14 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
 
   return (
     <div className="relative min-h-screen w-full bg-[#141414] text-white pb-24 select-none px-4 sm:px-8 md:px-12 lg:px-16 overflow-x-hidden">
-      {/* Background Backdrop with Cinematic Scrims */}
+      {/* Ambient Backdrop with Atmospheric Scrims */}
       <div
-        className="fixed inset-0 bg-cover bg-center md:bg-right-top opacity-40 sm:opacity-50 pointer-events-none transition-all duration-700"
+        className="fixed inset-0 bg-cover bg-center md:bg-right-top opacity-30 pointer-events-none transition-all duration-700 blur-[2px]"
         style={{ backgroundImage: `url(${backdropUrl})` }}
       />
       {/* Dual Gradient Scrims: Left-to-right and Top-to-bottom for signature Netflix hero look */}
       <div className="fixed inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/85 to-transparent pointer-events-none w-full md:w-3/4" />
-      <div className="fixed inset-0 bg-gradient-to-b from-[#141414]/60 via-[#141414]/80 to-[#141414] pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-[#141414]/60 via-[#141414]/85 to-[#141414] pointer-events-none" />
 
       {/* Top Bar with Back Button and Clickable Netflix Brand */}
       <div className="relative z-30 pt-6 sm:pt-8 flex items-center justify-between">
@@ -134,103 +134,150 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
         </div>
       </div>
 
-      {/* Main Content Layout - Spans full screen */}
-      <div className="relative z-20 pt-6 sm:pt-8 w-full max-w-7xl space-y-6 sm:space-y-8">
-        {/* Header Hero Area */}
-        <div className="space-y-3.5 sm:space-y-4 max-w-3xl">
-          <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight">
-            {details.title}
-          </h1>
-
-          {/* Badges Bar */}
-          <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-white">
-            <span className="text-emerald-400 font-bold">98% Match</span>
-
-            <span className="px-1.5 py-0.2 border border-zinc-500 text-zinc-300 text-[10px] rounded-[2px]">
-              {details.type === 'tv' ? 'TV-MA' : '16+'}
-            </span>
-
-            {details.year && <span className="text-zinc-300 font-normal">{details.year}</span>}
-
-            {details.type === 'tv' && details.numberOfSeasons && (
-              <span className="text-zinc-300 font-normal">
-                {details.numberOfSeasons} {details.numberOfSeasons === 1 ? 'Season' : 'Seasons'}
-              </span>
-            )}
-
-            {details.runtime && (
-              <span className="text-zinc-300 font-normal">{details.runtime}m</span>
-            )}
-
-            <span className="px-1.5 py-0.2 border border-zinc-600 text-zinc-300 text-[10px] rounded-[2px] font-mono">
-              4K Ultra HD
-            </span>
-
-            <span className="px-1.5 py-0.2 border border-zinc-600 text-zinc-300 text-[10px] rounded-[2px] font-mono">
-              5.1
-            </span>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center space-x-4 pt-2">
-            <PlayButton
-              focusKey="detail-play"
-              label={
-                details.type === 'tv'
-                  ? (hasResume && savedProgress?.season && savedProgress?.episode
-                      ? `Resume S${savedProgress.season}:E${savedProgress.episode}`
-                      : 'Play Episode 1')
-                  : (hasResume ? 'Resume Movie' : 'Play Movie')
-              }
-              onClick={() =>
-                onPlay(
-                  details,
-                  details.type === 'tv' ? (savedProgress?.season || selectedSeason) : undefined,
-                  details.type === 'tv' ? (savedProgress?.episode || 1) : undefined
-                )
-              }
-            />
-            {hasResume && (
-              <RestartButton
-                focusKey="detail-restart"
-                onClick={() => {
-                  api.saveProgress(contentId, {
-                    profileId: profileId || 'bolt',
-                    mediaType: details.type,
-                    season: details.type === 'tv' ? 1 : undefined,
-                    episode: details.type === 'tv' ? 1 : undefined,
-                    positionMs: 0,
-                    durationMs: savedProgress?.durationMs || 7200000,
-                    title: details.title,
-                    poster: details.poster || details.backdrop
-                  }).catch(() => {});
-                  onPlay(details, details.type === 'tv' ? 1 : undefined, details.type === 'tv' ? 1 : undefined);
+      {/* Main Content Layout - Spans full screen width */}
+      <div className="relative z-20 pt-6 sm:pt-8 w-full space-y-8 sm:space-y-10">
+        {/* Header Hero Area: Side-by-Side Opened Movie Poster & Information */}
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8 lg:gap-10 w-full">
+          {/* Opened Movie Poster Card */}
+          <div
+            onClick={() =>
+              onPlay(
+                details,
+                details.type === 'tv' ? (savedProgress?.season || selectedSeason) : undefined,
+                details.type === 'tv' ? (savedProgress?.episode || 1) : undefined
+              )
+            }
+            className="flex-shrink-0 w-44 sm:w-56 md:w-64 lg:w-72 xl:w-80 rounded-xl overflow-hidden shadow-[0_16px_50px_rgba(0,0,0,0.9)] border border-white/15 bg-zinc-900 group cursor-pointer relative hover:border-white/30 transition-all duration-300 active:scale-98"
+            role="button"
+            title={`Play ${details.title}`}
+          >
+            <div className="relative aspect-[2/3] w-full">
+              <img
+                src={details.poster || details.backdrop}
+                alt={details.title}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                onError={(e) => {
+                  if (details.backdrop && e.currentTarget.src !== details.backdrop) {
+                    e.currentTarget.src = details.backdrop;
+                  }
                 }}
               />
-            )}
-            <MyListButton
-              focusKey="detail-watchlist"
-              isInWatchlist={isInWatchlist}
-              onClick={() => onToggleWatchlist(details)}
-            />
-            <CastDetailButton
-              focusKey="detail-cast"
-              onClick={() => setShowCastModal(true)}
-            />
+              {/* Top-left Netflix Red "N" ribbon */}
+              <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none">
+                <svg viewBox="0 0 100 160" width="16" height="24" className="w-4 h-6 filter drop-shadow">
+                  <path d="M0 0h34v160H0z" fill="#B81D24" />
+                  <path d="M66 0h34v160H66z" fill="#B81D24" />
+                  <path d="M0 0h34l66 160H66z" fill="#E50914" />
+                </svg>
+              </div>
+
+              {/* Hover Play Overlay */}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                <div className="w-14 h-14 rounded-full bg-white/90 text-black flex items-center justify-center shadow-2xl transform scale-90 group-hover:scale-100 transition-transform">
+                  <Play className="w-7 h-7 fill-black ml-0.5" />
+                </div>
+              </div>
+
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+            </div>
           </div>
 
-          {/* Synopsis */}
-          <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-2 font-normal">
-            {details.overview || 'Watch this Netflix title streaming now in Ultra HD.'}
-          </p>
+          {/* Details & Action Controls */}
+          <div className="flex-1 space-y-3.5 sm:space-y-4 max-w-4xl">
+            <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight">
+              {details.title}
+            </h1>
 
-          {/* Cast */}
-          {details.cast && details.cast.length > 0 && (
-            <p className="text-xs text-zinc-400 pt-1">
-              <span className="text-zinc-500 font-semibold">Starring: </span>
-              {details.cast.slice(0, 5).map(c => c.name).join(', ')}
+            {/* Badges Bar */}
+            <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-white">
+              <span className="text-emerald-400 font-bold">98% Match</span>
+
+              <span className="px-1.5 py-0.2 border border-zinc-500 text-zinc-300 text-[10px] rounded-[2px]">
+                {details.type === 'tv' ? 'TV-MA' : '16+'}
+              </span>
+
+              {details.year && <span className="text-zinc-300 font-normal">{details.year}</span>}
+
+              {details.type === 'tv' && details.numberOfSeasons && (
+                <span className="text-zinc-300 font-normal">
+                  {details.numberOfSeasons} {details.numberOfSeasons === 1 ? 'Season' : 'Seasons'}
+                </span>
+              )}
+
+              {details.runtime && (
+                <span className="text-zinc-300 font-normal">{details.runtime}m</span>
+              )}
+
+              <span className="px-1.5 py-0.2 border border-zinc-600 text-zinc-300 text-[10px] rounded-[2px] font-mono">
+                4K Ultra HD
+              </span>
+
+              <span className="px-1.5 py-0.2 border border-zinc-600 text-zinc-300 text-[10px] rounded-[2px] font-mono">
+                5.1
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <PlayButton
+                focusKey="detail-play"
+                label={
+                  details.type === 'tv'
+                    ? (hasResume && savedProgress?.season && savedProgress?.episode
+                        ? `Resume S${savedProgress.season}:E${savedProgress.episode}`
+                        : 'Play Episode 1')
+                    : (hasResume ? 'Resume Movie' : 'Play Movie')
+                }
+                onClick={() =>
+                  onPlay(
+                    details,
+                    details.type === 'tv' ? (savedProgress?.season || selectedSeason) : undefined,
+                    details.type === 'tv' ? (savedProgress?.episode || 1) : undefined
+                  )
+                }
+              />
+              {hasResume && (
+                <RestartButton
+                  focusKey="detail-restart"
+                  onClick={() => {
+                    api.saveProgress(contentId, {
+                      profileId: profileId || 'bolt',
+                      mediaType: details.type,
+                      season: details.type === 'tv' ? 1 : undefined,
+                      episode: details.type === 'tv' ? 1 : undefined,
+                      positionMs: 0,
+                      durationMs: savedProgress?.durationMs || 7200000,
+                      title: details.title,
+                      poster: details.poster || details.backdrop
+                    }).catch(() => {});
+                    onPlay(details, details.type === 'tv' ? 1 : undefined, details.type === 'tv' ? 1 : undefined);
+                  }}
+                />
+              )}
+              <MyListButton
+                focusKey="detail-watchlist"
+                isInWatchlist={isInWatchlist}
+                onClick={() => onToggleWatchlist(details)}
+              />
+              <CastDetailButton
+                focusKey="detail-cast"
+                onClick={() => setShowCastModal(true)}
+              />
+            </div>
+
+            {/* Synopsis */}
+            <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-2 font-normal">
+              {details.overview || 'Watch this Netflix title streaming now in Ultra HD.'}
             </p>
-          )}
+
+            {/* Cast */}
+            {details.cast && details.cast.length > 0 && (
+              <p className="text-xs text-zinc-400 pt-1">
+                <span className="text-zinc-500 font-semibold">Starring: </span>
+                {details.cast.slice(0, 5).map(c => c.name).join(', ')}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Episodic Section (TV Shows Only) */}
@@ -277,16 +324,16 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
           </div>
         )}
 
-        {/* More Like This (Related Titles) */}
+        {/* More Like This (Related Titles) - Perfectly Fits Screen Horizontally */}
         {details.recommendations && details.recommendations.length > 0 && (
-          <div className="space-y-4 pt-6 border-t border-white/10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold tracking-tight text-white">More Like This</h2>
+          <div className="space-y-4 pt-8 border-t border-white/10 w-full">
+            <div className="flex items-center justify-between w-full">
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">More Like This</h2>
               <span className="text-xs text-zinc-400 font-mono">
                 {details.recommendations.length} Recommendations
               </span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 w-full">
               {details.recommendations.slice(0, 12).map((rec, idx) => (
                 <MoreLikeThisCard
                   key={`rec-${rec.id}-${idx}`}
