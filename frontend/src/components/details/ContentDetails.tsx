@@ -110,7 +110,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
       <div className="fixed inset-0 bg-gradient-to-b from-[#141414]/60 via-[#141414]/85 to-[#141414] pointer-events-none" />
 
       {/* Top Bar with Back Button and Clickable Netflix Brand */}
-      <div className="relative z-30 pt-6 sm:pt-8 flex items-center justify-between">
+      <div className="relative z-30 pt-4 sm:pt-6 md:pt-8 flex items-center justify-between">
         <BackButton onBack={onBack} />
         {/* Netflix Red Logo - Clickable to Home */}
         <div
@@ -137,9 +137,9 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
       </div>
 
       {/* Main Content Layout - Spans full screen width */}
-      <div className="relative z-20 pt-6 sm:pt-8 w-full space-y-8 sm:space-y-10">
+      <div className="relative z-20 pt-4 sm:pt-6 md:pt-8 w-full space-y-6 sm:space-y-8 md:space-y-10">
         {/* Header Hero Area: Side-by-Side Opened Movie Poster & Information */}
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8 lg:gap-10 w-full">
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-5 sm:gap-6 md:gap-8 lg:gap-10 w-full">
           {/* Opened Movie Poster Card */}
           <div
             onClick={() =>
@@ -149,7 +149,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
                 details.type === 'tv' ? (savedProgress?.episode || 1) : undefined
               )
             }
-            className="flex-shrink-0 w-44 sm:w-56 md:w-64 lg:w-72 xl:w-80 rounded-xl overflow-hidden shadow-[0_16px_50px_rgba(0,0,0,0.9)] border border-white/15 bg-zinc-900 group cursor-pointer relative hover:border-white/30 transition-all duration-300 active:scale-98"
+            className="flex-shrink-0 w-36 xs:w-44 sm:w-52 md:w-64 lg:w-72 xl:w-80 rounded-xl overflow-hidden shadow-[0_16px_50px_rgba(0,0,0,0.9)] border border-white/15 bg-zinc-900 group cursor-pointer relative hover:border-white/30 transition-all duration-300 active:scale-98 mx-auto md:mx-0"
             role="button"
             title={`Play ${details.title}`}
           >
@@ -165,8 +165,8 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
                 }}
               />
               {/* Top-left Netflix Red "N" ribbon */}
-              <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none">
-                <svg viewBox="0 0 100 160" width="16" height="24" className="w-4 h-6 filter drop-shadow">
+              <div className="absolute top-2 sm:top-2.5 left-2 sm:left-2.5 z-10 pointer-events-none">
+                <svg viewBox="0 0 100 160" width="16" height="24" className="w-3.5 h-5 sm:w-4 sm:h-6 filter drop-shadow">
                   <path d="M0 0h34v160H0z" fill="#B81D24" />
                   <path d="M66 0h34v160H66z" fill="#B81D24" />
                   <path d="M0 0h34l66 160H66z" fill="#E50914" />
@@ -175,8 +175,8 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
 
               {/* Hover Play Overlay */}
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                <div className="w-14 h-14 rounded-full bg-white/90 text-black flex items-center justify-center shadow-2xl transform scale-90 group-hover:scale-100 transition-transform">
-                  <Play className="w-7 h-7 fill-black ml-0.5" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/90 text-black flex items-center justify-center shadow-2xl transform scale-90 group-hover:scale-100 transition-transform">
+                  <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-black ml-0.5" />
                 </div>
               </div>
 
@@ -185,13 +185,13 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
           </div>
 
           {/* Details & Action Controls - On the Side of the Poster */}
-          <div className="flex-1 min-w-0 space-y-3.5 sm:space-y-4">
-            <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight">
+          <div className="flex-1 min-w-0 w-full space-y-3 sm:space-y-3.5 md:space-y-4 flex flex-col items-center md:items-start text-center md:text-left">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight w-full">
               {details.title}
             </h1>
 
             {/* Badges Bar */}
-            <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-white">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 sm:gap-2.5 md:gap-3 text-xs font-bold text-white w-full">
               <span className="text-emerald-400 font-bold">98% Match</span>
 
               <span className="px-1.5 py-0.2 border border-zinc-500 text-zinc-300 text-[10px] rounded-[2px]">
@@ -220,7 +220,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-4 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center md:justify-start gap-2.5 sm:gap-3 md:gap-4 pt-1 sm:pt-2 w-full">
               <PlayButton
                 focusKey="detail-play"
                 label={
@@ -238,43 +238,45 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
                   )
                 }
               />
-              {hasResume && (
-                <RestartButton
-                  focusKey="detail-restart"
-                  onClick={() => {
-                    api.saveProgress(contentId, {
-                      profileId: profileId || 'bolt',
-                      mediaType: details.type,
-                      season: details.type === 'tv' ? 1 : undefined,
-                      episode: details.type === 'tv' ? 1 : undefined,
-                      positionMs: 0,
-                      durationMs: savedProgress?.durationMs || 7200000,
-                      title: details.title,
-                      poster: details.poster || details.backdrop
-                    }).catch(() => {});
-                    onPlay(details, details.type === 'tv' ? 1 : undefined, details.type === 'tv' ? 1 : undefined);
-                  }}
+              <div className="flex items-center justify-center md:justify-start gap-2.5 sm:gap-3 flex-wrap">
+                {hasResume && (
+                  <RestartButton
+                    focusKey="detail-restart"
+                    onClick={() => {
+                      api.saveProgress(contentId, {
+                        profileId: profileId || 'bolt',
+                        mediaType: details.type,
+                        season: details.type === 'tv' ? 1 : undefined,
+                        episode: details.type === 'tv' ? 1 : undefined,
+                        positionMs: 0,
+                        durationMs: savedProgress?.durationMs || 7200000,
+                        title: details.title,
+                        poster: details.poster || details.backdrop
+                      }).catch(() => {});
+                      onPlay(details, details.type === 'tv' ? 1 : undefined, details.type === 'tv' ? 1 : undefined);
+                    }}
+                  />
+                )}
+                <MyListButton
+                  focusKey="detail-watchlist"
+                  isInWatchlist={isInWatchlist}
+                  onClick={() => onToggleWatchlist(details)}
                 />
-              )}
-              <MyListButton
-                focusKey="detail-watchlist"
-                isInWatchlist={isInWatchlist}
-                onClick={() => onToggleWatchlist(details)}
-              />
-              <CastDetailButton
-                focusKey="detail-cast"
-                onClick={() => setShowCastModal(true)}
-              />
+                <CastDetailButton
+                  focusKey="detail-cast"
+                  onClick={() => setShowCastModal(true)}
+                />
+              </div>
             </div>
 
             {/* Synopsis */}
-            <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-2 font-normal max-w-4xl">
+            <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-1 font-normal max-w-4xl text-left w-full">
               {details.overview || 'Watch this Netflix title streaming now in Ultra HD.'}
             </p>
 
             {/* Cast Starring Text */}
             {details.cast && details.cast.length > 0 && (
-              <p className="text-xs text-zinc-400 pt-1">
+              <p className="text-xs text-zinc-400 pt-0.5 text-left w-full">
                 <span className="text-zinc-500 font-semibold">Starring: </span>
                 {details.cast.slice(0, 5).map(c => c.name).join(', ')}
               </p>
@@ -282,7 +284,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
 
             {/* Cast Images Carousel on the Side of the Poster */}
             {details.cast && details.cast.length > 0 && (
-              <div className="pt-3 space-y-2 w-full">
+              <div className="pt-3 space-y-2 w-full text-left">
                 <div className="flex items-center space-x-2.5">
                   <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-zinc-300">
                     Cast
@@ -293,7 +295,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
                 </div>
 
                 {/* Horizontal Carousel of Cast Members */}
-                <div className="flex space-x-3 sm:space-x-3.5 overflow-x-auto py-1.5 no-scrollbar w-full">
+                <div className="flex space-x-2.5 sm:space-x-3.5 overflow-x-auto py-1.5 no-scrollbar w-full">
                   {details.cast.map((member, idx) => (
                     <CastCard
                       key={`cast-${member.id}-${idx}`}
@@ -310,13 +312,13 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
 
         {/* Episodic Section (TV Shows Only) */}
         {details.type === 'tv' && (
-          <div className="space-y-4 pt-6 border-t border-white/10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold tracking-tight text-white">Episodes</h2>
+          <div className="space-y-4 pt-6 border-t border-white/10 w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white">Episodes</h2>
 
               {/* Seasons Selector Tabs */}
               {details.seasons && details.seasons.length > 0 && (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar max-w-full pb-1">
                   {details.seasons.map((s) => (
                     <SeasonTabButton
                       key={`season-tab-${s.number}`}
@@ -336,7 +338,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
                 Loading episodes...
               </div>
             ) : episodes.length > 0 ? (
-              <div className="flex space-x-4 overflow-x-auto py-3 no-scrollbar">
+              <div className="flex space-x-3 sm:space-x-4 overflow-x-auto py-2 sm:py-3 no-scrollbar w-full">
                 {episodes.map((ep) => (
                   <EpisodeCard
                     key={`ep-${details.id}-${selectedSeason}-${ep.number}`}
@@ -402,7 +404,7 @@ const BackButton: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     <button
       ref={ref}
       onClick={onBack}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-[4px] text-xs font-bold transition-all tv-focusable cursor-pointer ${
+      className={`flex items-center space-x-1.5 sm:space-x-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-[4px] text-xs font-bold transition-all tv-focusable cursor-pointer ${
         isFocused ? 'bg-white text-black' : 'bg-zinc-800/80 text-zinc-300 hover:text-white hover:bg-zinc-700'
       }`}
       title="Back to Home"
@@ -428,14 +430,14 @@ const PlayButton: React.FC<{
     <button
       ref={ref}
       onClick={onClick}
-      className={`flex items-center space-x-2.5 px-8 py-2.5 rounded-[4px] font-black text-sm tracking-wide transition-all tv-focusable ${
+      className={`flex items-center justify-center space-x-2.5 px-6 sm:px-8 py-3 sm:py-2.5 rounded-[4px] font-black text-sm sm:text-base tracking-wide transition-all tv-focusable w-full sm:w-auto ${
         isFocused
           ? 'scale-108 bg-white text-black shadow-2xl ring-4 ring-white/50'
           : 'bg-white text-black hover:bg-zinc-200'
       }`}
     >
-      <Play className="w-5 h-5 fill-black text-black" />
-      <span>{label}</span>
+      <Play className="w-5 h-5 fill-black text-black shrink-0" />
+      <span className="truncate">{label}</span>
     </button>
   );
 };
@@ -454,14 +456,14 @@ const RestartButton: React.FC<{
     <button
       ref={ref}
       onClick={onClick}
-      className={`flex items-center space-x-2 px-5 py-2.5 rounded-[4px] font-bold text-sm tracking-wide transition-all tv-focusable ${
+      className={`flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-[4px] font-bold text-xs sm:text-sm tracking-wide transition-all tv-focusable shrink-0 ${
         isFocused
           ? 'scale-108 bg-white text-black shadow-2xl ring-4 ring-white/50'
           : 'bg-zinc-800 text-white hover:bg-zinc-700 border border-white/20'
       }`}
       title="Start from Beginning"
     >
-      <RotateCcw className="w-4 h-4" />
+      <RotateCcw className="w-4 h-4 shrink-0" />
       <span>Restart</span>
     </button>
   );
@@ -482,7 +484,7 @@ const MyListButton: React.FC<{
     <button
       ref={ref}
       onClick={onClick}
-      className={`flex items-center justify-center w-10 h-10 rounded-full transition-all tv-focusable ${
+      className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all tv-focusable shrink-0 ${
         isFocused
           ? 'scale-110 bg-white text-black shadow-2xl ring-4 ring-white/50'
           : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-white/20'
@@ -508,14 +510,14 @@ const CastDetailButton: React.FC<{
     <button
       ref={ref}
       onClick={onClick}
-      className={`flex items-center space-x-2 px-5 py-2.5 rounded-[4px] font-bold text-sm tracking-wide tv-focusable transition-all duration-200 cursor-pointer ${
+      className={`flex items-center space-x-1.5 sm:space-x-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-[4px] font-bold text-xs sm:text-sm tracking-wide tv-focusable transition-all duration-200 cursor-pointer shrink-0 ${
         isFocused
           ? 'scale-108 bg-white text-black shadow-2xl ring-4 ring-white/50'
           : 'bg-zinc-800 text-white hover:bg-zinc-700 border border-white/20'
       }`}
       title="Cast to TV or PC"
     >
-      <Cast className="w-4 h-4 text-[#E50914]" />
+      <Cast className="w-4 h-4 text-[#E50914] shrink-0" />
       <span>Cast</span>
     </button>
   );
@@ -537,7 +539,7 @@ const SeasonTabButton: React.FC<{
     <button
       ref={ref}
       onClick={onSelect}
-      className={`px-3 py-1.5 rounded-[2px] text-xs font-bold transition-all tv-focusable ${
+      className={`shrink-0 px-3 py-1.5 rounded-[2px] text-xs font-bold transition-all tv-focusable ${
         isFocused
           ? 'bg-white text-black'
           : isSelected
@@ -565,7 +567,7 @@ const EpisodeCard: React.FC<{
     <div
       ref={ref}
       onClick={onPlay}
-      className={`shrink-0 w-72 rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 cursor-pointer tv-focusable transition-all duration-200 ${
+      className={`shrink-0 w-60 sm:w-72 rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 cursor-pointer tv-focusable transition-all duration-200 ${
         isFocused ? 'scale-105 border-white shadow-2xl ring-2 ring-[#E50914]' : 'hover:scale-102'
       }`}
     >
@@ -584,7 +586,7 @@ const EpisodeCard: React.FC<{
       </div>
 
       {/* Info */}
-      <div className="p-3 space-y-1">
+      <div className="p-2.5 sm:p-3 space-y-1">
         <p className="text-xs font-bold text-white truncate">{episode.name}</p>
         <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
           {episode.overview || 'Select to stream this episode in HD.'}
@@ -621,9 +623,9 @@ const MoreLikeThisCard: React.FC<{
         className="w-full h-full object-cover"
         loading="lazy"
       />
-      <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/95 via-black/60 to-transparent">
-        <p className="text-[11px] font-bold text-white truncate drop-shadow">{rec.title}</p>
-        <div className="flex items-center space-x-1.5 text-[9px] text-zinc-300 font-mono">
+      <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/95 via-black/60 to-transparent">
+        <p className="text-[11px] sm:text-xs font-bold text-white truncate drop-shadow">{rec.title}</p>
+        <div className="flex items-center space-x-1.5 text-[9px] sm:text-[10px] text-zinc-300 font-mono">
           {rec.year && <span>{rec.year}</span>}
           {rec.rating && <span className="text-amber-400 font-bold">★ {rec.rating}</span>}
         </div>
@@ -647,7 +649,7 @@ const CastCard: React.FC<{
     <div
       ref={ref}
       onClick={onSelect}
-      className={`flex-shrink-0 w-28 sm:w-32 md:w-36 group select-none transition-all duration-200 tv-focusable ${
+      className={`flex-shrink-0 w-24 sm:w-28 md:w-32 lg:w-36 group select-none transition-all duration-200 tv-focusable ${
         onSelect ? 'cursor-pointer' : ''
       } ${
         isFocused
@@ -682,7 +684,7 @@ const CastCard: React.FC<{
             member.profile ? 'hidden' : 'flex'
           }`}
         >
-          <User className="w-8 h-8 opacity-40 mb-1" />
+          <User className="w-7 h-7 sm:w-8 sm:h-8 opacity-40 mb-1" />
           <span className="text-[10px] font-bold font-mono uppercase truncate max-w-full">
             {member.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
           </span>
@@ -693,11 +695,11 @@ const CastCard: React.FC<{
       </div>
 
       {/* Actor & Character Labels */}
-      <div className="pt-2 px-0.5 space-y-0.5">
+      <div className="pt-1.5 sm:pt-2 px-0.5 space-y-0.5">
         <p className="text-xs sm:text-sm font-bold text-white truncate leading-tight group-hover:text-red-400 transition-colors">
           {member.name}
         </p>
-        <p className="text-[11px] text-zinc-400 truncate leading-tight font-normal">
+        <p className="text-[10px] sm:text-[11px] text-zinc-400 truncate leading-tight font-normal">
           {member.character || 'Self'}
         </p>
       </div>
