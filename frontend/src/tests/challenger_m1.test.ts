@@ -892,5 +892,30 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       // 6. Cast carousel cards are compact and flush with poster bottom
       expect(detailsCode).toContain('w-16 sm:w-18 md:w-20');
     });
+
+    it('verifies website settings page matches professional Netflix settings UI and features', () => {
+      const settingsPath = path.resolve(__dirname, '../components/settings/SettingsScreen.tsx');
+      const settingsCode = fs.readFileSync(settingsPath, 'utf8');
+
+      // 1. Membership & Profile section with VIP plan and active profile identity
+      expect(settingsCode).toContain('Membership & Profile');
+      expect(settingsCode).toContain('PREMIUM ULTRA HD');
+      expect(settingsCode).toContain('Profile & Parental Controls');
+
+      // 2. Stream Security & Anti-Ad Shield status
+      expect(settingsCode).toContain('Stream Security & Anti-Ad Shield');
+
+      // 3. Network & Diagnostics speed test
+      expect(settingsCode).toContain('Netflix Stream Speed Test');
+
+      // 4. Storage & Cache management
+      expect(settingsCode).toContain('Clear Watch History & Progress');
+
+      // 5. Cinema subtitle live preview
+      expect(settingsCode).toContain('Live Cinema Subtitle Preview');
+
+      // 6. Primary streaming engines prioritized
+      expect(settingsCode).toContain('Primary Streaming Engine');
+    });
   });
 });

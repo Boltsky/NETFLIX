@@ -896,6 +896,8 @@ export const App: React.FC = () => {
             onBack={navigateBack}
             onCheckUpdates={handleManualCheckUpdate}
             onOpenAnalytics={() => navigateTo('analytics')}
+            activeProfile={activeProfile}
+            onSwitchProfile={() => navigateTo('profiles')}
           />
         )}
 
