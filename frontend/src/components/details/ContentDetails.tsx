@@ -11,6 +11,7 @@ interface ContentDetailsProps {
   profileId?: string;
   onPlay: (item: MediaItem, season?: number, episode?: number) => void;
   onBack: () => void;
+  onGoHome?: () => void;
   isInWatchlist: boolean;
   onToggleWatchlist: (item: MediaItem) => void;
   onSelectRelated: (item: MediaItem) => void;
@@ -22,6 +23,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   profileId,
   onPlay,
   onBack,
+  onGoHome,
   isInWatchlist,
   onToggleWatchlist,
   onSelectRelated
@@ -95,32 +97,45 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   const backdropUrl = details.backdrop || details.poster;
 
   return (
-    <div className="relative min-h-screen bg-[#141414] text-white pb-24 select-none px-4 sm:px-8 md:pl-24 md:pr-12">
-      {/* Background Backdrop with Scrims */}
+    <div className="relative min-h-screen w-full bg-[#141414] text-white pb-24 select-none px-4 sm:px-8 md:px-12 lg:px-16 overflow-x-hidden">
+      {/* Background Backdrop with Cinematic Scrims */}
       <div
-        className="fixed inset-0 bg-cover bg-center opacity-30 pointer-events-none"
+        className="fixed inset-0 bg-cover bg-center md:bg-right-top opacity-40 sm:opacity-50 pointer-events-none transition-all duration-700"
         style={{ backgroundImage: `url(${backdropUrl})` }}
       />
-      <div className="fixed inset-0 bg-gradient-to-b from-[#141414]/70 via-[#141414]/90 to-[#141414] pointer-events-none" />
+      {/* Dual Gradient Scrims: Left-to-right and Top-to-bottom for signature Netflix hero look */}
+      <div className="fixed inset-0 bg-gradient-to-r from-[#141414] via-[#141414]/85 to-transparent pointer-events-none w-full md:w-3/4" />
+      <div className="fixed inset-0 bg-gradient-to-b from-[#141414]/60 via-[#141414]/80 to-[#141414] pointer-events-none" />
 
-      {/* Top Bar with Back Button */}
+      {/* Top Bar with Back Button and Clickable Netflix Brand */}
       <div className="relative z-30 pt-6 sm:pt-8 flex items-center justify-between">
         <BackButton onBack={onBack} />
-        {/* Netflix Red Logo */}
-        <div className="flex items-center space-x-2">
+        {/* Netflix Red Logo - Clickable to Home */}
+        <div
+          onClick={onGoHome || onBack}
+          className="flex items-center space-x-2 cursor-pointer select-none group hover:opacity-80 transition-opacity"
+          role="button"
+          title="Return to Netflix Home"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (onGoHome || onBack)();
+            }
+          }}
+        >
           <svg viewBox="0 0 100 160" width="20" height="28" className="w-4.5 h-6 sm:w-5 sm:h-7 filter drop-shadow">
             <path d="M0 0h34v160H0z" fill="#B81D24" />
             <path d="M66 0h34v160H66z" fill="#B81D24" />
             <path d="M0 0h34l66 160H66z" fill="#E50914" />
           </svg>
-          <span className="text-[10px] sm:text-xs font-black tracking-widest text-zinc-400 font-sans uppercase">
+          <span className="text-[10px] sm:text-xs font-black tracking-widest text-zinc-400 group-hover:text-white transition-colors font-sans uppercase">
             {details.type === 'tv' ? 'NETFLIX SERIES' : 'NETFLIX FILM'}
           </span>
         </div>
       </div>
 
-      {/* Main Content Layout */}
-      <div className="relative z-20 pt-6 sm:pt-8 max-w-5xl space-y-6 sm:space-y-8">
+      {/* Main Content Layout - Spans full screen */}
+      <div className="relative z-20 pt-6 sm:pt-8 w-full max-w-7xl space-y-6 sm:space-y-8">
         {/* Header Hero Area */}
         <div className="space-y-3.5 sm:space-y-4 max-w-3xl">
           <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight">
@@ -312,9 +327,10 @@ const BackButton: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     <button
       ref={ref}
       onClick={onBack}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-[4px] text-xs font-bold transition-all tv-focusable ${
-        isFocused ? 'bg-white text-black' : 'bg-zinc-800/80 text-zinc-300 hover:text-white'
+      className={`flex items-center space-x-2 px-4 py-2 rounded-[4px] text-xs font-bold transition-all tv-focusable cursor-pointer ${
+        isFocused ? 'bg-white text-black' : 'bg-zinc-800/80 text-zinc-300 hover:text-white hover:bg-zinc-700'
       }`}
+      title="Back to Home"
     >
       <ArrowLeft className="w-4 h-4" />
       <span>Back</span>

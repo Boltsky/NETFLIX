@@ -140,8 +140,17 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
 
   return (
     <div className="fixed inset-0 z-50 bg-[#141414] flex flex-col items-center justify-center select-none animate-fadeIn overflow-hidden">
-      {/* Netflix Top Wordmark */}
-      <div className="absolute top-10 left-12 flex items-center space-x-3">
+      {/* Netflix Top Wordmark - Clickable to Home */}
+      <div
+        onClick={() => {
+          if (profiles.length > 0) {
+            onSelectProfile(profiles[0]);
+          }
+        }}
+        className="absolute top-10 left-12 flex items-center space-x-3 cursor-pointer hover:opacity-85 transition-opacity"
+        role="button"
+        title="Enter Netflix Home"
+      >
         <span className="text-3xl font-black tracking-tighter text-[#E50914] font-sans drop-shadow-md">
           NETFLIX
         </span>

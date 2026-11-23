@@ -30,9 +30,10 @@ const MAX_LOADED_ITEMS = 500; // Protection against OOM on Android TV while prov
 
 interface CategoriesScreenProps {
   onSelectTitle: (item: MediaItem) => void;
+  onGoHome?: () => void;
 }
 
-export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitle }) => {
+export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitle, onGoHome }) => {
   const [selectedCat, setSelectedCat] = useState<GenreCategory>(GENRE_CATEGORIES[0]);
   const [items, setItems] = useState<MediaItem[]>([]);
   const [page, setPage] = useState(1);
@@ -161,7 +162,14 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ onSelectTitl
       {/* Category Header */}
       <div className="mb-6 space-y-2">
         <div className="flex items-center space-x-3">
-          <span className="text-xs font-black tracking-widest text-[#E50914] uppercase">Netflix Explore</span>
+          <span
+            onClick={onGoHome}
+            className={`text-xs font-black tracking-widest text-[#E50914] uppercase ${onGoHome ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+            role={onGoHome ? 'button' : undefined}
+            title={onGoHome ? 'Netflix Home' : undefined}
+          >
+            Netflix Explore
+          </span>
           <span className="text-xs text-zinc-500 font-mono">•</span>
           <span className="text-xs text-zinc-400 font-mono">
             {totalCount > 0 ? `${totalCount}+ Titles Available` : 'Continuous Catalog'}

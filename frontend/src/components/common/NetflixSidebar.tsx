@@ -101,8 +101,19 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
           isExpanded ? 'w-64 shadow-2xl' : 'w-18'
         }`}
       >
-        {/* Top: Iconic Netflix Red "N" Ribbon */}
-        <div className="px-5 mb-6 flex items-center space-x-3">
+        {/* Top: Iconic Netflix Red "N" Ribbon - Clickable to Home */}
+        <div
+          onClick={() => handleSelectTab('home')}
+          className="px-5 mb-6 flex items-center space-x-3 cursor-pointer select-none group hover:opacity-85 transition-opacity"
+          role="button"
+          title="Netflix Home"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              handleSelectTab('home');
+            }
+          }}
+        >
           <div className="w-8 h-10 flex-shrink-0 flex items-center justify-center">
             {/* SVG Netflix "N" Ribbon */}
             <svg viewBox="0 0 100 160" width="24" height="40" className="w-6 h-10 filter drop-shadow">

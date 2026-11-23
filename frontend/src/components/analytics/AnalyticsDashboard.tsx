@@ -295,8 +295,13 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack }
     return (
       <div className="min-h-screen bg-[#141414] text-white flex flex-col items-center justify-center p-4 select-none relative z-50">
         <div className="w-full max-w-md bg-zinc-900/95 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 text-center">
-          {/* Netflix Red Logo Ribbon */}
-          <div className="flex items-center justify-center space-x-2 mb-1">
+          {/* Netflix Red Logo Ribbon - Clickable to Home */}
+          <div
+            onClick={onBack}
+            className="flex items-center justify-center space-x-2 mb-1 cursor-pointer hover:opacity-85 transition-opacity"
+            role="button"
+            title="Return to Netflix Home"
+          >
             <svg viewBox="0 0 100 160" width="24" height="36" className="filter drop-shadow">
               <path d="M0 0h34v160H0z" fill="#B81D24" />
               <path d="M66 0h34v160H66z" fill="#B81D24" />

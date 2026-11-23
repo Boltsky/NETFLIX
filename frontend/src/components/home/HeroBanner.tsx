@@ -10,6 +10,7 @@ interface HeroBannerProps {
   isInWatchlist: boolean;
   onToggleWatchlist: (item: MediaItem) => void;
   hasProgress?: boolean;
+  onGoHome?: () => void;
 }
 
 export const HeroBanner: React.FC<HeroBannerProps> = ({
@@ -18,7 +19,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   onMoreInfo,
   isInWatchlist,
   onToggleWatchlist,
-  hasProgress = false
+  hasProgress = false,
+  onGoHome
 }) => {
   if (!item) {
     return (
@@ -44,8 +46,13 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
       {/* Hero Content */}
       <div className="relative h-full flex flex-col justify-end pb-10 sm:pb-14 md:pb-16 px-4 sm:px-8 md:px-12 max-w-3xl space-y-2.5 sm:space-y-3.5 z-10">
-        {/* Netflix Series / Film Prefix */}
-        <div className="flex items-center space-x-2">
+        {/* Netflix Series / Film Prefix - Clickable to Home */}
+        <div
+          onClick={() => onGoHome?.()}
+          className={`flex items-center space-x-2 ${onGoHome ? 'cursor-pointer hover:opacity-80 transition-opacity select-none' : ''}`}
+          role={onGoHome ? 'button' : undefined}
+          title={onGoHome ? 'Netflix Home' : undefined}
+        >
           {/* Netflix Red "N" */}
           <svg viewBox="0 0 100 160" width="16" height="24" className="w-3.5 h-5 sm:w-4 sm:h-6 filter drop-shadow">
             <path d="M0 0h34v160H0z" fill="#B81D24" />

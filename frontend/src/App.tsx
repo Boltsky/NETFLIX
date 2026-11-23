@@ -239,20 +239,21 @@ export const App: React.FC = () => {
       }
     }
 
+    // When leaving the movie poster details screen, ALWAYS return directly to the home page
+    if (currentScreen === 'details') {
+      setSelectedTitle(null);
+      navigateTo('home');
+      return;
+    }
+
     if (typeof window !== 'undefined' && window.history.state && window.history.length > 1) {
       window.history.back();
     } else {
-      if (currentScreen === 'player') {
-        setPlayerTarget(null);
-        setCurrentScreen(selectedTitle ? 'details' : previousScreen);
-      } else if (currentScreen === 'details') {
-        setSelectedTitle(null);
-        setCurrentScreen(previousScreen);
-      } else if (currentScreen !== 'home') {
+      if (currentScreen !== 'home') {
         setCurrentScreen('home');
       }
     }
-  }, [currentScreen, previousScreen, selectedTitle, playerTarget]);
+  }, [currentScreen, previousScreen, selectedTitle, playerTarget, navigateTo]);
 
   // Mobile Device Back Key & Browser Popstate Navigation Listener
   useEffect(() => {
@@ -325,6 +326,20 @@ export const App: React.FC = () => {
           setCurrentScreen('details');
           try {
             window.history.replaceState({ screen: 'details', item }, '', `#/title/${item.id}`);
+          } catch {}
+          setTimeout(() => { isPopstateNavigatingRef.current = false; }, 50);
+          return;
+        }
+      }
+
+      // If user was viewing movie poster details and pressed back, always return to home
+      if (currentScreenRef.current === 'details') {
+        if (!state?.screen || state.screen === 'player' || state.screen === 'details') {
+          setPlayerTarget(null);
+          setSelectedTitle(null);
+          setCurrentScreen('home');
+          try {
+            window.history.replaceState({ screen: 'home' }, '', '#/home');
           } catch {}
           setTimeout(() => { isPopstateNavigatingRef.current = false; }, 50);
           return;
@@ -758,16 +773,12 @@ export const App: React.FC = () => {
           <ProfileSelector onSelectProfile={handleSelectProfile} />
         )}
 
-        {/* Navigation (visible whenever logged in and not in full-screen player or standalone analytics) */}
-        {currentScreen !== 'profiles' && currentScreen !== 'player' && currentScreen !== 'analytics' && (
+        {/* Navigation (visible whenever logged in and not in full-screen player, poster details, or standalone analytics) */}
+        {currentScreen !== 'profiles' && currentScreen !== 'player' && currentScreen !== 'analytics' && currentScreen !== 'details' && (
           <>
             {/* Desktop & TV Sidebar Drawer (Tablets, Laptops & TV D-Pad) */}
             <NetflixSidebar
-              currentTab={
-                currentScreen === 'details'
-                  ? (previousScreen as NetflixNavTab)
-                  : (currentScreen as NetflixNavTab)
-              }
+              currentTab={currentScreen as NetflixNavTab}
               onSelectTab={(tab) => navigateTo(tab as Screen)}
               activeProfile={activeProfile}
               onSwitchProfile={() => navigateTo('profiles')}
@@ -779,11 +790,7 @@ export const App: React.FC = () => {
 
             {/* Mobile Top & Bottom Navigation Bars (< 768px) */}
             <NetflixMobileNav
-              currentTab={
-                currentScreen === 'details'
-                  ? (previousScreen as NetflixNavTab)
-                  : (currentScreen as NetflixNavTab)
-              }
+              currentTab={currentScreen as NetflixNavTab}
               onSelectTab={(tab) => navigateTo(tab as Screen)}
               activeProfile={activeProfile}
               onSwitchProfile={() => navigateTo('profiles')}
@@ -803,17 +810,29 @@ export const App: React.FC = () => {
             profileId={activeProfile.id}
             onExit={handleExitPlayer}
             onNextEpisode={handleNextEpisode}
+            onGoHome={() => {
+              setSelectedTitle(null);
+              setPlayerTarget(null);
+              navigateTo('home');
+            }}
           />
         )}
 
-        {/* SCREEN 2: Title Details */}
+        {/* SCREEN 2: Title Details - Full Screen Edge-to-Edge */}
         {currentScreen === 'details' && selectedTitle && (
           <ContentDetails
             contentId={selectedTitle.id}
             mediaType={selectedTitle.type}
             profileId={activeProfile.id}
             onPlay={handleLaunchPlayer}
-            onBack={navigateBack}
+            onBack={() => {
+              setSelectedTitle(null);
+              navigateTo('home');
+            }}
+            onGoHome={() => {
+              setSelectedTitle(null);
+              navigateTo('home');
+            }}
             isInWatchlist={isInWatchlist(selectedTitle.id)}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectRelated={handleOpenDetails}
@@ -849,7 +868,10 @@ export const App: React.FC = () => {
 
         {/* SCREEN 5: Categories & Genres Explorer */}
         {currentScreen === 'categories' && (
-          <CategoriesScreen onSelectTitle={handleOpenDetails} />
+          <CategoriesScreen
+            onSelectTitle={handleOpenDetails}
+            onGoHome={() => navigateTo('home')}
+          />
         )}
 
         {/* SCREEN 6: Settings Screen */}
@@ -886,6 +908,7 @@ export const App: React.FC = () => {
                   isInWatchlist={catalog?.hero ? isInWatchlist(catalog.hero.id) : false}
                   onToggleWatchlist={handleToggleWatchlist}
                   hasProgress={catalog?.hero ? Boolean(progressMap[catalog.hero.id]) : false}
+                  onGoHome={() => navigateTo('home')}
                 />
 
                 {/* Content Rows */}

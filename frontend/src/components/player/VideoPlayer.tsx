@@ -34,6 +34,7 @@ interface VideoPlayerProps {
   initialTime?: number;
   onExit: () => void;
   onNextEpisode?: () => void;
+  onGoHome?: () => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -43,7 +44,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   profileId,
   initialTime,
   onExit,
-  onNextEpisode
+  onNextEpisode,
+  onGoHome
 }) => {
   const [resolution, setResolution] = useState<PlaybackResolution | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2213,11 +2215,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               >
                 <Cast className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
-              <svg viewBox="0 0 100 160" width="20" height="28" className="w-5 h-7 filter drop-shadow">
-                <path d="M0 0h34v160H0z" fill="#B81D24" />
-                <path d="M66 0h34v160H66z" fill="#B81D24" />
-                <path d="M0 0h34l66 160H66z" fill="#E50914" />
-              </svg>
+              <div
+                onClick={() => {
+                  if (onGoHome) {
+                    onGoHome();
+                  } else {
+                    onExit();
+                  }
+                }}
+                className="cursor-pointer select-none hover:opacity-80 transition-opacity"
+                role="button"
+                title="Netflix Home"
+              >
+                <svg viewBox="0 0 100 160" width="20" height="28" className="w-5 h-7 filter drop-shadow">
+                  <path d="M0 0h34v160H0z" fill="#B81D24" />
+                  <path d="M66 0h34v160H66z" fill="#B81D24" />
+                  <path d="M0 0h34l66 160H66z" fill="#E50914" />
+                </svg>
+              </div>
             </div>
           </div>
 

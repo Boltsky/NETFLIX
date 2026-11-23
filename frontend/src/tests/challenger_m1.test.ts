@@ -797,5 +797,65 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       // 3. handlePopState catches pop from player and restores details screen
       expect(appCode).toMatch(/if\s*\(currentScreenRef\.current\s*===\s*'player'\)\s*\{[\s\S]*setCurrentScreen\('details'\)/);
     });
+
+    it('verifies Back from movie poster details routes cleanly to home page', () => {
+      const appCode = fs.readFileSync(appPath, 'utf8');
+      const detailsPath = path.resolve(__dirname, '../components/details/ContentDetails.tsx');
+      const detailsCode = fs.readFileSync(detailsPath, 'utf8');
+
+      // 1. navigateBack explicitly routes details screen to home
+      expect(appCode).toMatch(/if\s*\(currentScreen\s*===\s*'details'\)\s*\{[\s\S]*setSelectedTitle\(null\)[\s\S]*navigateTo\('home'\)/);
+
+      // 2. ContentDetails onBack prop in App routes to home
+      expect(appCode).toMatch(/currentScreen\s*===\s*'details'[\s\S]*onBack=\{[\s\S]*navigateTo\('home'\)/);
+
+      // 3. handlePopState on details screen routes to home
+      expect(appCode).toMatch(/if\s*\(currentScreenRef\.current\s*===\s*'details'\)\s*\{[\s\S]*setCurrentScreen\('home'\)/);
+
+      // 4. ContentDetails has Back button calling onBack
+      expect(detailsCode).toContain('<BackButton onBack={onBack} />');
+    });
+
+    it('verifies movie poster details fills the whole screen edge-to-edge without sidebar', () => {
+      const appCode = fs.readFileSync(appPath, 'utf8');
+      const detailsPath = path.resolve(__dirname, '../components/details/ContentDetails.tsx');
+      const detailsCode = fs.readFileSync(detailsPath, 'utf8');
+
+      // 1. App.tsx excludes details screen from rendering NetflixSidebar and NetflixMobileNav
+      expect(appCode).toContain("currentScreen !== 'details'");
+      expect(appCode).toMatch(/currentScreen\s*!==\s*'player'\s*&&\s*currentScreen\s*!==\s*'analytics'\s*&&\s*currentScreen\s*!==\s*'details'/);
+
+      // 2. ContentDetails outer container uses full width w-full without md:pl-24 sidebar offset
+      expect(detailsCode).toContain('min-h-screen w-full bg-[#141414]');
+      expect(detailsCode).not.toContain('md:pl-24');
+      expect(detailsCode).not.toContain('md:pl-18');
+
+      // 3. Main layout container spans up to 7xl / full width
+      expect(detailsCode).toContain('max-w-7xl');
+    });
+
+    it('verifies clicking Netflix icon anywhere across the site routes to home page', () => {
+      const sidebarPath = path.resolve(__dirname, '../components/common/NetflixSidebar.tsx');
+      const sidebarCode = fs.readFileSync(sidebarPath, 'utf8');
+      const detailsPath = path.resolve(__dirname, '../components/details/ContentDetails.tsx');
+      const detailsCode = fs.readFileSync(detailsPath, 'utf8');
+      const heroPath = path.resolve(__dirname, '../components/home/HeroBanner.tsx');
+      const heroCode = fs.readFileSync(heroPath, 'utf8');
+      const playerPath = path.resolve(__dirname, '../components/player/VideoPlayer.tsx');
+      const playerCode = fs.readFileSync(playerPath, 'utf8');
+
+      // 1. NetflixSidebar top ribbon has onClick returning to home
+      expect(sidebarCode).toContain("handleSelectTab('home')");
+      expect(sidebarCode).toMatch(/onClick=\{\(\)\s*=>\s*handleSelectTab\('home'\)\}/);
+
+      // 2. ContentDetails top-right Netflix badge has onClick
+      expect(detailsCode).toMatch(/onClick=\{onGoHome\s*\|\|\s*onBack\}/);
+
+      // 3. HeroBanner Netflix tag has onClick calling onGoHome
+      expect(heroCode).toMatch(/onClick=\{\(\)\s*=>\s*onGoHome\?\.\(\)\}/);
+
+      // 4. VideoPlayer Netflix logo has onClick
+      expect(playerCode).toMatch(/if\s*\(onGoHome\)\s*\{\s*onGoHome\(\);\s*\}\s*else\s*\{\s*onExit\(\);\s*\}/);
+    });
   });
 });
