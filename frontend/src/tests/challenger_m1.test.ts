@@ -783,5 +783,19 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(beCode).toContain("trimmed === 'bolt2026'");
       expect(beCode).toContain("trimmed === 'admin123'");
     });
+
+    it('verifies exiting VideoPlayer navigates back to movie poster details and does not exit the application', () => {
+      const appCode = fs.readFileSync(appPath, 'utf8');
+
+      // 1. handleExitPlayer sets details screen and movie title hash
+      expect(appCode).toMatch(/handleExitPlayer\s*=\s*useCallback\(\(\)\s*=>\s*\{[\s\S]*setCurrentScreen\('details'\)/);
+      expect(appCode).toMatch(/window\.history\.replaceState\(\{\s*screen:\s*'details'[\s\S]*#\/title\/\$\{targetItem\.id\}/);
+
+      // 2. navigateBack explicitly checks currentScreen === 'player' and routes to details
+      expect(appCode).toMatch(/if\s*\(currentScreen\s*===\s*'player'\)\s*\{[\s\S]*setCurrentScreen\('details'\)/);
+
+      // 3. handlePopState catches pop from player and restores details screen
+      expect(appCode).toMatch(/if\s*\(currentScreenRef\.current\s*===\s*'player'\)\s*\{[\s\S]*setCurrentScreen\('details'\)/);
+    });
   });
 });

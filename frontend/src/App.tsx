@@ -87,6 +87,15 @@ export const App: React.FC = () => {
     initialTime?: number;
   } | null>(null);
 
+  const selectedTitleRef = useRef(selectedTitle);
+  selectedTitleRef.current = selectedTitle;
+
+  const playerTargetRef = useRef(playerTarget);
+  playerTargetRef.current = playerTarget;
+
+  const currentScreenRef = useRef(currentScreen);
+  currentScreenRef.current = currentScreen;
+
   // App version control & update states
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateManifest | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -214,6 +223,22 @@ export const App: React.FC = () => {
 
   // Navigate back using browser history or safe fallback
   const navigateBack = useCallback(() => {
+    // When leaving the player, ALWAYS return to the movie poster details screen
+    if (currentScreen === 'player') {
+      const targetItem = playerTarget?.item || selectedTitle;
+      if (targetItem) {
+        setPlayerTarget(null);
+        setSelectedTitle(targetItem);
+        setCurrentScreen('details');
+        try {
+          window.history.replaceState({ screen: 'details', item: targetItem }, '', `#/title/${targetItem.id}`);
+        } catch (err) {
+          console.warn('[Navigation] replaceState failed:', err);
+        }
+        return;
+      }
+    }
+
     if (typeof window !== 'undefined' && window.history.state && window.history.length > 1) {
       window.history.back();
     } else {
@@ -227,7 +252,7 @@ export const App: React.FC = () => {
         setCurrentScreen('home');
       }
     }
-  }, [currentScreen, previousScreen, selectedTitle]);
+  }, [currentScreen, previousScreen, selectedTitle, playerTarget]);
 
   // Mobile Device Back Key & Browser Popstate Navigation Listener
   useEffect(() => {
@@ -271,6 +296,7 @@ export const App: React.FC = () => {
                 episode: episodeParam ? parseInt(episodeParam, 10) : undefined,
                 initialTime: timeParam ? parseFloat(timeParam) : undefined
               });
+              setSelectedTitle(item);
               setCurrentScreen('player');
               window.history.replaceState({ screen: 'player', item }, '', initialHash);
             }
@@ -289,6 +315,21 @@ export const App: React.FC = () => {
     const handlePopState = (e: PopStateEvent) => {
       isPopstateNavigatingRef.current = true;
       const state: HistoryStateData | null = e.state;
+
+      // If user was watching in player and pressed back, always return to movie poster details
+      if (currentScreenRef.current === 'player') {
+        const item = playerTargetRef.current?.item || selectedTitleRef.current || state?.item;
+        if (item) {
+          setPlayerTarget(null);
+          setSelectedTitle(item);
+          setCurrentScreen('details');
+          try {
+            window.history.replaceState({ screen: 'details', item }, '', `#/title/${item.id}`);
+          } catch {}
+          setTimeout(() => { isPopstateNavigatingRef.current = false; }, 50);
+          return;
+        }
+      }
 
       if (!state || !state.screen) {
         setPlayerTarget(null);
@@ -376,11 +417,23 @@ export const App: React.FC = () => {
     };
   }, [handleLaunchPlayer]);
 
-  // Exit Player
+  // Exit Player -> always return to movie poster details
   const handleExitPlayer = useCallback(() => {
     api.getProgress(activeProfile.id).then(setProgressList).catch(() => {});
-    navigateBack();
-  }, [activeProfile.id, navigateBack]);
+    const targetItem = playerTarget?.item || selectedTitle;
+    if (targetItem) {
+      setPlayerTarget(null);
+      setSelectedTitle(targetItem);
+      setCurrentScreen('details');
+      try {
+        window.history.replaceState({ screen: 'details', item: targetItem }, '', `#/title/${targetItem.id}`);
+      } catch (err) {
+        console.warn('[Navigation] replaceState failed:', err);
+      }
+    } else {
+      navigateBack();
+    }
+  }, [activeProfile.id, playerTarget, selectedTitle, navigateBack]);
 
   // Next Episode handler for TV series / Anime
   const handleNextEpisode = useCallback(async () => {
