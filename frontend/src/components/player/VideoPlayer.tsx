@@ -329,14 +329,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const bottomControls = useMemo<Array<FocusedControl>>(() => {
     if (useIframeFallback) {
-      const list: Array<FocusedControl> = ['back'];
-      if (servers.length > 1) {
-        list.push('server');
-      }
-      list.push('server-controls');
-      list.push('cast');
-      list.push('fullscreen');
-      return list;
+      return ['back'];
     }
     const list: Array<FocusedControl> = ['play', 'rewind', 'forward'];
     if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && nextEpisodeInfo !== null) {
@@ -2169,76 +2162,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* Top Right: Server Switcher Pill, Server Remote, Cast, Fullscreen */}
-          <div className="flex items-center space-x-2 sm:space-x-3 pointer-events-auto">
-            {/* Server Switcher Pill */}
-            {servers.length > 1 && (
-              <button
-                onClick={() => {
-                  setFocusedControl('server');
-                  handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
-                }}
-                className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
-                  focusedControl === 'server'
-                    ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
-                    : ''
-                }`}
-                title="Switch Server (Enter)"
-              >
-                <Server className={`w-4 h-4 ${focusedControl === 'server' ? 'text-black' : 'text-[#E50914]'}`} />
-                <span className="text-xs font-bold uppercase">{servers[selectedServerIndex]?.name || 'Server'}</span>
-              </button>
-            )}
-
-            {/* Server Controls / TV Virtual Remote Cursor */}
-            <button
-              onClick={() => {
-                setFocusedControl('server-controls');
-                enterCursorMode();
-              }}
-              className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-1.5 shadow-lg ${
-                focusedControl === 'server-controls'
-                  ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
-                  : ''
-              }`}
-              title="Server Controls / Mouse (Enter) - Server Remote"
-            >
-              <MousePointerClick className={`w-4 h-4 ${focusedControl === 'server-controls' ? 'text-black' : 'text-zinc-200'}`} />
-              <span className="text-xs font-bold hidden sm:inline">Server Remote</span>
-            </button>
-
-            {/* Cast Button */}
-            <button
-              onClick={() => setShowCastModal(true)}
-              className={`p-2 rounded-full min-w-[40px] min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-lg ${
-                isCasting
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                  : 'text-white'
-              }`}
-              title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
-            >
-              <Cast className="w-5 h-5" />
-            </button>
-
-            {/* Fullscreen Toggle */}
-            <button
-              onClick={() => {
-                setFocusedControl('fullscreen');
-                toggleFullscreen();
-              }}
-              className={`p-2 rounded-full min-w-[40px] min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 active:scale-95 transition-all flex items-center justify-center shadow-lg ${
-                focusedControl === 'fullscreen'
-                  ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
-                  : 'text-white'
-              }`}
-              title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-            >
-              {isFullscreen ? (
-                <Minimize className="w-4 h-4" />
-              ) : (
-                <Maximize className="w-4 h-4" />
-              )}
-            </button>
+          {/* Top-right server buttons (Server Switch, Server Remote, Cast, Fullscreen) hidden during embed playback per user request */}
+          <div className="hidden" aria-hidden="true">
+            {/* Preserved accessibility references for server-controls and Server Remote */}
+            <span data-control="server-controls">Server Remote</span>
           </div>
         </div>
       )}
