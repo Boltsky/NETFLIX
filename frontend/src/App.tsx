@@ -833,6 +833,10 @@ export const App: React.FC = () => {
               setSelectedTitle(null);
               navigateTo('home');
             }}
+            onSelectCast={(actorName) => {
+              setSearchQuery(actorName);
+              navigateTo('search');
+            }}
             isInWatchlist={isInWatchlist(selectedTitle.id)}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectRelated={handleOpenDetails}

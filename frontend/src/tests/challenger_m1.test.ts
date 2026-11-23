@@ -838,6 +838,12 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       // 4. More Like This recommendations properly fit the screen horizontally with w-full
       expect(detailsCode).toMatch(/More Like This[\s\S]*border-t border-white\/10 w-full/);
       expect(detailsCode).toMatch(/grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 w-full/);
+
+      // 5. Displays Cast section with actor photos, names, and character roles
+      expect(detailsCode).toContain('Cast Section with Actor Photos & Character Names');
+      expect(detailsCode).toContain('member.profile');
+      expect(detailsCode).toContain('member.character');
+      expect(detailsCode).toContain('CastCard');
     });
 
     it('verifies clicking Netflix icon anywhere across the site routes to home page', () => {

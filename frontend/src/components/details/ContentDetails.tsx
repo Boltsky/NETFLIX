@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { TitleDetails, Episode, MediaItem } from '../../types';
+import { TitleDetails, Episode, MediaItem, CastMember } from '../../types';
 import { api } from '../../services/api';
 import { useFocusable } from '../focus/FocusContext';
-import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw, Cast } from 'lucide-react';
+import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw, Cast, User } from 'lucide-react';
 import { CastModal } from '../player/CastModal';
 
 interface ContentDetailsProps {
@@ -12,6 +12,7 @@ interface ContentDetailsProps {
   onPlay: (item: MediaItem, season?: number, episode?: number) => void;
   onBack: () => void;
   onGoHome?: () => void;
+  onSelectCast?: (actorName: string) => void;
   isInWatchlist: boolean;
   onToggleWatchlist: (item: MediaItem) => void;
   onSelectRelated: (item: MediaItem) => void;
@@ -24,6 +25,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   onPlay,
   onBack,
   onGoHome,
+  onSelectCast,
   isInWatchlist,
   onToggleWatchlist,
   onSelectRelated
@@ -279,6 +281,32 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
             )}
           </div>
         </div>
+
+        {/* Cast Section with Actor Photos & Character Names */}
+        {details.cast && details.cast.length > 0 && (
+          <div className="space-y-4 pt-6 border-t border-white/10 w-full">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center space-x-3">
+                <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">Cast</h2>
+                <span className="text-xs text-zinc-400 font-mono">
+                  {details.cast.length} Actors
+                </span>
+              </div>
+            </div>
+
+            {/* Horizontal Carousel of Cast Members */}
+            <div className="flex space-x-3.5 sm:space-x-4 overflow-x-auto py-2 no-scrollbar">
+              {details.cast.map((member, idx) => (
+                <CastCard
+                  key={`cast-${member.id}-${idx}`}
+                  member={member}
+                  index={idx}
+                  onSelect={onSelectCast ? () => onSelectCast(member.name) : undefined}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Episodic Section (TV Shows Only) */}
         {details.type === 'tv' && (
@@ -599,6 +627,79 @@ const MoreLikeThisCard: React.FC<{
           {rec.year && <span>{rec.year}</span>}
           {rec.rating && <span className="text-amber-400 font-bold">★ {rec.rating}</span>}
         </div>
+      </div>
+    </div>
+  );
+};
+
+const CastCard: React.FC<{
+  member: CastMember;
+  index: number;
+  onSelect?: () => void;
+}> = ({ member, index, onSelect }) => {
+  const { ref, isFocused } = useFocusable({
+    focusKey: `detail-cast-${index}`,
+    groupId: 'detail-cast',
+    onEnter: onSelect
+  });
+
+  return (
+    <div
+      ref={ref}
+      onClick={onSelect}
+      className={`flex-shrink-0 w-28 sm:w-32 md:w-36 group select-none transition-all duration-200 tv-focusable ${
+        onSelect ? 'cursor-pointer' : ''
+      } ${
+        isFocused
+          ? 'scale-105 z-20 brightness-110'
+          : 'hover:scale-103'
+      }`}
+      title={member.character ? `${member.name} as ${member.character}` : member.name}
+    >
+      {/* Portrait Photo Container */}
+      <div
+        className={`relative aspect-[3/4] w-full rounded-lg overflow-hidden bg-zinc-800 border transition-all duration-200 shadow-md ${
+          isFocused
+            ? 'border-white ring-2 ring-[#E50914] shadow-xl'
+            : 'border-zinc-800 group-hover:border-zinc-600'
+        }`}
+      >
+        {member.profile ? (
+          <img
+            src={member.profile}
+            alt={member.name}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+              if (fallback) fallback.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <div
+          className={`w-full h-full flex flex-col items-center justify-center bg-zinc-800/90 text-zinc-400 p-2 text-center ${
+            member.profile ? 'hidden' : 'flex'
+          }`}
+        >
+          <User className="w-8 h-8 opacity-40 mb-1" />
+          <span className="text-[10px] font-bold font-mono uppercase truncate max-w-full">
+            {member.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+          </span>
+        </div>
+
+        {/* Subtle Bottom Vignette */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+      </div>
+
+      {/* Actor & Character Labels */}
+      <div className="pt-2 px-0.5 space-y-0.5">
+        <p className="text-xs sm:text-sm font-bold text-white truncate leading-tight group-hover:text-red-400 transition-colors">
+          {member.name}
+        </p>
+        <p className="text-[11px] text-zinc-400 truncate leading-tight font-normal">
+          {member.character || 'Self'}
+        </p>
       </div>
     </div>
   );
