@@ -1623,12 +1623,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return;
       }
 
-      // If controls are hidden, wake up OSD on remote key press
+      // If controls are hidden, wake up OSD or activate Virtual Cursor for embed playback
       if (!showControlsRef.current) {
         if (e.key === 'Back' || e.key === 'Escape') {
           e.preventDefault();
           handleExit();
           return;
+        }
+        if (useIframeFallback) {
+          if (
+            e.key === 'ArrowUp' || e.key === 'Up' ||
+            e.key === 'ArrowDown' || e.key === 'Down' ||
+            e.key === 'ArrowLeft' || e.key === 'Left' ||
+            e.key === 'ArrowRight' || e.key === 'Right'
+          ) {
+            e.preventDefault();
+            enterCursorMode();
+            return;
+          }
         }
         e.preventDefault();
         setShowControls(true);

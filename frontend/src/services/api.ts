@@ -1080,8 +1080,8 @@ export const api = {
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://vidlink.pro/tv/${contentId}/${s}/${e}?primaryColor=e50914&autoplay=true`
-          : `https://vidlink.pro/movie/${contentId}?primaryColor=e50914&autoplay=true`
+          ? `https://player.autoembed.me/embed/tv/${contentId}/${s}/${e}?autoplay=1`
+          : `https://player.autoembed.me/embed/movie/${contentId}?autoplay=1`
       },
       {
         name: 'Server 3 (MultiEmbed)',

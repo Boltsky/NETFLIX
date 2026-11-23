@@ -367,8 +367,8 @@ class FrameXTVAdapter {
             {
                 name: 'Server 2 (AutoEmbed)',
                 url: isEpisodic
-                    ? `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e50914&autoplay=true`
-                    : `https://vidlink.pro/movie/${id}?primaryColor=e50914&autoplay=true`
+                    ? `https://player.autoembed.me/embed/tv/${id}/${s}/${e}?autoplay=1`
+                    : `https://player.autoembed.me/embed/movie/${id}?autoplay=1`
             },
             {
                 name: 'Server 3 (MultiEmbed)',

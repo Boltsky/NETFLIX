@@ -1,17 +1,19 @@
 {
-  "versionCode": 29,
-  "versionName": "1.4.6",
+  "versionCode": 30,
+  "versionName": "1.4.7",
   "commitHash": "latest",
   "releaseDate": "2026-11-23",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.6",
+  "title": "Netflix TV v1.4.7",
   "changelog": [
-    "Automatically hide Netflix OSD controls and timeline scrubber during embedded streaming server playback for direct native interaction",
-    "Removed invisible tap interceptor overlay in iframe mode so clicks, scrubbing, volume, and server buttons work directly on the embedded player",
-    "Added non-intrusive auto-dimming floating Exit/Back header and Server Switcher pill in top bar for seamless catalog navigation",
-    "Fixed Protected Admin Access authentication for master password Bolt@256 (case-insensitive) with instant client-side authorization and clean error formatting",
-    "Preserved Virtual Remote Cursor support for TV D-Pad remotes and full Netflix custom OSD for direct streams"
+    "Fixed playback for titles like The Good Lawyer: native MPEG-TS proxying and unblocking for fcxmb.com streams",
+    "Removed aggressive backup button auto-clicker in WebView that forced FrameX into the backup player",
+    "Fixed Server 2 (AutoEmbed): migrated from broken vidlink.pro to player.autoembed.me, eliminating Next.js client-side exceptions",
+    "Restored Server Remote Virtual Cursor mode & Android native touch event dispatch (dispatchPointerClick) for full TV remote interaction with all embedded server controls (Super barbarian XVI, FrameX, AutoEmbed)",
+    "Fixed Who's Watching profile selection: viewport overflow, initial focus assertion on BOLT, and D-pad remote navigation",
+    "Fixed Search Screen: always visible TV QWERTY keyboard (removed hidden lg:block) with bidirectional remote navigation and focusable search input",
+    "Completely removed phone-to-TV casting UI and modals from the Android TV app while preserving actor/cast credits"
   ],
   "apkUrl": "https://raw.githubusercontent.com/Boltsky/NETFLIX/main/Netflix-AndroidTV.apk",
   "releaseUrl": "https://github.com/Boltsky/NETFLIX/releases",

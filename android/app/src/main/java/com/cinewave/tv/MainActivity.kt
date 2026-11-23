@@ -287,15 +287,18 @@ class MainActivity : AppCompatActivity() {
                     return dispatchAdBlockResponse(url)
                 }
 
-                // 5. Direct media stream proxying with CORS unblocking (vidrock, themoviebox proxy unwrapping, bcdnw, hakunaymatata, slowcloud)
+                // 5. Direct media stream proxying with CORS unblocking (vidrock, themoviebox proxy unwrapping, bcdnw, hakunaymatata, slowcloud, fcxmb)
                 val streamHost = url.host?.lowercase() ?: ""
                 val streamPath = url.path?.lowercase() ?: ""
                 val isTheMovieBoxProxy = streamHost.contains("themoviebox.uk") && streamPath.contains("/proxy")
+                val isFcxmbMedia = (streamHost.contains("fcxmb.com") || streamHost.contains("fcxmb")) &&
+                    (streamPath.endsWith(".m3u8") || streamPath.endsWith(".jpg") || streamPath.contains("/hls_mps/"))
                 val isMediaStream = streamHost.contains("concretemiracle.lol") ||
                     streamHost.contains("slowcloud.live") ||
                     streamHost.contains("vercetti.org") ||
                     streamHost.contains("hakunaymatata.com") ||
                     streamHost.contains("videodownloader.site") ||
+                    isFcxmbMedia ||
                     isTheMovieBoxProxy ||
                     streamPath.endsWith(".mp4") ||
                     streamPath.endsWith(".m3u8") ||
@@ -331,7 +334,7 @@ class MainActivity : AppCompatActivity() {
                         val streamReferer = when {
                             !queryReferer.isNullOrEmpty() -> queryReferer
                             effectiveTarget.contains("hakunaymatata.com") -> "https://videodownloader.site/"
-                            effectiveTarget.contains("vidrock.to") || streamHost.contains("concretemiracle.lol") || streamHost.contains("slowcloud.live") || streamHost.contains("vercetti.org") -> "https://vidrock.to/"
+                            effectiveTarget.contains("vidrock.to") || streamHost.contains("concretemiracle.lol") || streamHost.contains("slowcloud.live") || streamHost.contains("vercetti.org") || streamHost.contains("fcxmb") -> "https://vidrock.to/"
                             !clientReferer.isNullOrEmpty() && !clientReferer.contains("androidplatform.net") -> clientReferer
                             else -> "https://${URL(effectiveTarget).host}/"
                         }
@@ -344,8 +347,12 @@ class MainActivity : AppCompatActivity() {
 
                         val status = conn.responseCode
                         if (status in 200..399) {
-                            val mime = conn.contentType?.split(";")?.get(0)?.trim()
-                                ?: if (effectiveTarget.contains(".m3u8")) "application/vnd.apple.mpegurl" else if (effectiveTarget.contains(".mp4")) "video/mp4" else "video/mp2t"
+                            val mime = if (isFcxmbMedia && (effectiveTarget.endsWith(".jpg") || effectiveTarget.contains("/hls_mps/"))) {
+                                "video/mp2t"
+                            } else {
+                                conn.contentType?.split(";")?.get(0)?.trim()
+                                    ?: if (effectiveTarget.contains(".m3u8")) "application/vnd.apple.mpegurl" else if (effectiveTarget.contains(".mp4")) "video/mp4" else "video/mp2t"
+                            }
                             val clientOrigin = request.requestHeaders?.entries?.firstOrNull { it.key.equals("Origin", ignoreCase = true) }?.value ?: "*"
                             val headers = mutableMapOf<String, String>()
                             headers["Access-Control-Allow-Origin"] = clientOrigin
@@ -794,6 +801,7 @@ class MainActivity : AppCompatActivity() {
         // 4. In subframes: only allow navigations to verified streaming hosts; block all external ad redirects
         val isAllowedStreamingHost = host.contains("framextv") ||
             host.contains("autoembed") ||
+            host.contains("fcxmb") ||
             host.contains("vidbolt") ||
             host.contains("vidup") ||
             host.contains("nextgencloudfabric") ||
@@ -942,8 +950,6 @@ class MainActivity : AppCompatActivity() {
                 "try{" +
                     "var skipBtns=document.querySelectorAll('.videoAdUiSkipButton,.skip-button,.skip-ad,.ad-skip,[class*=\"skip\" i],[id*=\"skip\" i],.jw-skip,.vjs-skip,button.skip,div.skip,.ytp-ad-skip-button,.videoAdUiAction,.ad-skip-btn,[aria-label*=\"skip\" i],button[class*=\"skip\" i]');" +
                     "for(var j=0;j<skipBtns.length;j++){try{skipBtns[j].click();}catch(e){}}" +
-                    "var backupBtns=document.querySelectorAll('button[aria-label*=\"Backup\" i],.backup-server-btn,button[class*=\"backup\" i]');" +
-                    "for(var b=0;b<backupBtns.length;b++){try{backupBtns[b].click();}catch(e){}}" +
                     "var playBtns=document.querySelectorAll('.playbtnx,#playbtn,.vjs-big-play-button,.jw-display-icon-container');" +
                     "for(var p=0;p<playBtns.length;p++){try{playBtns[p].click();}catch(e){}}" +
                     "var ifr=document.getElementById('iframesrc');" +
@@ -1209,6 +1215,7 @@ class MainActivity : AppCompatActivity() {
         val isWhitelistedHost = host == "appassets.androidplatform.net" ||
             host.contains("framextv") ||
             host.contains("autoembed") ||
+            host.contains("fcxmb") ||
             host.contains("vidbolt") ||
             host.contains("vidup") ||
             host.contains("nextgencloudfabric") ||
