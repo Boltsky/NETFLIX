@@ -184,8 +184,8 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
             </div>
           </div>
 
-          {/* Details & Action Controls */}
-          <div className="flex-1 space-y-3.5 sm:space-y-4 max-w-4xl">
+          {/* Details & Action Controls - On the Side of the Poster */}
+          <div className="flex-1 min-w-0 space-y-3.5 sm:space-y-4">
             <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight">
               {details.title}
             </h1>
@@ -268,45 +268,45 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
             </div>
 
             {/* Synopsis */}
-            <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-2 font-normal">
+            <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-2 font-normal max-w-4xl">
               {details.overview || 'Watch this Netflix title streaming now in Ultra HD.'}
             </p>
 
-            {/* Cast */}
+            {/* Cast Starring Text */}
             {details.cast && details.cast.length > 0 && (
               <p className="text-xs text-zinc-400 pt-1">
                 <span className="text-zinc-500 font-semibold">Starring: </span>
                 {details.cast.slice(0, 5).map(c => c.name).join(', ')}
               </p>
             )}
+
+            {/* Cast Images Carousel on the Side of the Poster */}
+            {details.cast && details.cast.length > 0 && (
+              <div className="pt-3 space-y-2 w-full">
+                <div className="flex items-center space-x-2.5">
+                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-zinc-300">
+                    Cast
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-mono">
+                    • {details.cast.length} Actors
+                  </span>
+                </div>
+
+                {/* Horizontal Carousel of Cast Members */}
+                <div className="flex space-x-3 sm:space-x-3.5 overflow-x-auto py-1.5 no-scrollbar w-full">
+                  {details.cast.map((member, idx) => (
+                    <CastCard
+                      key={`cast-${member.id}-${idx}`}
+                      member={member}
+                      index={idx}
+                      onSelect={onSelectCast ? () => onSelectCast(member.name) : undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Cast Section with Actor Photos & Character Names */}
-        {details.cast && details.cast.length > 0 && (
-          <div className="space-y-4 pt-6 border-t border-white/10 w-full">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center space-x-3">
-                <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">Cast</h2>
-                <span className="text-xs text-zinc-400 font-mono">
-                  {details.cast.length} Actors
-                </span>
-              </div>
-            </div>
-
-            {/* Horizontal Carousel of Cast Members */}
-            <div className="flex space-x-3.5 sm:space-x-4 overflow-x-auto py-2 no-scrollbar">
-              {details.cast.map((member, idx) => (
-                <CastCard
-                  key={`cast-${member.id}-${idx}`}
-                  member={member}
-                  index={idx}
-                  onSelect={onSelectCast ? () => onSelectCast(member.name) : undefined}
-                />
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Episodic Section (TV Shows Only) */}
         {details.type === 'tv' && (

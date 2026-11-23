@@ -839,8 +839,8 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(detailsCode).toMatch(/More Like This[\s\S]*border-t border-white\/10 w-full/);
       expect(detailsCode).toMatch(/grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 w-full/);
 
-      // 5. Displays Cast section with actor photos, names, and character roles
-      expect(detailsCode).toContain('Cast Section with Actor Photos & Character Names');
+      // 5. Displays Cast section with actor photos, names, and character roles on the side of the poster
+      expect(detailsCode).toContain('Cast Images Carousel on the Side of the Poster');
       expect(detailsCode).toContain('member.profile');
       expect(detailsCode).toContain('member.character');
       expect(detailsCode).toContain('CastCard');
