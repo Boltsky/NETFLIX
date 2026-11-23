@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MediaItem } from '../../types';
 import { api } from '../../services/api';
 import { useFocusable, useFocus } from '../focus/FocusContext';
@@ -143,7 +143,6 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<string[]>(() => getSearchHistory(profileId));
-  const [showMobileKeyboard, setShowMobileKeyboard] = useState(false);
   const { moveFocus, setFocusedKey } = useFocus();
 
   // Reload history when profile changes
@@ -250,27 +249,15 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
       <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-8 w-full">
         {/* Left Column: TV Keyboard & Search Input Aside */}
         <div className="w-full lg:w-[360px] flex-shrink-0 space-y-4">
-          {/* Search Input Box (Supports native touch/mobile keyboard, physical typing, and TV remote) */}
-          <div className="flex items-center space-x-3 bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2.5 sm:py-3 shadow-inner">
-            <SearchIcon className="w-5 h-5 text-[#E50914] shrink-0" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              placeholder="Search movies, series, genres..."
-              className="w-full bg-transparent text-white font-medium text-sm focus:outline-none placeholder:text-zinc-500"
-            />
-            {query && (
-              <button
-                tabIndex={-1}
-                onClick={() => onQueryChange('')}
-                className="text-zinc-400 hover:text-white p-1"
-                title="Clear Search"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          {/* Search Input Box with TV remote D-Pad focus */}
+          <SearchInputBox
+            query={query}
+            onQueryChange={onQueryChange}
+            onClear={() => {
+              onQueryChange('');
+              onResultsChange([]);
+            }}
+          />
 
           {/* Quick Search History Chips (if any recent searches exist) */}
           {history.length > 0 && (
@@ -300,19 +287,9 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
             </div>
           )}
 
-          {/* Android TV QWERTY Keyboard (Always on TV/Desktop, collapsible on Mobile) */}
+          {/* Android TV QWERTY Keyboard (Always visible on Android TV, Desktop, and Mobile) */}
           <div className="space-y-2">
-            <div className="lg:hidden flex items-center justify-between text-xs text-zinc-400 px-1">
-              <span>TV Remote On-Screen Keyboard</span>
-              <button
-                type="button"
-                onClick={() => setShowMobileKeyboard((prev) => !prev)}
-                className="text-[#E50914] text-xs font-bold hover:underline"
-              >
-                {showMobileKeyboard ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            <div className={`${showMobileKeyboard ? 'block' : 'hidden lg:block'} bg-[#141414] border border-zinc-800 rounded-2xl p-2.5 shadow-2xl space-y-1.5`}>
+            <div className="block bg-[#141414] border border-zinc-800 rounded-2xl p-2.5 shadow-2xl space-y-1.5">
               {QWERTY_ROWS.map((row, rowIndex) => (
                 <div key={`qwerty-row-${rowIndex}`} className="flex space-x-1 justify-center">
                   {row.map((item) => (
@@ -427,6 +404,65 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+/* Focusable TV Search Input Box Component */
+const SearchInputBox: React.FC<{
+  query: string;
+  onQueryChange: (q: string) => void;
+  onClear: () => void;
+}> = ({ query, onQueryChange, onClear }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { moveFocus } = useFocus();
+  const { ref, isFocused } = useFocusable({
+    focusKey: 'search-input',
+    groupId: 'search-header',
+    onEnter: () => {
+      inputRef.current?.focus();
+    }
+  });
+
+  return (
+    <div
+      ref={ref}
+      onClick={() => inputRef.current?.focus()}
+      className={`flex items-center space-x-3 rounded-xl px-4 py-2.5 sm:py-3 transition-all tv-focusable ${
+        isFocused
+          ? 'bg-zinc-800 border-2 border-white ring-2 ring-white/50 shadow-xl'
+          : 'bg-zinc-900 border border-zinc-700/80 shadow-inner'
+      }`}
+    >
+      <SearchIcon className={`w-5 h-5 shrink-0 ${isFocused ? 'text-white' : 'text-[#E50914]'}`} />
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            inputRef.current?.blur();
+            moveFocus('DOWN');
+          } else if (e.key === 'ArrowRight' && !query) {
+            e.preventDefault();
+            moveFocus('RIGHT');
+          }
+        }}
+        placeholder="Search movies, series, genres..."
+        className="w-full bg-transparent text-white font-medium text-sm focus:outline-none placeholder:text-zinc-500"
+      />
+      {query && (
+        <button
+          tabIndex={-1}
+          onClick={onClear}
+          className="text-zinc-400 hover:text-white p-1"
+          title="Clear Search"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 };

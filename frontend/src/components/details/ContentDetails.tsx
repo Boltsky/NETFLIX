@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { TitleDetails, Episode, MediaItem, CastMember } from '../../types';
 import { api } from '../../services/api';
 import { useFocusable } from '../focus/FocusContext';
-import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw, Cast, User } from 'lucide-react';
+import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw, Cast, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CastModal } from '../player/CastModal';
 
 interface ContentDetailsProps {
@@ -36,6 +36,14 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [showCastModal, setShowCastModal] = useState(false);
+  const castRailRef = useRef<HTMLDivElement>(null);
+
+  const scrollCast = (direction: 'left' | 'right') => {
+    if (castRailRef.current) {
+      const scrollAmount = direction === 'left' ? -220 : 220;
+      castRailRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   const savedProgress = useMemo(() => {
     return api.getItemProgress(contentId, profileId);
@@ -185,13 +193,13 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
           </div>
 
           {/* Details & Action Controls - On the Side of the Poster */}
-          <div className="flex-1 min-w-0 w-full space-y-3 sm:space-y-3.5 md:space-y-4 flex flex-col items-center md:items-start text-center md:text-left">
-            <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight w-full">
+          <div className="flex-1 min-w-0 w-full space-y-2 sm:space-y-2.5 md:space-y-3 flex flex-col items-center md:items-start text-center md:text-left">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight w-full">
               {details.title}
             </h1>
 
             {/* Badges Bar */}
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 sm:gap-2.5 md:gap-3 text-xs font-bold text-white w-full">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 sm:gap-2.5 text-xs font-bold text-white w-full">
               <span className="text-emerald-400 font-bold">98% Match</span>
 
               <span className="px-1.5 py-0.2 border border-zinc-500 text-zinc-300 text-[10px] rounded-[2px]">
@@ -220,7 +228,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center md:justify-start gap-2.5 sm:gap-3 md:gap-4 pt-1 sm:pt-2 w-full">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center md:justify-start gap-2.5 sm:gap-3 pt-0.5 sm:pt-1 w-full">
               <PlayButton
                 focusKey="detail-play"
                 label={
@@ -270,13 +278,13 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
             </div>
 
             {/* Synopsis */}
-            <p className="text-zinc-300 text-sm md:text-base leading-relaxed pt-1 font-normal max-w-4xl text-left w-full">
+            <p className="text-zinc-300 text-xs sm:text-sm md:text-[13px] lg:text-sm leading-relaxed pt-0.5 font-normal max-w-3xl text-left w-full line-clamp-3">
               {details.overview || 'Watch this Netflix title streaming now in Ultra HD.'}
             </p>
 
             {/* Cast Starring Text */}
             {details.cast && details.cast.length > 0 && (
-              <p className="text-xs text-zinc-400 pt-0.5 text-left w-full">
+              <p className="text-[11px] sm:text-xs text-zinc-400 pt-0 text-left w-full truncate">
                 <span className="text-zinc-500 font-semibold">Starring: </span>
                 {details.cast.slice(0, 5).map(c => c.name).join(', ')}
               </p>
@@ -284,18 +292,42 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
 
             {/* Cast Images Carousel on the Side of the Poster */}
             {details.cast && details.cast.length > 0 && (
-              <div className="pt-3 space-y-2 w-full text-left">
-                <div className="flex items-center space-x-2.5">
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-zinc-300">
-                    Cast
-                  </span>
-                  <span className="text-[11px] text-zinc-500 font-mono">
-                    • {details.cast.length} Actors
-                  </span>
+              <div className="pt-1.5 sm:pt-2 space-y-1.5 w-full text-left">
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-zinc-300">
+                      Cast
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      • {details.cast.length} Actors
+                    </span>
+                  </div>
+                  {/* Desktop / Tablet Scroll Controls */}
+                  <div className="hidden sm:flex items-center space-x-1.5">
+                    <button
+                      onClick={() => scrollCast('left')}
+                      className="w-5 h-5 rounded-full bg-zinc-800/90 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer border border-white/10"
+                      title="Scroll Cast left"
+                      type="button"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => scrollCast('right')}
+                      className="w-5 h-5 rounded-full bg-zinc-800/90 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition-colors cursor-pointer border border-white/10"
+                      title="Scroll Cast right"
+                      type="button"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Horizontal Carousel of Cast Members */}
-                <div className="flex space-x-2.5 sm:space-x-3.5 overflow-x-auto py-1.5 no-scrollbar w-full">
+                <div
+                  ref={castRailRef}
+                  className="flex space-x-2 sm:space-x-2.5 overflow-x-auto py-1 no-scrollbar w-full scroll-smooth"
+                >
                   {details.cast.map((member, idx) => (
                     <CastCard
                       key={`cast-${member.id}-${idx}`}
@@ -649,7 +681,7 @@ const CastCard: React.FC<{
     <div
       ref={ref}
       onClick={onSelect}
-      className={`flex-shrink-0 w-24 sm:w-28 md:w-32 lg:w-36 group select-none transition-all duration-200 tv-focusable ${
+      className={`flex-shrink-0 w-16 sm:w-18 md:w-20 group select-none transition-all duration-200 tv-focusable ${
         onSelect ? 'cursor-pointer' : ''
       } ${
         isFocused
@@ -660,10 +692,10 @@ const CastCard: React.FC<{
     >
       {/* Portrait Photo Container */}
       <div
-        className={`relative aspect-[3/4] w-full rounded-lg overflow-hidden bg-zinc-800 border transition-all duration-200 shadow-md ${
+        className={`relative aspect-[3/4] w-full rounded-md overflow-hidden bg-zinc-800 border transition-all duration-200 shadow-sm ${
           isFocused
-            ? 'border-white ring-2 ring-[#E50914] shadow-xl'
-            : 'border-zinc-800 group-hover:border-zinc-600'
+            ? 'border-white ring-2 ring-[#E50914] shadow-lg'
+            : 'border-white/10 group-hover:border-white/30'
         }`}
       >
         {member.profile ? (
@@ -680,12 +712,12 @@ const CastCard: React.FC<{
           />
         ) : null}
         <div
-          className={`w-full h-full flex flex-col items-center justify-center bg-zinc-800/90 text-zinc-400 p-2 text-center ${
+          className={`w-full h-full flex flex-col items-center justify-center bg-zinc-800/90 text-zinc-400 p-1 text-center ${
             member.profile ? 'hidden' : 'flex'
           }`}
         >
-          <User className="w-7 h-7 sm:w-8 sm:h-8 opacity-40 mb-1" />
-          <span className="text-[10px] font-bold font-mono uppercase truncate max-w-full">
+          <User className="w-5 h-5 sm:w-6 sm:h-6 opacity-40 mb-0.5" />
+          <span className="text-[9px] font-bold font-mono uppercase truncate max-w-full">
             {member.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
           </span>
         </div>
@@ -695,11 +727,11 @@ const CastCard: React.FC<{
       </div>
 
       {/* Actor & Character Labels */}
-      <div className="pt-1.5 sm:pt-2 px-0.5 space-y-0.5">
-        <p className="text-xs sm:text-sm font-bold text-white truncate leading-tight group-hover:text-red-400 transition-colors">
+      <div className="pt-1 px-0.5 space-y-0.5">
+        <p className="text-[11px] font-bold text-white truncate leading-tight group-hover:text-red-400 transition-colors">
           {member.name}
         </p>
-        <p className="text-[10px] sm:text-[11px] text-zinc-400 truncate leading-tight font-normal">
+        <p className="text-[9px] text-zinc-400 truncate leading-tight font-normal">
           {member.character || 'Self'}
         </p>
       </div>

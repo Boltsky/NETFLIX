@@ -27,7 +27,8 @@ type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist
 const ScreenFocusController: React.FC<{
   screen: Screen;
   lastFocusedSearchCardId?: string | null;
-}> = ({ screen, lastFocusedSearchCardId }) => {
+  isLoading?: boolean;
+}> = ({ screen, lastFocusedSearchCardId, isLoading }) => {
   const { setFocusedKey } = useFocus();
 
   useEffect(() => {
@@ -60,6 +61,16 @@ const ScreenFocusController: React.FC<{
     }, 60);
     return () => clearTimeout(timer);
   }, [screen, lastFocusedSearchCardId, setFocusedKey]);
+
+  // When home catalog finishes loading, guarantee hero-play is focused
+  useEffect(() => {
+    if (!isLoading && (screen === 'home' || screen === 'series' || screen === 'movies' || screen === 'popular')) {
+      const timer = setTimeout(() => {
+        setFocusedKey('hero-play');
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, screen, setFocusedKey]);
 
   return null;
 };
@@ -766,6 +777,7 @@ export const App: React.FC = () => {
       <ScreenFocusController
         screen={currentScreen}
         lastFocusedSearchCardId={lastFocusedSearchCardId}
+        isLoading={loading}
       />
       <div className="relative min-h-screen bg-[#141414] text-white">
         {/* SCREEN 0: Who's Watching? Profile Selection */}

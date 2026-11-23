@@ -94,6 +94,38 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
     saveStoredProfiles(profiles);
   }, [profiles]);
 
+  // Set initial focus to the primary profile (BOLT) on mount
+  useEffect(() => {
+    setFocusedKey('profile-bolt');
+  }, [setFocusedKey]);
+
+  // TV Remote Back / Escape handler
+  useEffect(() => {
+    const handleRemoteBack = (e: KeyboardEvent) => {
+      if (e.key === 'Back' || e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (editingProfile) {
+          setEditingProfile(null);
+          setFocusedKey(`profile-${editingProfile.id}`);
+        } else if (isAdding) {
+          setIsAdding(false);
+          setFocusedKey('profile-add');
+        } else if (isManaging) {
+          setIsManaging(false);
+          setFocusedKey('profile-bolt');
+        } else {
+          // If already on base profile screen, enter home using default profile
+          if (profiles.length > 0) {
+            onSelectProfile(profiles[0]);
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleRemoteBack);
+    return () => window.removeEventListener('keydown', handleRemoteBack);
+  }, [editingProfile, isAdding, isManaging, profiles, onSelectProfile, setFocusedKey]);
+
   // Handle clicking a profile card
   const handleProfileClick = (profile: NetflixProfile) => {
     if (isManaging) {
@@ -139,7 +171,7 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#141414] flex flex-col items-center justify-center select-none animate-fadeIn overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#141414] flex flex-col items-center justify-center select-none animate-fadeIn overflow-y-auto p-4 sm:p-6 md:p-8">
       {/* Netflix Top Wordmark - Clickable to Home */}
       <div
         onClick={() => {
@@ -147,7 +179,7 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
             onSelectProfile(profiles[0]);
           }
         }}
-        className="absolute top-10 left-12 flex items-center space-x-3 cursor-pointer hover:opacity-85 transition-opacity"
+        className="absolute top-6 left-6 md:top-10 md:left-12 flex items-center space-x-3 cursor-pointer hover:opacity-85 transition-opacity"
         role="button"
         title="Enter Netflix Home"
       >
@@ -162,8 +194,8 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
       </div>
 
       {/* Title */}
-      <div className="text-center mb-12 space-y-1">
-        <h1 className="text-4xl md:text-5xl font-semibold text-white tracking-wide">
+      <div className="text-center mb-8 sm:mb-10 space-y-1 mt-8 md:mt-0">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold text-white tracking-wide">
           {isManaging ? 'Manage Profiles' : "Who's watching?"}
         </h1>
         {isManaging && (
@@ -175,14 +207,14 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({ onSelectProfil
 
       {/* Bolt Protection Notification Toast */}
       {boltNotice && (
-        <div className="absolute top-24 bg-amber-500/20 border border-amber-400/60 text-amber-200 px-5 py-2.5 rounded-lg flex items-center space-x-2.5 backdrop-blur-md shadow-xl animate-bounce">
+        <div className="absolute top-20 md:top-24 bg-amber-500/20 border border-amber-400/60 text-amber-200 px-5 py-2.5 rounded-lg flex items-center space-x-2.5 backdrop-blur-md shadow-xl animate-bounce">
           <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
           <span className="text-xs font-medium">{boltNotice}</span>
         </div>
       )}
 
       {/* Profiles Row */}
-      <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-8 mb-12 sm:mb-16 max-w-4xl px-4">
+      <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-7 mb-8 sm:mb-10 max-w-4xl px-2 sm:px-4">
         {profiles.map((profile) => (
           <ProfileCard
             key={profile.id}
@@ -246,7 +278,7 @@ const ProfileCard: React.FC<{
       className="flex flex-col items-center space-y-3 cursor-pointer group tv-focusable relative"
     >
       <div
-        className={`w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-md overflow-hidden flex items-center justify-center transition-all duration-200 border-2 relative ${
+        className={`w-22 h-22 sm:w-26 sm:h-26 md:w-32 md:h-32 rounded-md overflow-hidden flex items-center justify-center transition-all duration-200 border-2 relative ${
           profile.avatarBg
         } ${
           isFocused
@@ -336,7 +368,7 @@ const AddProfileCard: React.FC<{ onAdd: () => void }> = ({ onAdd }) => {
       className="flex flex-col items-center space-y-3 cursor-pointer group tv-focusable"
     >
       <div
-        className={`w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-md border-2 border-zinc-700 flex items-center justify-center bg-zinc-900 transition-all duration-200 ${
+        className={`w-22 h-22 sm:w-26 sm:h-26 md:w-32 md:h-32 rounded-md border-2 border-zinc-700 flex items-center justify-center bg-zinc-900 transition-all duration-200 ${
           isFocused
             ? 'scale-110 border-white bg-zinc-800 shadow-2xl ring-4 ring-white/30'
             : 'opacity-70 hover:opacity-100'

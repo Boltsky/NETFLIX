@@ -106,7 +106,15 @@ export const FocusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
       if (!fallbackKey) {
-        fallbackKey = nodesRef.current.keys().next().value || null;
+        if (nodesRef.current.has('hero-play')) {
+          fallbackKey = 'hero-play';
+        } else if (nodesRef.current.has('profile-bolt')) {
+          fallbackKey = 'profile-bolt';
+        } else if (nodesRef.current.has('kb-Q')) {
+          fallbackKey = 'kb-Q';
+        } else {
+          fallbackKey = nodesRef.current.keys().next().value || null;
+        }
       }
       if (fallbackKey) setFocusedKey(fallbackKey);
       return;

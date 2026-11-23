@@ -21,10 +21,8 @@ import {
   Server,
   MousePointerClick,
   Maximize,
-  Minimize,
-  Cast
+  Minimize
 } from 'lucide-react';
-import { CastModal } from './CastModal';
 
 interface VideoPlayerProps {
   item: MediaItem;
@@ -132,7 +130,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const scrubMultiplierRef = useRef<number>(1);
 
   // TV D-pad focus state
-  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles' | 'cast' | 'fullscreen';
+  type FocusedControl = 'back' | 'scrubber' | 'play' | 'rewind' | 'forward' | 'next-ep' | 'server' | 'server-controls' | 'subtitles' | 'fullscreen';
   const [focusedControl, setFocusedControlState] = useState<FocusedControl>('play');
   const focusedControlRef = useRef<FocusedControl>('play');
   const setFocusedControl = useCallback((ctrl: FocusedControl) => {
@@ -331,14 +329,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const bottomControls = useMemo<Array<FocusedControl>>(() => {
     if (useIframeFallback) {
-      return ['back'];
+      const list: Array<FocusedControl> = ['back'];
+      if (servers.length > 1) {
+        list.push('server');
+      }
+      list.push('server-controls');
+      return list;
     }
     const list: Array<FocusedControl> = ['play', 'rewind', 'forward'];
     if (isEpisodic && effectiveSeason && effectiveEpisode && onNextEpisode && nextEpisodeInfo !== null) {
       list.push('next-ep');
     }
     list.push('subtitles');
-    list.push('cast');
     list.push('fullscreen');
     return list;
   }, [isEpisodic, effectiveSeason, effectiveEpisode, onNextEpisode, nextEpisodeInfo, useIframeFallback, servers.length]);
@@ -393,9 +395,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const isFsHistoryPushedRef = useRef(false);
   const isHandlingPopRef = useRef(false);
 
-  // Cast & Picture-in-Picture State
-  const [showCastModal, setShowCastModal] = useState(false);
-  const [isCasting, setIsCasting] = useState(false);
+  // Picture-in-Picture State
   const [isPipActive, setIsPipActive] = useState(false);
 
   // Toggle Picture-in-Picture (floating desktop player)
@@ -414,7 +414,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, []);
 
-  // PiP and Remote Playback Listeners
+  // PiP Listeners
   useEffect(() => {
     const video: any = videoRef.current;
     if (!video) return;
@@ -424,22 +424,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     video.addEventListener('enterpictureinpicture', onEnterPip);
     video.addEventListener('leavepictureinpicture', onLeavePip);
-
-    const remote = video.remote;
-    if (remote && typeof remote.addEventListener === 'function') {
-      const handleRemoteConnect = () => setIsCasting(true);
-      const handleRemoteDisconnect = () => setIsCasting(false);
-      remote.addEventListener('connect', handleRemoteConnect);
-      remote.addEventListener('disconnect', handleRemoteDisconnect);
-      if (remote.state === 'connected') setIsCasting(true);
-
-      return () => {
-        video.removeEventListener('enterpictureinpicture', onEnterPip);
-        video.removeEventListener('leavepictureinpicture', onLeavePip);
-        remote.removeEventListener('connect', handleRemoteConnect);
-        remote.removeEventListener('disconnect', handleRemoteDisconnect);
-      };
-    }
 
     return () => {
       video.removeEventListener('enterpictureinpicture', onEnterPip);
@@ -1746,17 +1730,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setShowAudioSubtitleModal(true);
             setModalCol(1);
             setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
-          } else if (curCtrl === 'cast') {
-            setShowCastModal(true);
           } else if (curCtrl === 'fullscreen') {
             toggleFullscreen();
           }
-          break;
-
-        case 'c':
-        case 'C':
-          e.preventDefault();
-          setShowCastModal((prev) => !prev);
           break;
 
         case 'p':
@@ -2164,10 +2140,43 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* Top-right server buttons (Server Switch, Server Remote, Cast, Fullscreen) hidden during embed playback per user request */}
-          <div className="hidden" aria-hidden="true">
-            {/* Preserved accessibility references for server-controls and Server Remote */}
-            <span data-control="server-controls">Server Remote</span>
+          {/* Top-right server buttons (Server Switch, Server Remote Virtual Cursor) */}
+          <div className="flex items-center space-x-2 sm:space-x-3 pointer-events-auto">
+            {/* Server Switcher Pill */}
+            {servers.length > 1 && (
+              <button
+                onClick={() => {
+                  setFocusedControl('server');
+                  handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+                }}
+                className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
+                  focusedControl === 'server'
+                    ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
+                    : ''
+                }`}
+                title="Switch Server (Enter)"
+              >
+                <Server className={`w-4 h-4 ${focusedControl === 'server' ? 'text-black' : 'text-[#E50914]'}`} />
+                <span className="text-xs font-bold uppercase">{servers[selectedServerIndex]?.name || 'Server'}</span>
+              </button>
+            )}
+
+            {/* Server Controls / TV Virtual Remote Cursor */}
+            <button
+              onClick={() => {
+                setFocusedControl('server-controls');
+                enterCursorMode();
+              }}
+              className={`px-3.5 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
+                focusedControl === 'server-controls'
+                  ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
+                  : ''
+              }`}
+              title="Server Controls / Mouse Pointer (Enter) - Server Remote"
+            >
+              <MousePointerClick className={`w-4 h-4 ${focusedControl === 'server-controls' ? 'text-black' : 'text-[#E50914]'}`} />
+              <span className="text-xs font-bold">Server Remote</span>
+            </button>
           </div>
         </div>
       )}
@@ -2204,17 +2213,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
 
             <div className="flex items-center space-x-2 sm:space-x-3">
-              <button
-                onClick={() => setShowCastModal(true)}
-                className={`p-2 rounded-full min-w-[40px] min-h-[40px] active:scale-95 transition-all flex items-center justify-center cursor-pointer ${
-                  isCasting
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                    : 'hover:bg-white/10 text-white'
-                }`}
-                title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
-              >
-                <Cast className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
               <div
                 onClick={() => {
                   if (onGoHome) {
@@ -2424,27 +2422,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span className="text-[11px] sm:text-xs font-semibold hidden sm:inline">
                     {activeSubtitle === -1 ? 'Off' : resolution?.subtitles?.[activeSubtitle]?.label || 'On'}
                   </span>
-                </button>
-
-                {/* Cast to TV or PC Button */}
-                <button
-                  onClick={() => {
-                    setFocusedControl('cast');
-                    setShowCastModal(true);
-                  }}
-                  className={`p-2 sm:p-2.5 rounded-full min-w-[44px] min-h-[44px] active:scale-95 transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
-                    focusedControl === 'cast'
-                      ? 'bg-white text-black ring-4 ring-white/60 scale-110 shadow-2xl font-bold'
-                      : isCasting
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
-                      : 'text-white hover:text-zinc-200 hover:bg-white/10'
-                  }`}
-                  title={isCasting ? 'Casting to TV Active' : 'Cast to TV or PC (C)'}
-                >
-                  <Cast className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'cast' ? 'text-black' : isCasting ? 'text-emerald-400' : 'text-white'}`} />
-                  {isCasting && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
-                  )}
                 </button>
 
                 {/* Fullscreen Toggle */}
@@ -2738,20 +2715,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       )}
-
-      {/* Cast to TV or PC Modal */}
-      <CastModal
-        isOpen={showCastModal}
-        onClose={() => setShowCastModal(false)}
-        item={item}
-        currentTime={currentTime}
-        duration={duration}
-        season={effectiveSeason}
-        episode={effectiveEpisode}
-        videoElement={videoRef.current}
-        onTogglePip={togglePip}
-        isPipActive={isPipActive}
-      />
     </div>
   );
 };

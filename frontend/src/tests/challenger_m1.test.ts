@@ -881,7 +881,7 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(detailsCode).toContain('w-36 xs:w-44 sm:w-52 md:w-64 lg:w-72 xl:w-80');
 
       // 3. Details column takes full width with responsive text alignment
-      expect(detailsCode).toContain('flex-1 min-w-0 w-full space-y-3 sm:space-y-3.5 md:space-y-4 flex flex-col items-center md:items-start text-center md:text-left');
+      expect(detailsCode).toContain('flex-1 min-w-0 w-full space-y-2 sm:space-y-2.5 md:space-y-3 flex flex-col items-center md:items-start text-center md:text-left');
 
       // 4. Primary Play button is full-width on mobile and auto on larger screens
       expect(detailsCode).toContain('w-full sm:w-auto');
@@ -889,8 +889,8 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       // 5. Season tabs in TV series support horizontal scrolling without mobile blowout
       expect(detailsCode).toContain('overflow-x-auto no-scrollbar max-w-full pb-1');
 
-      // 6. Cast carousel cards adapt responsively to mobile and larger screens
-      expect(detailsCode).toContain('w-24 sm:w-28 md:w-32 lg:w-36');
+      // 6. Cast carousel cards are compact and flush with poster bottom
+      expect(detailsCode).toContain('w-16 sm:w-18 md:w-20');
     });
   });
 });

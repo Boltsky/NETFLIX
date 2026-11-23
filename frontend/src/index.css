@@ -27,6 +27,16 @@
   }
 }
 
+/* Universal Scrollbar Suppression */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera, Edge */
+}
+
 /* Mobile Safe Area Padding */
 .safe-area-bottom {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
