@@ -1,4 +1,5 @@
 import { CURRENT_APP_VERSION, VERSION_MANIFEST_URL, AppUpdateManifest } from '../version';
+import { isNativeAndroidApp } from './platform';
 
 declare global {
   interface Window {
@@ -69,6 +70,12 @@ export const updateService = {
    * @param forceManual If true, ignores cooldown and dismissal checks.
    */
   async checkForAppUpdate(forceManual = false): Promise<AppUpdateManifest | null> {
+    // Strictly disable automatic update checks on the website clone.
+    // Web applications update seamlessly via web deployments, not APK downloads.
+    if (!isNativeAndroidApp() && !forceManual) {
+      return null;
+    }
+
     const now = Date.now();
     const lastCheckStr = getStorageItem(STORAGE_KEY_LAST_CHECK);
     const lastCheck = lastCheckStr ? parseInt(lastCheckStr, 10) : 0;

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MediaItem } from '../../types';
 import { api } from '../../services/api';
 import { useFocusable, useFocus } from '../focus/FocusContext';
+import { isNativeAndroidApp } from '../../services/platform';
 import {
   Search as SearchIcon,
   Delete,
@@ -246,7 +247,140 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 
   return (
     <div className="pt-16 sm:pt-20 pb-16 min-h-screen text-white select-none px-4 sm:px-6">
-      <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-8 w-full">
+      {/* Website Mode: Clean, responsive full-width Netflix website search */}
+      {!isNativeAndroidApp() ? (
+        <div className="w-full max-w-7xl mx-auto space-y-6">
+          {/* Top Search Input Bar */}
+          <div className="w-full max-w-3xl mx-auto space-y-3">
+            <SearchInputBox
+              query={query}
+              onQueryChange={onQueryChange}
+              onClear={() => {
+                onQueryChange('');
+                onResultsChange([]);
+              }}
+            />
+
+            {/* Quick Search History Chips */}
+            {history.length > 0 && (
+              <div className="flex items-center flex-wrap gap-2 pt-1 px-1">
+                <span className="text-xs text-zinc-400 font-bold flex items-center gap-1.5 mr-1">
+                  <History className="w-3.5 h-3.5 text-[#E50914]" />
+                  Recent:
+                </span>
+                {history.slice(0, 8).map((term, i) => (
+                  <HistoryChip
+                    key={`quick-hist-${term}-${i}`}
+                    term={term}
+                    onSelect={() => handleSelectHistory(term)}
+                  />
+                ))}
+                <button
+                  tabIndex={-1}
+                  onClick={handleClearHistory}
+                  className="text-xs text-zinc-500 hover:text-red-400 cursor-pointer ml-auto transition-colors"
+                >
+                  Clear History
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Results Header */}
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+            <h3 className="text-base sm:text-lg font-bold text-zinc-200">
+              {query ? `Results for "${query}"` : 'Browse Catalog & Recent Searches'}
+            </h3>
+            <span className="text-xs font-mono text-zinc-500">
+              {query ? `${results.length} TITLES FOUND` : `${history.length} RECENT SEARCHES`}
+            </span>
+          </div>
+
+          {/* Results Grid / Empty States */}
+          {loading ? (
+            <div className="py-24 flex flex-col items-center justify-center space-y-3">
+              <div className="w-10 h-10 rounded-full border-3 border-[#E50914] border-t-transparent animate-spin" />
+              <p className="text-xs font-mono text-zinc-400">Searching titles...</p>
+            </div>
+          ) : results.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 p-1">
+              {results.map((item, idx) => (
+                <SearchResultCard
+                  key={`search-card-${item.id}`}
+                  item={item}
+                  index={idx}
+                  onSelect={() => handleSelectCard(item)}
+                />
+              ))}
+            </div>
+          ) : query.trim() ? (
+            <div className="py-24 text-center space-y-2">
+              <Film className="w-12 h-12 text-zinc-700 mx-auto" />
+              <p className="text-sm font-semibold text-zinc-400">
+                No matching titles found for "{query}".
+              </p>
+              <p className="text-xs text-zinc-500">Try searching by another title, actor, or genre.</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {history.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-[#E50914]" />
+                      Recent Searches
+                    </h4>
+                    <button
+                      onClick={handleClearHistory}
+                      className="text-xs text-zinc-500 hover:text-white flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
+                    {history.map((term, i) => (
+                      <HistoryCard
+                        key={`history-card-${term}-${i}`}
+                        term={term}
+                        index={i}
+                        onSelect={() => handleSelectHistory(term)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {recommendedTitles.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-[#E50914]" />
+                    Explore Titles
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                    {recommendedTitles.slice(0, 12).map((item, idx) => (
+                      <SearchResultCard
+                        key={`search-rec-${item.id}`}
+                        item={item}
+                        index={idx}
+                        onSelect={() => handleSelectCard(item)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {history.length === 0 && recommendedTitles.length === 0 && (
+                <div className="py-24 text-center text-zinc-500 text-sm">
+                  Search for movies, TV shows, genres, actors, and directors.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Android TV Mode: 2-Column Layout with TV Keyboard */
+        <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-8 w-full">
         {/* Left Column: TV Keyboard & Search Input Aside */}
         <div className="w-full lg:w-[360px] flex-shrink-0 space-y-4">
           {/* Search Input Box with TV remote D-Pad focus */}
@@ -404,6 +538,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

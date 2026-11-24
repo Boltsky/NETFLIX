@@ -917,5 +917,33 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       // 6. Primary streaming engines prioritized
       expect(settingsCode).toContain('Primary Streaming Engine');
     });
+
+    it('verifies website clone strips off Android TV features on web', async () => {
+      const { isNativeAndroidApp } = await import('../services/platform');
+
+      // 1. By default in web environment, isNativeAndroidApp returns false
+      expect(isNativeAndroidApp()).toBe(false);
+
+      // 2. When Android bridges exist, isNativeAndroidApp returns true
+      (window as any).AndroidTV = {};
+      expect(isNativeAndroidApp()).toBe(true);
+      delete (window as any).AndroidTV;
+
+      // 3. App.tsx strictly disables startup update check on website
+      const appPath = path.resolve(__dirname, '../App.tsx');
+      const appCode = fs.readFileSync(appPath, 'utf8');
+      expect(appCode).toContain('if (!isNativeAndroidApp())');
+      expect(appCode).toContain('showUpdateModal && availableUpdate && isNativeAndroidApp()');
+
+      // 4. VideoPlayer hides TV remote top buttons when not on native Android TV
+      const playerPath = path.resolve(__dirname, '../components/player/VideoPlayer.tsx');
+      const playerCode = fs.readFileSync(playerPath, 'utf8');
+      expect(playerCode).toContain('{isNativeAndroidApp() && (');
+
+      // 5. SearchScreen provides clean full-width search and hides TV keyboard on web
+      const searchPath = path.resolve(__dirname, '../components/search/SearchScreen.tsx');
+      const searchCode = fs.readFileSync(searchPath, 'utf8');
+      expect(searchCode).toContain('!isNativeAndroidApp() ? (');
+    });
   });
 });

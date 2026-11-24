@@ -7,6 +7,7 @@ import { adblockService } from '../../services/adblockService';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { parseSubtitles, SubtitleCue } from '../../utils/subtitleParser';
 import { getAppSettings } from '../../services/settingsService';
+import { isNativeAndroidApp } from '../../services/platform';
 import {
   Play,
   Pause,
@@ -1372,7 +1373,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Toast guidance when streaming from embedded player / backup player
   useEffect(() => {
     if (useIframeFallback) {
-      showPlayerToast("Direct Server Controls: Click player directly, or select 'Server Remote' for TV", 'server', 4000);
+      if (isNativeAndroidApp()) {
+        showPlayerToast("Direct Server Controls: Click player directly, or select 'Server Remote' for TV", 'server', 4000);
+      }
     }
   }, [useIframeFallback, showPlayerToast]);
 
@@ -2152,44 +2155,46 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* Top-right server buttons (Server Switch, Server Remote Virtual Cursor) */}
-          <div className="flex items-center space-x-2 sm:space-x-3 pointer-events-auto">
-            {/* Server Switcher Pill */}
-            {servers.length > 1 && (
+          {/* Top-right server buttons (Server Switch, Server Remote Virtual Cursor) - TV Remote Cursor Mode */}
+          {isNativeAndroidApp() && (
+            <div className="flex items-center space-x-2 sm:space-x-3 pointer-events-auto">
+              {/* Server Switcher Pill */}
+              {servers.length > 1 && (
+                <button
+                  onClick={() => {
+                    setFocusedControl('server');
+                    handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+                  }}
+                  className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
+                    focusedControl === 'server'
+                      ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
+                      : ''
+                  }`}
+                  title="Switch Server (Enter)"
+                >
+                  <Server className={`w-4 h-4 ${focusedControl === 'server' ? 'text-black' : 'text-[#E50914]'}`} />
+                  <span className="text-xs font-bold uppercase">{servers[selectedServerIndex]?.name || 'Server'}</span>
+                </button>
+              )}
+
+              {/* Server Controls / TV Virtual Remote Cursor */}
               <button
                 onClick={() => {
-                  setFocusedControl('server');
-                  handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+                  setFocusedControl('server-controls');
+                  enterCursorMode();
                 }}
-                className={`px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
-                  focusedControl === 'server'
+                className={`px-3.5 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
+                  focusedControl === 'server-controls'
                     ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
                     : ''
                 }`}
-                title="Switch Server (Enter)"
+                title="Server Controls / Mouse Pointer (Enter) - Server Remote"
               >
-                <Server className={`w-4 h-4 ${focusedControl === 'server' ? 'text-black' : 'text-[#E50914]'}`} />
-                <span className="text-xs font-bold uppercase">{servers[selectedServerIndex]?.name || 'Server'}</span>
+                <MousePointerClick className={`w-4 h-4 ${focusedControl === 'server-controls' ? 'text-black' : 'text-[#E50914]'}`} />
+                <span className="text-xs font-bold">Server Remote</span>
               </button>
-            )}
-
-            {/* Server Controls / TV Virtual Remote Cursor */}
-            <button
-              onClick={() => {
-                setFocusedControl('server-controls');
-                enterCursorMode();
-              }}
-              className={`px-3.5 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg ${
-                focusedControl === 'server-controls'
-                  ? 'bg-white text-black ring-4 ring-white/60 scale-105 font-bold'
-                  : ''
-              }`}
-              title="Server Controls / Mouse Pointer (Enter) - Server Remote"
-            >
-              <MousePointerClick className={`w-4 h-4 ${focusedControl === 'server-controls' ? 'text-black' : 'text-[#E50914]'}`} />
-              <span className="text-xs font-bold">Server Remote</span>
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2587,7 +2592,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             <div className="mt-8 pt-4 border-t border-zinc-700/80 flex items-center justify-between">
               <span className="text-[11px] font-mono text-zinc-400">
-                Remote: ◀ / ▶ column • ▲ / ▼ item • Enter select • Back close
+                {isNativeAndroidApp()
+                  ? 'Remote: ◀ / ▶ column • ▲ / ▼ item • Enter select • Back close'
+                  : 'Click any audio or subtitle track to select'}
               </span>
               <button
                 onClick={() => setShowAudioSubtitleModal(false)}

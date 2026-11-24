@@ -39,6 +39,7 @@ import { CURRENT_APP_VERSION, AppUpdateManifest } from '../../version';
 import { resolveSubtitleCss } from '../player/SubtitleOverlay';
 import { AnalyticsDashboard } from '../analytics/AnalyticsDashboard';
 import { NetflixProfile } from '../../types';
+import { isNativeAndroidApp } from '../../services/platform';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -229,7 +230,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     { id: 'playback', label: 'Playback & Servers', icon: Film },
     { id: 'subtitles', label: 'Audio & Subtitles', icon: Subtitles },
     { id: 'network', label: 'Network & Diagnostics', icon: Activity },
-    { id: 'updates', label: 'App Updates & Releases', icon: Sparkles },
+    ...(isNativeAndroidApp() ? [{ id: 'updates' as SettingsCategory, label: 'App Updates & Releases', icon: Sparkles }] : []),
     { id: 'analytics', label: 'Audience Analytics', icon: BarChart3 }
   ];
 
@@ -282,7 +283,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           )}
           <div className="text-[11px] font-mono text-zinc-500 hidden sm:block">
-            Build v{CURRENT_APP_VERSION.versionName}
+            {isNativeAndroidApp() ? `Build v${CURRENT_APP_VERSION.versionName}` : `Web v${CURRENT_APP_VERSION.versionName}`}
           </div>
         </div>
       </div>

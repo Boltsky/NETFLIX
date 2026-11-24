@@ -16,6 +16,7 @@ import { SettingsScreen } from './components/settings/SettingsScreen';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { analytics } from './services/analyticsService';
 import { updateService } from './services/updateService';
+import { isNativeAndroidApp } from './services/platform';
 import { getAppSettings } from './services/settingsService';
 import { AppUpdateManifest, CURRENT_APP_VERSION } from './version';
 import { UpdateModal } from './components/common/UpdateModal';
@@ -112,8 +113,13 @@ export const App: React.FC = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateToast, setUpdateToast] = useState<string | null>(null);
 
-  // Background GitHub update check on startup
+  // Background GitHub update check on startup (Android TV APK only)
   useEffect(() => {
+    // Strictly disable startup APK update checks on the Netflix website clone
+    if (!isNativeAndroidApp()) {
+      return;
+    }
+
     const settings = getAppSettings();
     if (!settings.updates.autoCheckOnLaunch) {
       return;
@@ -985,8 +991,8 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* In-App Update Modal */}
-        {showUpdateModal && availableUpdate && (
+        {/* In-App Update Modal (Native Android TV only) */}
+        {showUpdateModal && availableUpdate && isNativeAndroidApp() && (
           <UpdateModal
             update={availableUpdate}
             onClose={() => setShowUpdateModal(false)}
