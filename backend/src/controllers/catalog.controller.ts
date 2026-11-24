@@ -339,11 +339,11 @@ export class CatalogController {
         ? `${safeTitle}_S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
         : safeTitle;
 
-      // Quality tiers configuration with default bitrates (1080p Full HD default)
+      // Quality tiers configuration with realistic streaming bitrates (~205 MB for 45m episode, ~550 MB for 120m movie)
       const qualityConfigs = [
-        { quality: '1080p', label: '1080p (Full HD)', bytesPerMin: 18 * 1024 * 1024 }, // ~2.4 Mbps (~1.8 GB for 100m)
-        { quality: '720p', label: '720p (Standard HD)', bytesPerMin: 9 * 1024 * 1024 },  // ~1.2 Mbps (~900 MB for 100m)
-        { quality: '480p', label: '480p (Data Saver)', bytesPerMin: 4.5 * 1024 * 1024 }  // ~0.6 Mbps (~450 MB for 100m)
+        { quality: '1080p', label: '1080p (Full HD)', bytesPerMin: 4.6 * 1024 * 1024 }, // ~207 MB for 45m, ~552 MB for 120m
+        { quality: '720p', label: '720p (Standard HD)', bytesPerMin: 3.2 * 1024 * 1024 },  // ~144 MB for 45m, ~384 MB for 120m
+        { quality: '480p', label: '480p (Data Saver)', bytesPerMin: 1.8 * 1024 * 1024 }  // ~81 MB for 45m, ~216 MB for 120m
       ];
 
       const qualities: DownloadQualityOption[] = [];

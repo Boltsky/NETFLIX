@@ -144,8 +144,9 @@ export const App: React.FC = () => {
     return () => clearTimeout(checkTimer);
   }, []);
 
-  // Manual Check for Updates
+  // Manual Check for Updates (Android TV APK only)
   const handleManualCheckUpdate = async () => {
+    if (!isNativeAndroidApp()) return;
     setUpdateToast('Checking GitHub for updates...');
     try {
       const manifest = await updateService.checkForAppUpdate(true);

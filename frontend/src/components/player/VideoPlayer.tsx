@@ -295,23 +295,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const s = season || 1;
     const e = episode || 1;
 
-    // 1. Replace multiembed.mov (which intentionally blocks sandboxed iframes) with clean sandbox-compatible autoembed.to
-    if (rawUrl.includes('multiembed.mov')) {
+    // 1. Replace multiembed and autoembed (which intentionally block sandboxed iframes) with clean sandbox-compatible embed.su
+    if (rawUrl.includes('multiembed.mov') || rawUrl.includes('autoembed.to') || rawUrl.includes('autoembed.me') || rawUrl.includes('autoembed.cc')) {
       return isEpisodic
-        ? `https://autoembed.to/tv/tmdb/${item.id}-${s}-${e}`
-        : `https://autoembed.to/movie/tmdb/${item.id}`;
+        ? `https://embed.su/embed/tv/${item.id}/${s}/${e}`
+        : `https://embed.su/embed/movie/${item.id}`;
     }
-    // 2. Replace 2embed.cc (which intentionally blocks sandboxed iframes) with clean vidsrc.pm
+    // 2. Replace 2embed.cc with clean vidsrc.pm
     if (rawUrl.includes('2embed.cc')) {
       return isEpisodic
         ? `https://vidsrc.pm/embed/tv/${item.id}/${s}/${e}`
         : `https://vidsrc.pm/embed/movie/${item.id}`;
     }
-    // 3. Replace broken vidlink.pro with verified player.autoembed.me
+    // 3. Replace vidlink.pro with clean vidsrc.net
     if (rawUrl.includes('vidlink.pro')) {
       return isEpisodic
-        ? `https://player.autoembed.me/embed/tv/${item.id}/${s}/${e}?autoplay=1`
-        : `https://player.autoembed.me/embed/movie/${item.id}?autoplay=1`;
+        ? `https://vidsrc.net/embed/tv/${item.id}/${s}/${e}`
+        : `https://vidsrc.net/embed/movie/${item.id}`;
     }
     // 4. Replace dead vidsrc.me domain with active vidsrc.net
     if (rawUrl.includes('vidsrc.me')) {
@@ -340,14 +340,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://player.autoembed.me/embed/tv/${item.id}/${s}/${e}?autoplay=1`
-          : `https://player.autoembed.me/embed/movie/${item.id}?autoplay=1`
+          ? `https://embed.su/embed/tv/${item.id}/${s}/${e}`
+          : `https://embed.su/embed/movie/${item.id}`
       },
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://autoembed.to/tv/tmdb/${item.id}-${s}-${e}`
-          : `https://autoembed.to/movie/tmdb/${item.id}`
+          ? `https://vidsrc.net/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.net/embed/movie/${item.id}`
       },
       {
         name: 'Server 4 (2Embed)',
@@ -358,8 +358,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.net/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.net/embed/movie/${item.id}`
+          ? `https://vidsrc.in/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.in/embed/movie/${item.id}`
       }
     ];
   }, [resolution, item, season, episode, normalizeServerUrl]);

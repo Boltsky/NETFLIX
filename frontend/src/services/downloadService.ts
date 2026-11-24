@@ -317,37 +317,43 @@ class DownloadService {
   triggerBrowserDownload(url: string, filename: string) {
     if (typeof window === 'undefined') return;
     const a = document.createElement('a');
+    a.style.display = 'none';
     a.href = url;
-    a.download = filename;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.setAttribute('download', filename);
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
       if (document.body.contains(a)) {
         document.body.removeChild(a);
       }
-    }, 1000);
+    }, 1500);
   }
 
   // Export an already completed IndexedDB offline item directly to PC disk
-  async exportToDisk(id: string): Promise<boolean> {
+  async exportToDisk(id: string, fallbackStreamUrl?: string, fallbackFilename?: string): Promise<boolean> {
     const item = await this.getDownload(id);
-    if (!item || !item.blob) return false;
+    const safeTitle = (item?.title || 'video').replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim().replace(/\s+/g, '_');
+    const filename = fallbackFilename || ((item?.season !== undefined && item?.episode !== undefined)
+      ? `${safeTitle}_S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}_${item?.quality || '1080p'}.mp4`
+      : `${safeTitle}_${item?.quality || '1080p'}.mp4`);
 
-    const blobUrl = URL.createObjectURL(item.blob);
-    const safeTitle = item.title.replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim().replace(/\s+/g, '_');
-    const filename = (item.season !== undefined && item.episode !== undefined)
-      ? `${safeTitle}_S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}_${item.quality}.mp4`
-      : `${safeTitle}_${item.quality}.mp4`;
+    if (item && item.blob && item.blob.size > 0) {
+      const blobUrl = URL.createObjectURL(item.blob);
+      this.triggerBrowserDownload(blobUrl, filename);
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(blobUrl);
+        } catch {}
+      }, 60000);
+      return true;
+    }
 
-    this.triggerBrowserDownload(blobUrl, filename);
-    setTimeout(() => {
-      try {
-        URL.revokeObjectURL(blobUrl);
-      } catch {}
-    }, 60000);
-    return true;
+    if (fallbackStreamUrl) {
+      this.triggerBrowserDownload(fallbackStreamUrl, filename);
+      return true;
+    }
+
+    return false;
   }
 
   // Obtain playable Blob URL for offline player

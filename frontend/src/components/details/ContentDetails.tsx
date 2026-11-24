@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { TitleDetails, Episode, MediaItem, CastMember, DownloadResolution, DownloadedItem } from '../../types';
-import { api } from '../../services/api';
+import { api, getBackendBaseUrl } from '../../services/api';
 import { downloadService } from '../../services/downloadService';
 import { useFocusable } from '../focus/FocusContext';
 import { Play, Plus, Check, ArrowLeft, Star, Clock, Calendar, Film, RotateCcw, User, ChevronLeft, ChevronRight, Download, CheckCircle, RefreshCw, HardDrive, ArrowDownToLine, ChevronDown, Trash2 } from 'lucide-react';
@@ -645,10 +645,36 @@ const DownloadDetailsButton: React.FC<{
   };
 
   const handleSaveToDisk = async () => {
-    if (!downloadedItem) return;
-    await downloadService.exportToDisk(downloadedItem.id);
-    setStatusMessage('Saved to PC Downloads folder!');
-    setTimeout(() => setStatusMessage(null), 3000);
+    try {
+      setStatusMessage('Preparing MP4 download...');
+      let success = false;
+      const matchedQuality = downloadInfo?.qualities?.find((q: any) => q.quality === selectedQuality) || downloadInfo?.qualities?.[0];
+      const backendBase = getBackendBaseUrl() || (typeof window !== 'undefined' ? window.location.origin : '');
+      const streamFallbackUrl = matchedQuality?.streamProxyUrl
+        ? (matchedQuality.streamProxyUrl.startsWith('http') ? matchedQuality.streamProxyUrl : `${backendBase}${matchedQuality.streamProxyUrl}`)
+        : undefined;
+
+      const safeTitle = details.title.replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim().replace(/\s+/g, '_');
+      const filename = (season !== undefined && episode !== undefined)
+        ? `${safeTitle}_S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}_${selectedQuality}.mp4`
+        : `${safeTitle}_${selectedQuality}.mp4`;
+
+      if (downloadedItem) {
+        success = await downloadService.exportToDisk(downloadedItem.id, streamFallbackUrl, filename);
+      } else if (streamFallbackUrl) {
+        downloadService.triggerBrowserDownload(streamFallbackUrl, filename);
+        success = true;
+      }
+
+      if (success) {
+        setStatusMessage('Saving MP4 to PC Downloads folder...');
+      } else {
+        setStatusMessage('Download initiated via browser manager.');
+      }
+    } catch (e: any) {
+      setStatusMessage(`Download error: ${e?.message}`);
+    }
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
   const handleDelete = async () => {
@@ -776,28 +802,36 @@ const DownloadDetailsButton: React.FC<{
             </label>
             <div className="space-y-1">
               {(downloadInfo?.qualities || [
-                { quality: '1080p', label: '1080p (Full HD)', formattedSize: '~1.4 GB' },
-                { quality: '720p', label: '720p (Standard HD)', formattedSize: '~750 MB' },
-                { quality: '480p', label: '480p (Data Saver)', formattedSize: '~400 MB' }
-              ]).map((q: any) => (
-                <button
-                  key={q.quality}
-                  onClick={() => setSelectedQuality(q.quality)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${
-                    selectedQuality === q.quality
-                      ? 'bg-red-600/20 border border-red-500/50 text-white font-bold'
-                      : 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 rounded-full bg-red-500" style={{ opacity: selectedQuality === q.quality ? 1 : 0.2 }} />
-                    <span>{q.label || q.quality}</span>
-                  </div>
-                  <span className="font-mono text-zinc-300 font-semibold px-1.5 py-0.5 rounded bg-black/40 text-[11px]">
-                    {q.formattedSize}
-                  </span>
-                </button>
-              ))}
+                { quality: '1080p', label: '1080p (Full HD)', formattedSize: '206 MB' },
+                { quality: '720p', label: '720p (Standard HD)', formattedSize: '144 MB' },
+                { quality: '480p', label: '480p (Data Saver)', formattedSize: '81 MB' }
+              ]).map((q: any) => {
+                // If this tier is the downloaded item, strictly match the exact verified downloaded file size
+                const isItemQuality = downloadedItem && (downloadedItem.quality === q.quality || (!downloadedItem.quality && q.quality === '1080p'));
+                const sizeLabel = (isItemQuality && downloadedItem?.formattedSize)
+                  ? downloadedItem.formattedSize
+                  : q.formattedSize;
+
+                return (
+                  <button
+                    key={q.quality}
+                    onClick={() => setSelectedQuality(q.quality)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${
+                      selectedQuality === q.quality
+                        ? 'bg-red-600/20 border border-red-500/50 text-white font-bold'
+                        : 'bg-zinc-800/60 hover:bg-zinc-800 text-zinc-300 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500" style={{ opacity: selectedQuality === q.quality ? 1 : 0.2 }} />
+                      <span>{q.label || q.quality}</span>
+                    </div>
+                    <span className="font-mono text-zinc-300 font-semibold px-1.5 py-0.5 rounded bg-black/40 text-[11px]">
+                      {sizeLabel}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1029,6 +1063,8 @@ const CastCard: React.FC<{
     onEnter: onSelect
   });
 
+  const profileUrl = member.profile || (member as any).profilePath || (member as any).profile_path;
+
   return (
     <div
       ref={ref}
@@ -1050,9 +1086,9 @@ const CastCard: React.FC<{
             : 'border-white/10 group-hover:border-white/30'
         }`}
       >
-        {member.profile ? (
+        {profileUrl ? (
           <img
-            src={member.profile}
+            src={profileUrl}
             alt={member.name}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
@@ -1065,7 +1101,7 @@ const CastCard: React.FC<{
         ) : null}
         <div
           className={`w-full h-full flex flex-col items-center justify-center bg-zinc-800/90 text-zinc-400 p-1 text-center ${
-            member.profile ? 'hidden' : 'flex'
+            profileUrl ? 'hidden' : 'flex'
           }`}
         >
           <User className="w-5 h-5 sm:w-6 sm:h-6 opacity-40 mb-0.5" />

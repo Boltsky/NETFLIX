@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { NetflixProfile } from '../profile/ProfileSelector';
 import { CURRENT_APP_VERSION } from '../../version';
+import { isNativeAndroidApp } from '../../services/platform';
 
 export type NetflixNavTab = 'search' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'downloads' | 'categories' | 'settings';
 
@@ -190,15 +191,17 @@ export const NetflixSidebar: React.FC<NetflixSidebarProps> = ({
             onAction={onOpenSettings || (() => handleSelectTab('settings'))}
           />
 
-          {/* Version & Check Updates Action */}
-          <SidebarActionButton
-            id="sidebar-update"
-            label={hasUpdate ? 'Update Available' : `Version v${CURRENT_APP_VERSION.versionName}`}
-            badge={hasUpdate ? 'NEW' : undefined}
-            icon={hasUpdate ? Sparkles : RefreshCw}
-            isExpanded={isExpanded}
-            onAction={onCheckUpdate || (() => {})}
-          />
+          {/* Version & Check Updates Action (Android TV APK only) */}
+          {isNativeAndroidApp() && (
+            <SidebarActionButton
+              id="sidebar-update"
+              label={hasUpdate ? 'Update Available' : `Version v${CURRENT_APP_VERSION.versionName}`}
+              badge={hasUpdate ? 'NEW' : undefined}
+              icon={hasUpdate ? Sparkles : RefreshCw}
+              isExpanded={isExpanded}
+              onAction={onCheckUpdate || (() => {})}
+            />
+          )}
 
           {/* Exit / Help */}
           <SidebarActionButton
