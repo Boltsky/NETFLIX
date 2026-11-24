@@ -81,6 +81,29 @@ describe('CineWave TV Backend API Tests', () => {
     expect(res.body.embedServers[4].name).toContain('VidSrc');
   }, 10000);
 
+  it('GET /api/v1/download/resolve should return size metrics and 1080p default quality', async () => {
+    const res = await request(app)
+      .get('/api/v1/download/resolve?contentId=550&type=movie&title=Fight+Club&duration=139');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.defaultQuality).toBe('1080p');
+    expect(res.body.qualities).toBeInstanceOf(Array);
+    expect(res.body.qualities.length).toBeGreaterThanOrEqual(2);
+    
+    // Check 1080p quality option and pre-download size metrics
+    const q1080 = res.body.qualities.find((q: any) => q.quality === '1080p');
+    expect(q1080).toBeDefined();
+    expect(q1080.sizeBytes).toBeGreaterThan(0);
+    expect(q1080.formattedSize).toBeDefined();
+    expect(typeof q1080.formattedSize).toBe('string');
+    expect(res.body.downloadFilename).toContain('Fight_Club');
+  }, 10000);
+
+  it('GET /api/v1/download/stream should validate url parameter', async () => {
+    const res = await request(app).get('/api/v1/download/stream');
+    expect(res.status).toBe(400);
+  });
+
   it('Watchlist CRUD operations should succeed and persist', async () => {
     const testItem = {
       profileId: 'test-profile',

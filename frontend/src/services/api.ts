@@ -14,7 +14,8 @@ import {
   AnalyticsStats,
   VisitPayload,
   AdminAccountConfig,
-  UpdateAdminAccountPayload
+  UpdateAdminAccountPayload,
+  DownloadResolution
 } from '../types';
 import { MOCK_HOME_CATALOG, MOCK_TITLES, MOCK_SEASONS, MOCK_ITEMS } from './mock.data';
 
@@ -1609,5 +1610,88 @@ export const api = {
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to update administrator account' };
     }
+  },
+
+  // Video Download Resolution & Stream Proxy URL Generation
+  resolveDownload: async (
+    contentId: string,
+    type: 'movie' | 'tv' | 'anime' = 'movie',
+    options?: { season?: number; episode?: number; title?: string; duration?: number }
+  ): Promise<DownloadResolution> => {
+    try {
+      const params = new URLSearchParams({
+        contentId: String(contentId),
+        type
+      });
+      if (options?.season !== undefined) params.set('season', String(options.season));
+      if (options?.episode !== undefined) params.set('episode', String(options.episode));
+      if (options?.title) params.set('title', options.title);
+      if (options?.duration) params.set('duration', String(options.duration));
+
+      const res = await apiFetch<DownloadResolution>(`/download/resolve?${params.toString()}`);
+      return res;
+    } catch {
+      // Fallback with duration-based estimation if offline or backend unreachable
+      const dur = options?.duration || (type === 'tv' ? 45 : 105);
+      const safeTitle = (options?.title || 'Video').replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim().replace(/\s+/g, '_');
+      const baseFilename = (options?.season !== undefined && options?.episode !== undefined)
+        ? `${safeTitle}_S${String(options.season).padStart(2, '0')}E${String(options.episode).padStart(2, '0')}`
+        : safeTitle;
+
+      const formatBytes = (bytes: number): string => {
+        if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(0) + ' MB';
+        return (bytes / 1024).toFixed(0) + ' KB';
+      };
+
+      const size1080 = Math.round(dur * 18 * 1024 * 1024);
+      const size720 = Math.round(dur * 9 * 1024 * 1024);
+      const size480 = Math.round(dur * 4.5 * 1024 * 1024);
+
+      return {
+        success: true,
+        contentId,
+        type,
+        title: options?.title,
+        season: options?.season,
+        episode: options?.episode,
+        defaultQuality: '1080p',
+        qualities: [
+          {
+            quality: '1080p',
+            label: '1080p (Full HD)',
+            sizeBytes: size1080,
+            formattedSize: formatBytes(size1080),
+            isEstimated: true,
+            url: '',
+            streamProxyUrl: ''
+          },
+          {
+            quality: '720p',
+            label: '720p (Standard HD)',
+            sizeBytes: size720,
+            formattedSize: formatBytes(size720),
+            isEstimated: true,
+            url: '',
+            streamProxyUrl: ''
+          },
+          {
+            quality: '480p',
+            label: '480p (Data Saver)',
+            sizeBytes: size480,
+            formattedSize: formatBytes(size480),
+            isEstimated: true,
+            url: '',
+            streamProxyUrl: ''
+          }
+        ],
+        downloadFilename: `${baseFilename}_1080p.mp4`
+      };
+    }
+  },
+
+  getDownloadStreamUrl: (upstreamUrl: string, filename: string): string => {
+    const base = getBackendBaseUrl();
+    return `${base}/api/v1/download/stream?url=${encodeURIComponent(upstreamUrl)}&filename=${encodeURIComponent(filename)}`;
   }
 };

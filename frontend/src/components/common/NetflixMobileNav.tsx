@@ -6,7 +6,8 @@ import {
   Search,
   LayoutGrid,
   Bookmark,
-  Settings
+  Settings,
+  Download
 } from 'lucide-react';
 import { NetflixProfile } from '../profile/ProfileSelector';
 import { NetflixNavTab } from './NetflixSidebar';
@@ -31,7 +32,7 @@ export const NetflixMobileNav: React.FC<NetflixMobileNavProps> = ({
     { id: 'series', label: 'Series', icon: Tv },
     { id: 'movies', label: 'Movies', icon: Film },
     { id: 'search', label: 'Search', icon: Search },
-    { id: 'categories', label: 'Categories', icon: LayoutGrid },
+    { id: 'downloads', label: 'Downloads', icon: Download },
     { id: 'watchlist', label: 'My List', icon: Bookmark }
   ];
 

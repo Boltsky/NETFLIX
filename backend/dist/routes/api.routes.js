@@ -17,6 +17,10 @@ router.get('/seasons/:id/episodes', catalog_controller_js_1.CatalogController.ge
 // Playback Resolution
 router.get('/playback/resolve', catalog_controller_js_1.CatalogController.resolvePlayback);
 router.post('/playback/resolve', catalog_controller_js_1.CatalogController.resolvePlayback);
+// Video Download Resolution & Streaming Bridge
+router.get('/download/resolve', catalog_controller_js_1.CatalogController.resolveDownload);
+router.post('/download/resolve', catalog_controller_js_1.CatalogController.resolveDownload);
+router.get('/download/stream', catalog_controller_js_1.CatalogController.streamDownload);
 // Profiles
 router.get('/users/me/profiles', catalog_controller_js_1.CatalogController.getProfiles);
 // Watchlist

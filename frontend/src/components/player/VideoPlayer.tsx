@@ -34,6 +34,7 @@ interface VideoPlayerProps {
   onExit: () => void;
   onNextEpisode?: () => void;
   onGoHome?: () => void;
+  offlineBlobUrl?: string;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -44,7 +45,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   initialTime,
   onExit,
   onNextEpisode,
-  onGoHome
+  onGoHome,
+  offlineBlobUrl
 }) => {
   const [resolution, setResolution] = useState<PlaybackResolution | null>(null);
   const [loading, setLoading] = useState(true);
@@ -897,6 +899,36 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // Log movie / episode playback telemetry
     analytics.trackMovieWatch(item, season, episode);
+
+    // If an offline blob URL is provided, play directly from browser IndexedDB storage
+    if (offlineBlobUrl) {
+      setResolution({
+        success: true,
+        contentId: item.id,
+        mediaType: item.type,
+        season,
+        episode,
+        provider: 'Offline Local Storage',
+        sources: [
+          {
+            url: offlineBlobUrl,
+            quality: '1080p',
+            type: 'mp4',
+            server: 'Local Storage (IndexedDB)',
+            skipProxy: true
+          }
+        ],
+        subtitles: [],
+        embedUrl: '',
+        embedServers: [],
+        alternates: []
+      });
+      setLoading(false);
+      setCurrentSourceIndex(0);
+      setUseIframeFallback(false);
+      setIsPlaying(true);
+      return;
+    }
 
     api.resolvePlayback(item.id, item.type, season, episode, item.title)
       .then((res) => {

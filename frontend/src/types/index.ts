@@ -313,3 +313,60 @@ export interface UpdateAdminAccountPayload {
   currentPassword?: string;
   newPassword?: string;
 }
+
+export interface DownloadQualityOption {
+  quality: string;
+  label: string;
+  sizeBytes: number;
+  formattedSize: string;
+  isEstimated: boolean;
+  url: string;
+  streamProxyUrl: string;
+}
+
+export interface DownloadResolution {
+  success: boolean;
+  contentId: string;
+  type: 'movie' | 'tv' | 'anime';
+  title?: string;
+  season?: number;
+  episode?: number;
+  defaultQuality: string;
+  qualities: DownloadQualityOption[];
+  downloadFilename: string;
+  error?: string;
+}
+
+export type DownloadStatus = 'idle' | 'resolving' | 'downloading' | 'paused' | 'completed' | 'error';
+
+export interface DownloadedItem {
+  id: string; // unique key e.g. "movie_550" or "tv_60574_s1_e1"
+  contentId: string;
+  mediaType: 'movie' | 'tv' | 'anime';
+  title: string;
+  poster?: string;
+  backdrop?: string;
+  season?: number;
+  episode?: number;
+  episodeName?: string;
+  quality: string;
+  sizeBytes: number;
+  formattedSize: string;
+  blob?: Blob;
+  blobUrl?: string;
+  createdAt: string;
+  status: DownloadStatus;
+  progressPercent: number;
+  downloadSpeed?: string;
+  error?: string;
+}
+
+export interface StorageQuotaInfo {
+  usedBytes: number;
+  totalBytes: number;
+  availableBytes: number;
+  usedFormatted: string;
+  totalFormatted: string;
+  availableFormatted: string;
+  percentUsed: number;
+}

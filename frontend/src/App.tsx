@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem, CatalogRail } from './types';
+import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem, CatalogRail, DownloadedItem } from './types';
 import { api } from './services/api';
 import { FocusProvider, useFocus } from './components/focus/FocusContext';
 import { NetflixSidebar, NetflixNavTab } from './components/common/NetflixSidebar';
@@ -11,6 +11,7 @@ import { ContentDetails } from './components/details/ContentDetails';
 import { VideoPlayer } from './components/player/VideoPlayer';
 import { SearchScreen } from './components/search/SearchScreen';
 import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
+import { DownloadsScreen } from './components/downloads/DownloadsScreen';
 import { CategoriesScreen } from './components/categories/CategoriesScreen';
 import { SettingsScreen } from './components/settings/SettingsScreen';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
@@ -23,7 +24,7 @@ import { UpdateModal } from './components/common/UpdateModal';
 
 const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
-type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'categories' | 'search' | 'details' | 'player' | 'settings' | 'analytics';
+type Screen = 'profiles' | 'home' | 'series' | 'movies' | 'popular' | 'watchlist' | 'downloads' | 'categories' | 'search' | 'details' | 'player' | 'settings' | 'analytics';
 
 const ScreenFocusController: React.FC<{
   screen: Screen;
@@ -51,6 +52,8 @@ const ScreenFocusController: React.FC<{
         window.scrollTo({ top: 0, behavior: 'auto' });
         setFocusedKey('cat-pill-cat-trending');
       } else if (screen === 'watchlist') {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      } else if (screen === 'downloads') {
         window.scrollTo({ top: 0, behavior: 'auto' });
       } else if (screen === 'settings') {
         window.scrollTo({ top: 0, behavior: 'auto' });
@@ -92,6 +95,7 @@ export const App: React.FC = () => {
 
   // Selected media for details / player
   const [selectedTitle, setSelectedTitle] = useState<MediaItem | null>(null);
+  const [offlineBlobUrl, setOfflineBlobUrl] = useState<string | undefined>(undefined);
   const [playerTarget, setPlayerTarget] = useState<{
     item: MediaItem;
     season?: number;
@@ -321,7 +325,7 @@ export const App: React.FC = () => {
           }).catch(() => {});
         }
       } else {
-        const validScreens: Screen[] = ['home', 'series', 'movies', 'popular', 'watchlist', 'categories', 'search', 'settings', 'analytics'];
+        const validScreens: Screen[] = ['home', 'series', 'movies', 'popular', 'watchlist', 'downloads', 'categories', 'search', 'settings', 'analytics'];
         if (validScreens.includes(route as Screen)) {
           setCurrentScreen(route as Screen);
           window.history.replaceState({ screen: route }, '', initialHash);
@@ -430,10 +434,27 @@ export const App: React.FC = () => {
   }, [navigateTo]);
 
   // Launch Player
-  const handleLaunchPlayer = useCallback((item: MediaItem, season?: number, episode?: number) => {
+  const handleLaunchPlayer = useCallback((item: MediaItem, season?: number, episode?: number, blobUrl?: string) => {
+    setOfflineBlobUrl(blobUrl);
     analytics.trackMovieWatch(item, season, episode);
     navigateTo('player', { item, season, episode });
   }, [navigateTo]);
+
+  // Launch Player for direct offline local storage playback
+  const handlePlayOffline = useCallback((item: DownloadedItem, blobUrl: string) => {
+    handleLaunchPlayer(
+      {
+        id: item.contentId,
+        title: item.title,
+        type: item.mediaType,
+        poster: item.poster,
+        backdrop: item.backdrop
+      },
+      item.season,
+      item.episode,
+      blobUrl
+    );
+  }, [handleLaunchPlayer]);
 
   useEffect(() => {
     (window as any).cinewavePlay = (id: string, title?: string, type: 'movie' | 'tv' = 'movie', season?: number, episode?: number) => {
@@ -826,6 +847,7 @@ export const App: React.FC = () => {
             episode={playerTarget.episode}
             initialTime={playerTarget.initialTime}
             profileId={activeProfile.id}
+            offlineBlobUrl={offlineBlobUrl}
             onExit={handleExitPlayer}
             onNextEpisode={handleNextEpisode}
             onGoHome={() => {
@@ -843,6 +865,7 @@ export const App: React.FC = () => {
             mediaType={selectedTitle.type}
             profileId={activeProfile.id}
             onPlay={handleLaunchPlayer}
+            onPlayOffline={handlePlayOffline}
             onBack={() => {
               setSelectedTitle(null);
               navigateTo('home');
@@ -884,6 +907,17 @@ export const App: React.FC = () => {
               profileId={activeProfile.id}
               onSelectTitle={handleOpenDetails}
               onExplore={() => navigateTo('home')}
+            />
+          </div>
+        )}
+
+        {/* SCREEN 4.5: Downloads */}
+        {currentScreen === 'downloads' && (
+          <div className="md:pl-18 pl-0 pb-16 md:pb-0">
+            <DownloadsScreen
+              onPlayOffline={handlePlayOffline}
+              onExplore={() => navigateTo('home')}
+              onSelectTitle={handleOpenDetails}
             />
           </div>
         )}

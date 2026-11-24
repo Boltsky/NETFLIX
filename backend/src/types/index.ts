@@ -100,6 +100,29 @@ export interface PlaybackResolution {
   error?: string;
 }
 
+export interface DownloadQualityOption {
+  quality: string;
+  label: string;
+  sizeBytes: number;
+  formattedSize: string;
+  isEstimated: boolean;
+  url: string;
+  streamProxyUrl: string;
+}
+
+export interface DownloadResolution {
+  success: boolean;
+  contentId: string;
+  type: 'movie' | 'tv' | 'anime';
+  title?: string;
+  season?: number;
+  episode?: number;
+  defaultQuality: string;
+  qualities: DownloadQualityOption[];
+  downloadFilename: string;
+  error?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;

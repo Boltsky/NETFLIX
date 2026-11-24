@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
+import { Readable } from 'stream';
 import { FrameXTVAdapter } from '../providers/framextv.adapter.js';
 import { db } from '../db/database.js';
+import { DownloadQualityOption } from '../types/index.js';
 
 const provider = new FrameXTVAdapter();
 
@@ -245,6 +247,193 @@ export class CatalogController {
       res.send(text);
     } catch (err: any) {
       res.status(500).send('Subtitle proxy error: ' + (err?.message || 'unknown error'));
+    }
+  }
+
+  // Format byte counts into human-readable strings
+  static formatBytes(bytes: number): string {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    }
+    if (bytes >= 1024 * 1024) {
+      return (bytes / (1024 * 1024)).toFixed(0) + ' MB';
+    }
+    return (bytes / 1024).toFixed(0) + ' KB';
+  }
+
+  // Download Resolution endpoint: returns available qualities, file sizes (exact or estimated), and stream proxy URLs
+  static async resolveDownload(req: Request, res: Response) {
+    try {
+      const contentId = (req.query.contentId as string) || req.body?.contentId;
+      const type = ((req.query.type as string) || req.body?.type || 'movie') as 'movie' | 'tv' | 'anime';
+      const season = req.query.season ? parseInt(String(req.query.season), 10) : (req.body?.season ? parseInt(String(req.body.season), 10) : undefined);
+      const episode = req.query.episode ? parseInt(String(req.query.episode), 10) : (req.body?.episode ? parseInt(String(req.body.episode), 10) : undefined);
+      const title = (req.query.title as string) || req.body?.title || 'Video';
+      const rawDuration = req.query.duration ? parseInt(String(req.query.duration), 10) : (req.body?.duration ? parseInt(String(req.body.duration), 10) : undefined);
+      const durationMinutes = rawDuration && rawDuration > 0 ? rawDuration : (type === 'tv' ? 45 : 105);
+
+      if (!contentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'contentId is required'
+        });
+      }
+
+      const resolution = await provider.resolvePlayback(
+        String(contentId),
+        type,
+        season,
+        episode
+      );
+
+      const sources = resolution.sources || [];
+      const safeTitle = title.replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim().replace(/\s+/g, '_');
+      const baseFilename = (season !== undefined && episode !== undefined)
+        ? `${safeTitle}_S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+        : safeTitle;
+
+      // Quality tiers configuration with default bitrates (1080p Full HD default)
+      const qualityConfigs = [
+        { quality: '1080p', label: '1080p (Full HD)', bytesPerMin: 18 * 1024 * 1024 }, // ~2.4 Mbps (~1.8 GB for 100m)
+        { quality: '720p', label: '720p (Standard HD)', bytesPerMin: 9 * 1024 * 1024 },  // ~1.2 Mbps (~900 MB for 100m)
+        { quality: '480p', label: '480p (Data Saver)', bytesPerMin: 4.5 * 1024 * 1024 }  // ~0.6 Mbps (~450 MB for 100m)
+      ];
+
+      const qualities: DownloadQualityOption[] = [];
+
+      for (const config of qualityConfigs) {
+        // Find matching direct source or first available
+        const matchedSource = sources.find(s => s.quality === config.quality) || sources[0];
+        let url = matchedSource ? matchedSource.url : '';
+        let isEstimated = true;
+        let sizeBytes = Math.round(durationMinutes * config.bytesPerMin);
+
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+          try {
+            // Attempt fast HEAD probe to obtain exact Content-Length
+            const headRes = await fetch(url, {
+              method: 'HEAD',
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+              signal: AbortSignal.timeout(1800)
+            });
+            const cl = headRes.headers.get('content-length');
+            if (cl) {
+              const parsedCl = parseInt(cl, 10);
+              if (parsedCl > 5000000) {
+                sizeBytes = parsedCl;
+                isEstimated = false;
+              }
+            }
+          } catch {
+            // Use estimated duration-based calculation
+          }
+        }
+
+        const filename = `${baseFilename}_${config.quality}.mp4`;
+        const streamProxyUrl = url 
+          ? `/api/v1/download/stream?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+          : '';
+
+        qualities.push({
+          quality: config.quality,
+          label: config.label,
+          sizeBytes,
+          formattedSize: CatalogController.formatBytes(sizeBytes),
+          isEstimated,
+          url,
+          streamProxyUrl
+        });
+      }
+
+      res.json({
+        success: true,
+        contentId: String(contentId),
+        type,
+        title,
+        season,
+        episode,
+        defaultQuality: '1080p',
+        qualities,
+        downloadFilename: `${baseFilename}_1080p.mp4`
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Download resolution failed'
+      });
+    }
+  }
+
+  // Stream Proxy endpoint: pipes video stream with Content-Disposition: attachment for direct file saving & CORS-free chunking
+  static async streamDownload(req: Request, res: Response) {
+    try {
+      const url = req.query.url as string;
+      const filename = (req.query.filename as string) || 'video.mp4';
+
+      if (!url) {
+        return res.status(400).send('Missing url parameter');
+      }
+
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return res.status(400).send('Invalid protocol');
+      }
+
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*'
+      };
+
+      if (req.headers.range) {
+        headers['Range'] = String(req.headers.range);
+      }
+
+      const abortController = new AbortController();
+      req.on('close', () => {
+        abortController.abort();
+      });
+
+      const response = await fetch(url, {
+        headers,
+        signal: abortController.signal
+      });
+
+      if (!response.ok && response.status !== 206) {
+        return res.status(response.status).send(`Upstream download server returned HTTP ${response.status}`);
+      }
+
+      // Forward relevant headers
+      const contentType = response.headers.get('content-type') || 'video/mp4';
+      const contentLength = response.headers.get('content-length');
+      const contentRange = response.headers.get('content-range');
+      const acceptRanges = response.headers.get('accept-ranges') || 'bytes';
+
+      res.status(response.status);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Accept-Ranges', acceptRanges);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Disposition, Accept-Ranges');
+
+      if (contentLength) {
+        res.setHeader('Content-Length', contentLength);
+      }
+      if (contentRange) {
+        res.setHeader('Content-Range', contentRange);
+      }
+
+      if (response.body) {
+        Readable.fromWeb(response.body as any).pipe(res);
+      } else {
+        res.end();
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
+      if (!res.headersSent) {
+        res.status(500).send('Download stream proxy error: ' + (err?.message || 'unknown error'));
+      }
     }
   }
 }

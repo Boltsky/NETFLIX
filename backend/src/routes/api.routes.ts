@@ -21,6 +21,11 @@ router.get('/seasons/:id/episodes', CatalogController.getEpisodes);
 router.get('/playback/resolve', CatalogController.resolvePlayback);
 router.post('/playback/resolve', CatalogController.resolvePlayback);
 
+// Video Download Resolution & Streaming Bridge
+router.get('/download/resolve', CatalogController.resolveDownload);
+router.post('/download/resolve', CatalogController.resolveDownload);
+router.get('/download/stream', CatalogController.streamDownload);
+
 // Profiles
 router.get('/users/me/profiles', CatalogController.getProfiles);
 
