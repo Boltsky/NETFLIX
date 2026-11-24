@@ -1086,20 +1086,20 @@ export const api = {
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://multiembed.mov/?video_id=${contentId}&tmdb=1&s=${s}&e=${e}`
-          : `https://multiembed.mov/?video_id=${contentId}&tmdb=1`
+          ? `https://autoembed.to/tv/tmdb/${contentId}-${s}-${e}`
+          : `https://autoembed.to/movie/tmdb/${contentId}`
       },
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://www.2embed.cc/embedtv/${contentId}&s=${s}&e=${e}`
-          : `https://www.2embed.cc/embed/${contentId}`
+          ? `https://vidsrc.pm/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.pm/embed/movie/${contentId}`
       },
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.me/embed/tv/${contentId}/${s}/${e}`
-          : `https://vidsrc.me/embed/movie/${contentId}`
+          ? `https://vidsrc.net/embed/tv/${contentId}/${s}/${e}`
+          : `https://vidsrc.net/embed/movie/${contentId}`
       }
     ];
 

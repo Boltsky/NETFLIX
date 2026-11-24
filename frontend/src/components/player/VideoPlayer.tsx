@@ -287,9 +287,43 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const showAudioSubtitleModalRef = useRef(false);
   showAudioSubtitleModalRef.current = showAudioSubtitleModal;
 
+  const normalizeServerUrl = useCallback((rawUrl: string): string => {
+    if (!rawUrl) return rawUrl;
+    const isEpisodic = item.type === 'tv' || item.type === 'anime';
+    const s = season || 1;
+    const e = episode || 1;
+
+    // 1. Replace multiembed.mov (which intentionally blocks sandboxed iframes) with clean sandbox-compatible autoembed.to
+    if (rawUrl.includes('multiembed.mov')) {
+      return isEpisodic
+        ? `https://autoembed.to/tv/tmdb/${item.id}-${s}-${e}`
+        : `https://autoembed.to/movie/tmdb/${item.id}`;
+    }
+    // 2. Replace 2embed.cc (which intentionally blocks sandboxed iframes) with clean vidsrc.pm
+    if (rawUrl.includes('2embed.cc')) {
+      return isEpisodic
+        ? `https://vidsrc.pm/embed/tv/${item.id}/${s}/${e}`
+        : `https://vidsrc.pm/embed/movie/${item.id}`;
+    }
+    // 3. Replace broken vidlink.pro with verified player.autoembed.me
+    if (rawUrl.includes('vidlink.pro')) {
+      return isEpisodic
+        ? `https://player.autoembed.me/embed/tv/${item.id}/${s}/${e}?autoplay=1`
+        : `https://player.autoembed.me/embed/movie/${item.id}?autoplay=1`;
+    }
+    // 4. Replace dead vidsrc.me domain with active vidsrc.net
+    if (rawUrl.includes('vidsrc.me')) {
+      return rawUrl.replace('vidsrc.me', 'vidsrc.net');
+    }
+    return rawUrl;
+  }, [item.id, item.type, season, episode]);
+
   const servers = useMemo(() => {
     if (resolution?.embedServers && resolution.embedServers.length > 0) {
-      return resolution.embedServers;
+      return resolution.embedServers.map((srv) => ({
+        ...srv,
+        url: normalizeServerUrl(srv.url)
+      }));
     }
     const isEpisodic = item.type === 'tv' || item.type === 'anime';
     const s = season || 1;
@@ -304,29 +338,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {
         name: 'Server 2 (AutoEmbed)',
         url: isEpisodic
-          ? `https://vidlink.pro/tv/${item.id}/${s}/${e}?primaryColor=e50914&autoplay=true`
-          : `https://vidlink.pro/movie/${item.id}?primaryColor=e50914&autoplay=true`
+          ? `https://player.autoembed.me/embed/tv/${item.id}/${s}/${e}?autoplay=1`
+          : `https://player.autoembed.me/embed/movie/${item.id}?autoplay=1`
       },
       {
         name: 'Server 3 (MultiEmbed)',
         url: isEpisodic
-          ? `https://multiembed.mov/?video_id=${item.id}&tmdb=1&s=${s}&e=${e}`
-          : `https://multiembed.mov/?video_id=${item.id}&tmdb=1`
+          ? `https://autoembed.to/tv/tmdb/${item.id}-${s}-${e}`
+          : `https://autoembed.to/movie/tmdb/${item.id}`
       },
       {
         name: 'Server 4 (2Embed)',
         url: isEpisodic
-          ? `https://www.2embed.cc/embedtv/${item.id}&s=${s}&e=${e}`
-          : `https://www.2embed.cc/embed/${item.id}`
+          ? `https://vidsrc.pm/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.pm/embed/movie/${item.id}`
       },
       {
         name: 'Server 5 (VidSrc)',
         url: isEpisodic
-          ? `https://vidsrc.me/embed/tv/${item.id}/${s}/${e}`
-          : `https://vidsrc.me/embed/movie/${item.id}`
+          ? `https://vidsrc.net/embed/tv/${item.id}/${s}/${e}`
+          : `https://vidsrc.net/embed/movie/${item.id}`
       }
     ];
-  }, [resolution, item, season, episode]);
+  }, [resolution, item, season, episode, normalizeServerUrl]);
 
   const bottomControls = useMemo<Array<FocusedControl>>(() => {
     if (useIframeFallback) {
@@ -350,14 +384,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   bottomControlsRef.current = bottomControls;
 
   const currentEmbedUrl = useMemo(() => {
-    const base = servers[selectedServerIndex]?.url || resolution?.embedUrl;
-    if (!base) return '';
+    const raw = servers[selectedServerIndex]?.url || resolution?.embedUrl;
+    if (!raw) return '';
+    const base = normalizeServerUrl(raw);
     if (initialResumeTimeSec > 0 && !hasAppliedResumeRef.current) {
       const sep = base.includes('?') ? '&' : '?';
       return `${base}${sep}start=${Math.floor(initialResumeTimeSec)}`;
     }
     return base;
-  }, [servers, selectedServerIndex, resolution, initialResumeTimeSec]);
+  }, [servers, selectedServerIndex, resolution, initialResumeTimeSec, normalizeServerUrl]);
 
   const handleSwitchServer = useCallback((targetIndex: number, manual: boolean = true) => {
     const nextIndex = ((targetIndex % servers.length) + servers.length) % servers.length;
@@ -1247,6 +1282,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         rawMsg.includes('no streams found') ||
         rawMsg.includes('playback crashed') ||
         rawMsg.includes('video could not be loaded') ||
+        rawMsg.includes('sandboxed frame') ||
+        rawMsg.includes('isSandboxed') ||
+        rawMsg.includes('sandboxed') ||
         rawMsg.includes('file was deleted') ||
         (typeof data.src === 'string' && (data.src.includes('atlantic.st') || data.src.includes('classroom.best')));
 

@@ -925,9 +925,9 @@ describe('Challenger M1: Empirical Watchdog & Failover Stress Verification', () 
       expect(isNativeAndroidApp()).toBe(false);
 
       // 2. When Android bridges exist, isNativeAndroidApp returns true
-      (window as any).AndroidTV = {};
+      (globalThis as any).window = { AndroidTV: {} };
       expect(isNativeAndroidApp()).toBe(true);
-      delete (window as any).AndroidTV;
+      delete (globalThis as any).window;
 
       // 3. App.tsx strictly disables startup update check on website
       const appPath = path.resolve(__dirname, '../App.tsx');
