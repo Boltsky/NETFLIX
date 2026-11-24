@@ -47,7 +47,7 @@ export function getBackendBaseUrl(): string {
     if (host === 'localhost' || host === '127.0.0.1') {
       return `http://${host}:8080`;
     }
-    if (host.includes('onrender.com')) {
+    if (host.includes('onrender.com') || host.includes('vercel.app')) {
       return 'https://netflix-api-yosg.onrender.com';
     }
   }
