@@ -677,47 +677,77 @@ const DownloadDetailsButton: React.FC<{
         </div>
       )}
 
-      {/* Main Download Action Button */}
-      <button
-        ref={ref}
-        onClick={() => setShowModal((prev) => !prev)}
-        className={`flex items-center justify-center space-x-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-[4px] font-bold text-xs sm:text-sm transition-all tv-focusable shrink-0 cursor-pointer ${
-          isFocused
-            ? 'scale-105 bg-white text-black shadow-2xl ring-4 ring-white/50'
-            : isCompleted
-            ? 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40'
-            : isDownloading
-            ? 'bg-red-950/90 text-red-200 border border-red-500/50'
-            : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-white/20'
-        }`}
-        title="Download Options & Video Sizes"
-      >
-        {isDownloading ? (
-          <>
-            <RefreshCw className="w-4 h-4 animate-spin text-red-400" />
-            <span>Downloading {downloadedItem?.progressPercent || 0}%</span>
-          </>
-        ) : isCompleted ? (
-          <>
-            <CheckCircle className="w-4 h-4 text-emerald-400" />
-            <span>Downloaded</span>
-            <span className="text-[11px] font-mono px-1.5 py-0.2 bg-black/40 rounded text-emerald-300">
-              {downloadedItem?.formattedSize || activeQualityOption?.formattedSize}
-            </span>
-          </>
-        ) : (
-          <>
-            <Download className="w-4 h-4 text-zinc-300" />
-            <span>Download</span>
-            {activeQualityOption && (
-              <span className="text-[11px] font-mono px-1.5 py-0.2 bg-black/50 rounded text-zinc-300 border border-white/10">
-                {activeQualityOption.formattedSize}
+      {/* Main Download Action Button Container */}
+      <div className="flex items-center rounded-[4px] overflow-hidden bg-zinc-800 border border-white/20 transition-all">
+        <button
+          ref={ref}
+          onClick={
+            isCompleted
+              ? handlePlayOffline
+              : isDownloading
+              ? () => setShowModal(true)
+              : () => handleStartDownload('offline')
+          }
+          className={`flex items-center space-x-2 px-3.5 sm:px-4 py-2 sm:py-2.5 font-bold text-xs sm:text-sm transition-all tv-focusable cursor-pointer ${
+            isFocused
+              ? 'scale-105 bg-white text-black shadow-2xl ring-4 ring-white/50'
+              : isCompleted
+              ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300'
+              : isDownloading
+              ? 'bg-red-950/90 text-red-200'
+              : 'hover:bg-zinc-700 text-white'
+          }`}
+          title={isCompleted ? 'Play offline from local storage' : isDownloading ? `Downloading ${downloadedItem?.progressPercent || 0}%` : 'Download to Local Storage in 1080p'}
+        >
+          {isDownloading ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin text-red-400" />
+              <span>Downloading {downloadedItem?.progressPercent || 0}%</span>
+              {downloadedItem?.downloadSpeed && (
+                <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline">
+                  {downloadedItem.downloadSpeed}
+                </span>
+              )}
+            </>
+          ) : isCompleted ? (
+            <>
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <span>Downloaded</span>
+              <span className="text-[11px] font-mono px-1.5 py-0.2 bg-black/40 rounded text-emerald-300">
+                {downloadedItem?.formattedSize || activeQualityOption?.formattedSize}
               </span>
-            )}
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
-          </>
-        )}
-      </button>
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4 text-zinc-300" />
+              <span>Download</span>
+              {activeQualityOption && (
+                <span className="text-[11px] font-mono px-1.5 py-0.2 bg-black/50 rounded text-zinc-300 border border-white/10">
+                  {activeQualityOption.formattedSize}
+                </span>
+              )}
+            </>
+          )}
+        </button>
+
+        {/* Dropdown Options Toggle Arrow Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowModal((prev) => !prev);
+          }}
+          className={`px-2 py-2 sm:py-2.5 border-l border-white/10 transition-colors cursor-pointer ${
+            isCompleted
+              ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-300'
+              : isDownloading
+              ? 'bg-red-950 text-red-300'
+              : 'hover:bg-zinc-700 text-zinc-400 hover:text-white'
+          }`}
+          title="Download Options & Video Sizes"
+        >
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showModal ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
 
       {/* Download Modal / Dropdown Dialog */}
       {showModal && (

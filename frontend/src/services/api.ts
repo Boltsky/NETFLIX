@@ -32,7 +32,7 @@ const FRAMEX_BACKENDS = [
   'https://api.framextv.xyz'
 ];
 
-function getBackendBaseUrl(): string {
+export function getBackendBaseUrl(): string {
   if (typeof window !== 'undefined' && window.CINEWAVE_BACKEND_URL) {
     return window.CINEWAVE_BACKEND_URL.replace(/\/+$/, '');
   }

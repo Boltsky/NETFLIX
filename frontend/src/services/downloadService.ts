@@ -1,5 +1,5 @@
 import { DownloadedItem, DownloadQualityOption, DownloadResolution, StorageQuotaInfo } from '../types';
-import { api } from './api';
+import { api, getBackendBaseUrl } from './api';
 
 const DB_NAME = 'netflix_downloads_db';
 const DB_VERSION = 1;
@@ -398,9 +398,29 @@ class DownloadService {
       ? `${safeTitle}_S${String(opts.season).padStart(2, '0')}E${String(opts.episode).padStart(2, '0')}_${quality}.mp4`
       : `${safeTitle}_${quality}.mp4`;
 
-    const downloadStreamUrl = chosenQuality?.streamProxyUrl
-      ? (chosenQuality.streamProxyUrl.startsWith('http') ? chosenQuality.streamProxyUrl : `${window.location.origin}${chosenQuality.streamProxyUrl}`)
+    const backendBase = getBackendBaseUrl() || (typeof window !== 'undefined' ? window.location.origin : '');
+    let downloadStreamUrl = chosenQuality?.streamProxyUrl
+      ? (chosenQuality.streamProxyUrl.startsWith('http') ? chosenQuality.streamProxyUrl : `${backendBase}${chosenQuality.streamProxyUrl}`)
       : (chosenQuality?.url ? api.getDownloadStreamUrl(chosenQuality.url, filename) : '');
+
+    // Client-side stream fallback if backend could not reach upstream provider (e.g. cloud host IP blocked)
+    if (!downloadStreamUrl || !chosenQuality?.url) {
+      try {
+        const clientRes = await api.resolvePlayback(opts.contentId, opts.mediaType, opts.season, opts.episode, opts.title);
+        if (clientRes && clientRes.sources && clientRes.sources.length > 0) {
+          const directSrc = clientRes.sources[0].url;
+          downloadStreamUrl = api.getDownloadStreamUrl(directSrc, filename);
+        }
+      } catch (err) {
+        console.warn('[DownloadService] Client stream resolution fallback failed:', err);
+      }
+    }
+
+    // High-definition reliable stream fallback so local download NEVER fails with empty stream error
+    if (!downloadStreamUrl) {
+      const fallbackUrl = `https://api.framextv.tech/api/stream?id=${encodeURIComponent(opts.contentId)}&type=${opts.mediaType === 'tv' ? 'tv' : 'movie'}&provider=bowler`;
+      downloadStreamUrl = api.getDownloadStreamUrl(fallbackUrl, filename);
+    }
 
     const item: DownloadedItem = {
       id,
@@ -500,6 +520,7 @@ class DownloadService {
 
               const percent = Math.min(99, Math.round((receivedBytes / totalBytes) * 100));
               item.progressPercent = percent;
+              await this.saveItem(item);
               this.notifyProgress(item);
             }
           }

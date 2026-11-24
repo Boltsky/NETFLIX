@@ -258,7 +258,55 @@ class CatalogController {
                 });
             }
             const resolution = await provider.resolvePlayback(String(contentId), type, season, episode);
-            const sources = resolution.sources || [];
+            let sources = resolution.sources || [];
+            // If primary upstream returned no direct sources, query alternate stream providers
+            if (sources.length === 0) {
+                const alternates = ['bowler', 'giant', 'executioner'];
+                const backends = ['https://api.framextv.tech', 'https://api.framextv.xyz', 'https://api.framextv.cc'];
+                for (const alt of alternates) {
+                    try {
+                        let altPath = `/api/stream?id=${encodeURIComponent(contentId)}&type=${type === 'tv' ? 'tv' : 'movie'}&provider=${alt}`;
+                        if (type === 'tv')
+                            altPath += `&season=${season || 1}&episode=${episode || 1}`;
+                        for (const b of backends) {
+                            try {
+                                const altRes = await fetch(`${b}${altPath}`, {
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                        'Referer': 'https://framextv.cc/'
+                                    },
+                                    signal: AbortSignal.timeout(2500)
+                                });
+                                if (altRes.ok) {
+                                    const altData = await altRes.json();
+                                    if (altData && altData.success && Array.isArray(altData.sources) && altData.sources.length > 0) {
+                                        sources = altData.sources.map((s) => ({
+                                            url: s.url,
+                                            quality: s.quality || '1080p',
+                                            type: s.type || 'hls',
+                                            server: s.server || alt
+                                        }));
+                                        break;
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                        if (sources.length > 0)
+                            break;
+                    }
+                    catch { }
+                }
+            }
+            // If still empty, supply the direct stream resolver URL so streamProxyUrl is always populated
+            if (sources.length === 0) {
+                const fallbackResolverUrl = `https://api.framextv.tech/api/stream?id=${encodeURIComponent(contentId)}&type=${type === 'tv' ? 'tv' : 'movie'}${type === 'tv' ? `&season=${season || 1}&episode=${episode || 1}` : ''}&provider=bowler`;
+                sources = [
+                    { url: fallbackResolverUrl, quality: '1080p', type: 'hls', server: 'Bowler' },
+                    { url: fallbackResolverUrl, quality: '720p', type: 'hls', server: 'Bowler' }
+                ];
+            }
             const safeTitle = title.replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim().replace(/\s+/g, '_');
             const baseFilename = (season !== undefined && episode !== undefined)
                 ? `${safeTitle}_S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
@@ -353,14 +401,102 @@ class CatalogController {
             req.on('close', () => {
                 abortController.abort();
             });
-            const response = await fetch(url, {
+            let targetUrl = url;
+            // If url is a stream resolver API endpoint, resolve target stream URL first
+            if (url.includes('/api/stream')) {
+                try {
+                    const apiRes = await fetch(url, { headers, signal: abortController.signal });
+                    if (apiRes.ok) {
+                        const apiData = await apiRes.json();
+                        if (apiData && apiData.success && Array.isArray(apiData.sources) && apiData.sources.length > 0) {
+                            targetUrl = apiData.sources[0].url;
+                        }
+                    }
+                }
+                catch { }
+            }
+            const response = await fetch(targetUrl, {
                 headers,
                 signal: abortController.signal
             });
             if (!response.ok && response.status !== 206) {
                 return res.status(response.status).send(`Upstream download server returned HTTP ${response.status}`);
             }
-            // Forward relevant headers
+            // Check if upstream is an HLS playlist (.m3u8)
+            const rawContentType = (response.headers.get('content-type') || '').toLowerCase();
+            const isM3U8 = targetUrl.includes('.m3u8') || rawContentType.includes('mpegurl') || rawContentType.includes('x-mpegurl');
+            if (isM3U8) {
+                const playlistText = await response.text();
+                let mediaPlaylistUrl = targetUrl;
+                let mediaText = playlistText;
+                // If master playlist with variant streams, pick the highest quality or first media playlist
+                if (playlistText.includes('#EXT-X-STREAM-INF')) {
+                    const lines = playlistText.split('\n');
+                    let bestVariantUrl = '';
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (line.startsWith('#EXT-X-STREAM-INF')) {
+                            for (let j = i + 1; j < lines.length; j++) {
+                                const nextLine = lines[j].trim();
+                                if (nextLine && !nextLine.startsWith('#')) {
+                                    bestVariantUrl = new URL(nextLine, targetUrl).href;
+                                    break;
+                                }
+                            }
+                            if (bestVariantUrl)
+                                break;
+                        }
+                    }
+                    if (bestVariantUrl) {
+                        mediaPlaylistUrl = bestVariantUrl;
+                        const subRes = await fetch(bestVariantUrl, { headers, signal: abortController.signal });
+                        if (subRes.ok) {
+                            mediaText = await subRes.text();
+                        }
+                    }
+                }
+                // Extract segment URLs
+                const segmentUrls = [];
+                const lines = mediaText.split('\n');
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith('#')) {
+                        try {
+                            segmentUrls.push(new URL(trimmed, mediaPlaylistUrl).href);
+                        }
+                        catch { }
+                    }
+                }
+                res.status(200);
+                res.setHeader('Content-Type', 'video/mp4');
+                res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Disposition, Accept-Ranges');
+                for (const segUrl of segmentUrls) {
+                    if (abortController.signal.aborted)
+                        break;
+                    try {
+                        const segRes = await fetch(segUrl, {
+                            headers: {
+                                ...headers,
+                                'Referer': new URL(mediaPlaylistUrl).origin
+                            },
+                            signal: abortController.signal
+                        });
+                        if (segRes.ok && segRes.body) {
+                            const segBuffer = await segRes.arrayBuffer();
+                            res.write(Buffer.from(segBuffer));
+                        }
+                    }
+                    catch (e) {
+                        if (e.name === 'AbortError')
+                            break;
+                    }
+                }
+                res.end();
+                return;
+            }
+            // Forward relevant headers for direct video streams
             const contentType = response.headers.get('content-type') || 'video/mp4';
             const contentLength = response.headers.get('content-length');
             const contentRange = response.headers.get('content-range');
