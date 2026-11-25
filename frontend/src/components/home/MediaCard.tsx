@@ -19,6 +19,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   onSelect,
   onNearEnd
 }) => {
+  const initialImage = item.poster || item.backdrop;
+  const [imgSrc, setImgSrc] = useState<string | undefined>(initialImage);
   const [imageError, setImageError] = useState(false);
   const focusKey = `card-${railId}-${item.id}-${index}`;
 
@@ -34,7 +36,18 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [isFocused, onNearEnd]);
 
-  const posterUrl = item.poster || item.backdrop;
+  React.useEffect(() => {
+    setImgSrc(item.poster || item.backdrop);
+    setImageError(false);
+  }, [item.poster, item.backdrop]);
+
+  const handleImageError = () => {
+    if (imgSrc === item.poster && item.backdrop && item.backdrop !== item.poster) {
+      setImgSrc(item.backdrop);
+    } else {
+      setImageError(true);
+    }
+  };
 
   return (
     <div
@@ -52,12 +65,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       }`}
     >
       {/* Poster Image */}
-      {posterUrl && !imageError ? (
+      {imgSrc && !imageError ? (
         <img
-          src={posterUrl}
+          src={imgSrc}
           alt={item.title}
           loading="lazy"
-          onError={() => setImageError(true)}
+          onError={handleImageError}
           className="w-full h-full object-cover"
         />
       ) : (

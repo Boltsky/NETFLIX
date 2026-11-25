@@ -16,7 +16,21 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
     onEnter: () => onSelect(item)
   });
 
-  const posterUrl = item.poster || item.backdrop;
+  const [imgSrc, setImgSrc] = React.useState<string | undefined>(item.poster || item.backdrop);
+  const [imageError, setImageError] = React.useState(false);
+
+  React.useEffect(() => {
+    setImgSrc(item.poster || item.backdrop);
+    setImageError(false);
+  }, [item.poster, item.backdrop]);
+
+  const handleImageError = () => {
+    if (imgSrc === item.poster && item.backdrop && item.backdrop !== item.poster) {
+      setImgSrc(item.backdrop);
+    } else {
+      setImageError(true);
+    }
+  };
 
   return (
     <div
@@ -46,11 +60,12 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
             : 'group-hover:scale-105 group-hover:z-20 group-hover:shadow-xl group-hover:border-zinc-500'
         }`}
       >
-        {posterUrl ? (
+        {imgSrc && !imageError ? (
           <img
-            src={posterUrl}
+            src={imgSrc}
             alt={item.title}
             loading="lazy"
+            onError={handleImageError}
             className="w-full h-full object-cover"
           />
         ) : (
