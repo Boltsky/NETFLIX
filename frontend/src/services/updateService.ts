@@ -1,4 +1,4 @@
-import { CURRENT_APP_VERSION, VERSION_MANIFEST_URL, AppUpdateManifest } from '../version';
+import { CURRENT_APP_VERSION, RELEASE_HUB_URL, VERSION_MANIFEST_URL, AppUpdateManifest } from '../version';
 import { isNativeAndroidApp } from './platform';
 
 declare global {
@@ -96,8 +96,37 @@ export const updateService = {
         return null;
       }
 
-      const manifest: AppUpdateManifest = await res.json();
+      const raw: any = await res.json();
       setStorageItem(STORAGE_KEY_LAST_CHECK, String(now));
+
+      const resolveHubUrl = (pathOrUrl?: string): string => {
+        if (!pathOrUrl) return '';
+        if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+          return pathOrUrl;
+        }
+        return `${RELEASE_HUB_URL}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`;
+      };
+
+      const versionName = raw.versionName || raw.version || '';
+      const rawApkUrl = raw.apkUrl || raw.platforms?.android?.downloadUrl || '/releases/netflix-tv/Netflix-AndroidTV.apk';
+      const rawReleaseUrl = raw.releaseUrl || raw.releaseNotesUrl || '/#netflix-tv';
+
+      const manifest: AppUpdateManifest = {
+        versionCode: Number(raw.versionCode) || 0,
+        versionName,
+        commitHash: raw.commitHash || raw.commitSha || '',
+        releaseDate: raw.releaseDate || '',
+        repo: raw.repo || CURRENT_APP_VERSION.repo,
+        branch: raw.branch || 'main',
+        title:
+          raw.title ||
+          raw.releaseTitle ||
+          (raw.appName && versionName ? `${raw.appName} v${versionName}` : `Netflix TV v${versionName}`),
+        changelog: Array.isArray(raw.changelog) ? raw.changelog : [],
+        apkUrl: resolveHubUrl(rawApkUrl),
+        releaseUrl: resolveHubUrl(rawReleaseUrl),
+        isMandatory: Boolean(raw.isMandatory ?? raw.mandatory)
+      };
 
       const currentVersion = updateService.getCurrentVersion();
       if (isNewerVersion(manifest, currentVersion)) {

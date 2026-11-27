@@ -101,7 +101,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const handleManualCheck = async () => {
     setIsCheckingUpdate(true);
-    setUpdateStatusText('Checking remote GitHub repository...');
+    setUpdateStatusText('Checking Boltsky Release Hub...');
     try {
       const manifest = await updateService.checkForAppUpdate(true);
       if (manifest) {
@@ -835,7 +835,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <div className="pt-4 border-t border-zinc-800/60 flex items-center justify-between">
                   <div>
                     <div className="text-sm font-bold text-white">Auto-Check on Startup</div>
-                    <div className="text-xs text-zinc-400">Automatically inspect GitHub releases when opening app</div>
+                    <div className="text-xs text-zinc-400">Automatically check Boltsky Release Hub when opening app</div>
                   </div>
                   <SettingsToggleButton
                     focusKey="settings-toggle-autocheck"

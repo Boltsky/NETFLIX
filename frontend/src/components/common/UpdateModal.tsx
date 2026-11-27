@@ -75,7 +75,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, onClose }) => 
   }, [focusedBtn, downloadProgress, update.versionCode, onClose]);
 
   const handleStartUpdate = () => {
-    setStatusMessage('Connecting to GitHub repository...');
+    setStatusMessage('Connecting to Boltsky Release Hub...');
     setIsError(false);
     setDownloadProgress(0);
     const handledByNative = updateService.startDownloadAndInstall(update.apkUrl);

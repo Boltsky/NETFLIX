@@ -147,7 +147,7 @@ export const App: React.FC = () => {
   // Manual Check for Updates (Android TV APK only)
   const handleManualCheckUpdate = async () => {
     if (!isNativeAndroidApp()) return;
-    setUpdateToast('Checking GitHub for updates...');
+    setUpdateToast('Checking Boltsky Release Hub for updates...');
     try {
       const manifest = await updateService.checkForAppUpdate(true);
       if (manifest) {

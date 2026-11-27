@@ -21,11 +21,12 @@ export interface AppUpdateManifest {
 }
 
 export const CURRENT_APP_VERSION: AppVersionInfo = {
-  versionCode: 31,
-  versionName: '1.4.8',
+  versionCode: 32,
+  versionName: '1.4.9',
   commitHash: 'latest',
   releaseDate: '2026-11-27',
   repo: 'Boltsky/NETFLIX'
 };
 
-export const VERSION_MANIFEST_URL = 'https://raw.githubusercontent.com/Boltsky/NETFLIX/main/version.json';
+export const RELEASE_HUB_URL = 'https://boltsky-release-hub.vercel.app';
+export const VERSION_MANIFEST_URL = `${RELEASE_HUB_URL}/api/updates/netflix-tv/latest.json`;

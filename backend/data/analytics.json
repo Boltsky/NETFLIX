@@ -1,5 +1,5 @@
 {
-  "allTimeVisits": 33,
+  "allTimeVisits": 34,
   "uniqueVisitors": {
     "test-visitor-123": {
       "firstSeen": "2026-11-17T10:33:51.635Z",
@@ -18,9 +18,36 @@
       "lastSeen": "2026-11-26T07:08:18.021Z",
       "count": 2,
       "country": "Local / Developer"
+    },
+    "anon_j5mlkco3": {
+      "firstSeen": "2026-11-27T13:47:13.469Z",
+      "lastSeen": "2026-11-27T13:47:13.469Z",
+      "count": 1,
+      "country": "Localhost"
     }
   },
   "recentVisits": [
+    {
+      "id": "v_1795787233522_wc3s8",
+      "visitorId": "anon_j5mlkco3",
+      "sessionId": "sess_an6o0985",
+      "timestamp": "2026-11-27T13:47:13.469Z",
+      "timeVisited": "4:47 PM",
+      "timeSpentSec": 0,
+      "timeSpentFormatted": "< 1m",
+      "device": "desktop",
+      "screen": "home",
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Chrome",
+      "os": "Windows"
+    },
     {
       "id": "v_1795676898022_1fulx",
       "visitorId": "v_mwx7n6wb_nt6s5ul",
@@ -725,11 +752,15 @@
     "2026-11-26": {
       "visits": 2,
       "uniqueVisitors": 0
+    },
+    "2026-11-27": {
+      "visits": 1,
+      "uniqueVisitors": 0
     }
   },
   "countryCounts": {
     "Uganda": 19,
-    "Localhost": 12,
+    "Localhost": 13,
     "Local / Developer": 2
   },
   "cityCounts": {
@@ -743,7 +774,7 @@
       "city": "Local",
       "country": "Localhost",
       "flag": "🏠",
-      "count": 12
+      "count": 13
     },
     "Nairobi, Local / Developer": {
       "city": "Nairobi",
@@ -755,17 +786,18 @@
   "deviceCounts": {
     "mobile": 19,
     "tablet": 0,
-    "desktop": 14,
+    "desktop": 15,
     "tv": 0
   },
   "osCounts": {
     "iOS": 18,
-    "Windows": 14
+    "Windows": 15
   },
   "sessionDurations": {
     "test-session-456": 185,
     "test-session-movie": 120,
-    "s_mwx7n6wc_skfq9wy": 30
+    "s_mwx7n6wc_skfq9wy": 30,
+    "sess_an6o0985": 0
   },
   "sessionDurationsByVisitor": {
     "test-visitor-123": {
@@ -776,6 +808,9 @@
     },
     "v_mwx7n6wb_nt6s5ul": {
       "s_mwx7n6wc_skfq9wy": 30
+    },
+    "anon_j5mlkco3": {
+      "sess_an6o0985": 0
     }
   },
   "userProfiles": {
@@ -784,7 +819,7 @@
       "displayName": "Viewer #1",
       "firstSeen": "2026-11-17T10:33:51.635Z",
       "lastSeen": "2026-11-24T12:06:55.162Z",
-      "visitCount": 173,
+      "visitCount": 192,
       "totalTimeSpentSec": 185,
       "totalTimeSpentFormatted": "3m 5s",
       "isActiveNow": true,
@@ -806,7 +841,7 @@
       "displayName": "Viewer #2",
       "firstSeen": "2026-11-17T12:16:59.763Z",
       "lastSeen": "2026-11-24T12:06:55.186Z",
-      "visitCount": 89,
+      "visitCount": 101,
       "totalTimeSpentSec": 120,
       "totalTimeSpentFormatted": "2m 0s",
       "isActiveNow": true,
@@ -825,7 +860,7 @@
           "title": "The Notebook",
           "titleId": 11036,
           "type": "video",
-          "playCount": 89,
+          "playCount": 101,
           "firstPlayed": "2026-11-17T12:16:59.763Z",
           "lastPlayed": "2026-11-17T12:16:59.763Z"
         }
@@ -837,7 +872,7 @@
       "displayName": "Viewer #3",
       "firstSeen": "2026-11-26T07:08:10.962Z",
       "lastSeen": "2026-11-26T07:08:18.021Z",
-      "visitCount": 2,
+      "visitCount": 4,
       "totalTimeSpentSec": 30,
       "totalTimeSpentFormatted": "30s",
       "isActiveNow": true,
@@ -853,10 +888,32 @@
       "os": "Windows",
       "browser": "Chrome",
       "moviesPlayed": []
+    },
+    "anon_j5mlkco3": {
+      "visitorId": "anon_j5mlkco3",
+      "displayName": "Viewer #4",
+      "firstSeen": "2026-11-27T13:47:13.469Z",
+      "lastSeen": "2026-11-27T13:47:13.469Z",
+      "visitCount": 1,
+      "totalTimeSpentSec": 0,
+      "totalTimeSpentFormatted": "< 1m",
+      "isActiveNow": true,
+      "location": {
+        "country": "Localhost",
+        "countryCode": "DEV",
+        "city": "Local",
+        "region": "Internal",
+        "flag": "🏠"
+      },
+      "ip": "127.0.0.1",
+      "device": "desktop",
+      "os": "Windows",
+      "browser": "Chrome",
+      "moviesPlayed": []
     }
   },
   "screenCounts": {
-    "home": 21,
+    "home": 22,
     "player": 12
   },
   "titleCounts": {
