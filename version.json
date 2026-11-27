@@ -1,12 +1,14 @@
 {
-  "versionCode": 30,
-  "versionName": "1.4.7",
+  "versionCode": 31,
+  "versionName": "1.4.8",
   "commitHash": "latest",
-  "releaseDate": "2026-11-23",
+  "releaseDate": "2026-11-27",
   "repo": "Boltsky/NETFLIX",
   "branch": "main",
-  "title": "Netflix TV v1.4.7",
+  "title": "Netflix TV v1.4.8",
   "changelog": [
+    "Fixed 'Please Disable Sandbox' error on Android TV by neutralizing iframe sandbox attribute natively in WebView while preserving native WebViewClient/WebChromeClient popup, ad, and redirect protections",
+    "Removed stale player.autoembed.me -> vidlink.pro redirect in MainActivity.kt and enabled HTML anti-sandbox neutralization for autoembed and vidup embeds",
     "Fixed playback for titles like The Good Lawyer: native MPEG-TS proxying and unblocking for fcxmb.com streams",
     "Removed aggressive backup button auto-clicker in WebView that forced FrameX into the backup player",
     "Fixed Server 2 (AutoEmbed): migrated from broken vidlink.pro to player.autoembed.me, eliminating Next.js client-side exceptions",

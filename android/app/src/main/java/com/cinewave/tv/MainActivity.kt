@@ -139,6 +139,7 @@ class MainActivity : AppCompatActivity() {
                     "try{window.open=function(){return null;};}catch(e){}" +
                     "try{if(window.PluginArray&&window.PluginArray.prototype)PluginArray.prototype.namedItem=function(){return null;};}catch(e){}" +
                     "try{window.DisableDevtool={isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};Object.defineProperty(window,'DisableDevtool',{get:function(){return{isRunning:false,isDevToolOpened:function(){return false;},stop:function(){}};},configurable:true});}catch(e){}" +
+                    "try{if(!window._cwNoSandbox){window._cwNoSandbox=true;var _origSetAttr=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(this.tagName==='IFRAME'&&typeof n==='string'&&n.toLowerCase()==='sandbox')return;return _origSetAttr.call(this,n,v);};var _stripSbx=function(r){try{var f=r.querySelectorAll?r.querySelectorAll('iframe[sandbox]'):[];for(var i=0;i<f.length;i++)f[i].removeAttribute('sandbox');}catch(e){}};if(document.documentElement){_stripSbx(document);new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){if(n.nodeType===1){if(n.tagName==='IFRAME'&&n.hasAttribute('sandbox'))n.removeAttribute('sandbox');_stripSbx(n);}});});}).observe(document.documentElement,{childList:true,subtree:true});}}}catch(e){}" +
                     ";" + VIDEO_AD_DEFUSER_JS
                 view?.evaluateJavascript(js, null)
             }
@@ -377,10 +378,9 @@ class MainActivity : AppCompatActivity() {
                     return createEmptyResourceResponse()
                 }
 
-                // 6. Map dead player.autoembed.cc / player.moviesapi.vip / player.autoembed.me to live vidlink.pro, neutralizing anti-sandbox redirections
+                // 6. Map dead player.autoembed.cc / player.moviesapi.vip to live player.autoembed.me, neutralizing anti-sandbox redirections
                 if (url.host?.contains("player.autoembed.cc") == true ||
-                    url.host?.contains("player.moviesapi.vip") == true ||
-                    url.host?.contains("player.autoembed.me") == true) {
+                    url.host?.contains("player.moviesapi.vip") == true) {
                     val isTv = path.contains("/tv/")
                     val idMatch = Regex(".*/(?:movie|tv)/([^/?]+).*").find(path)
                     val id = idMatch?.groupValues?.get(1) ?: ""
@@ -389,9 +389,9 @@ class MainActivity : AppCompatActivity() {
                             val seasonMatch = Regex(".*/tv/[^/?]+/([^/?]+)/([^/?]+).*").find(path)
                             val s = seasonMatch?.groupValues?.get(1) ?: "1"
                             val ep = seasonMatch?.groupValues?.get(2) ?: "1"
-                            "https://vidlink.pro/tv/$id/$s/$ep?primaryColor=e50914&autoplay=true"
+                            "https://player.autoembed.me/embed/tv/$id/$s/$ep?autoplay=1"
                         } else {
-                            "https://vidlink.pro/movie/$id?primaryColor=e50914&autoplay=true"
+                            "https://player.autoembed.me/embed/movie/$id?autoplay=1"
                         }
                         val redirectHtml = "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=$targetUrl\"></head><body style=\"margin:0;background:#000\"><script>window.location.replace('$targetUrl');</script></body></html>"
                         val headers = mutableMapOf<String, String>()
@@ -417,8 +417,8 @@ class MainActivity : AppCompatActivity() {
                     host.contains("multiembed") || host.contains("streamingnow") || host.contains("vidsrc") ||
                     host.contains("2embed") || host.contains("autoembed") || host.contains("vidlink")
 
-                val isNextJsEmbed = host.contains("vidup") || host.contains("vidlink") ||
-                    host.contains("autoembed") || host.contains("cloudfabric") || host.contains("nextgen")
+                val isNextJsEmbed = host.contains("vidlink") ||
+                    host.contains("cloudfabric") || host.contains("nextgen")
 
                 val shouldInterceptHtml = !isLocalHost && !isAsset && !isMediaStream && !isNextJsEmbed && (
                     isExplicitHtml || acceptsHtml || isEmbedHost || !path.contains(".")
@@ -908,6 +908,7 @@ class MainActivity : AppCompatActivity() {
             "PluginArray.prototype.item=function(){return null;};" +
             "}" +
             "}catch(e){}" +
+            "try{if(!window._cwNoSandbox){window._cwNoSandbox=true;var _origSetAttr=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(this.tagName==='IFRAME'&&typeof n==='string'&&n.toLowerCase()==='sandbox')return;return _origSetAttr.call(this,n,v);};var _stripSbx=function(r){try{var f=r.querySelectorAll?r.querySelectorAll('iframe[sandbox]'):[];for(var i=0;i<f.length;i++)f[i].removeAttribute('sandbox');}catch(e){}};document.addEventListener('DOMContentLoaded',function(){_stripSbx(document);if(document.documentElement)new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){if(n.nodeType===1){if(n.tagName==='IFRAME'&&n.hasAttribute('sandbox'))n.removeAttribute('sandbox');_stripSbx(n);}});});}).observe(document.documentElement,{childList:true,subtree:true});});}}catch(e){}" +
             "</script>"
         val antiAdStyle = "<style>#sbxErr, #asb, .ad-banner, .pop-under, .ad-overlay, [class*=\"advertisement\" i], [id*=\"advertisement\" i], a[href*=\"adplox.com\"], a[href*=\"bet\" i], div[style*=\"z-index: 99999\"], div[style*=\"z-index: 2147483647\"], div[id*=\"gift\" i], div[class*=\"gift\" i], img[src*=\"gift\" i], a[href*=\"gift\" i], div[class*=\"floating-ad\" i], div[id*=\"floating-ad\" i], [class*=\"floating\" i]:not(#vidup-player):not(.player-container), div[class*=\"bonus\" i], div[id*=\"bonus\" i], [class*=\"casino\" i], [id*=\"casino\" i], [class*=\"claim\" i], [id*=\"claim\" i], [class*=\"wheel\" i], [id*=\"wheel\" i], [class*=\"reward\" i], [id*=\"reward\" i], [class*=\"badge\" i]:not(.quality-badge), [id*=\"badge\" i], [class*=\"spin\" i], [id*=\"spin\" i], [class*=\"lucky\" i], [id*=\"lucky\" i], [class*=\"promo\" i], [id*=\"promo\" i], [class*=\"present\" i], [id*=\"present\" i], a[href*=\"gift\" i], a[href*=\"bonus\" i], div[style*=\"position: fixed\"][style*=\"bottom:\"], div[style*=\"position: absolute\"][style*=\"bottom:\"][style*=\"right:\"], div[class*=\"recaptcha\" i], iframe[src*=\"recaptcha\" i], div[class*=\"cf-turnstile\" i], iframe[src*=\"turnstile\" i], div[id*=\"turnstile\" i], div[class*=\"atlantic\" i], div[id*=\"atlantic\" i], [class*=\"vjs-ad\" i], .video-ads, .ytp-ad-module, .videoAdUi, .ad-container, [id*=\"ad-container\" i], [class*=\"ad-container\" i] { display: none !important; pointer-events: none !important; visibility: hidden !important; opacity: 0 !important; width: 0 !important; height: 0 !important; max-height: 0 !important; }</style>"
         val telemetryScript = "<script>(function(){" +

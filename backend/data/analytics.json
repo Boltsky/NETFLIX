@@ -1,5 +1,5 @@
 {
-  "allTimeVisits": 31,
+  "allTimeVisits": 33,
   "uniqueVisitors": {
     "test-visitor-123": {
       "firstSeen": "2026-11-17T10:33:51.635Z",
@@ -12,9 +12,57 @@
       "lastSeen": "2026-11-24T12:06:55.186Z",
       "count": 12,
       "country": "Localhost"
+    },
+    "v_mwx7n6wb_nt6s5ul": {
+      "firstSeen": "2026-11-26T07:08:10.962Z",
+      "lastSeen": "2026-11-26T07:08:18.021Z",
+      "count": 2,
+      "country": "Local / Developer"
     }
   },
   "recentVisits": [
+    {
+      "id": "v_1795676898022_1fulx",
+      "visitorId": "v_mwx7n6wb_nt6s5ul",
+      "sessionId": "s_mwx7n6wc_skfq9wy",
+      "timestamp": "2026-11-26T07:08:18.021Z",
+      "timeVisited": "10:08 AM",
+      "timeSpentSec": 30,
+      "timeSpentFormatted": "30s",
+      "device": "desktop",
+      "screen": "home",
+      "location": {
+        "country": "Local / Developer",
+        "countryCode": "DEV",
+        "city": "Nairobi",
+        "region": "Africa",
+        "flag": "💻"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Chrome",
+      "os": "Windows"
+    },
+    {
+      "id": "v_1795676890985_vfimx",
+      "visitorId": "v_mwx7n6wb_nt6s5ul",
+      "sessionId": "s_mwx7n6wc_skfq9wy",
+      "timestamp": "2026-11-26T07:08:10.962Z",
+      "timeVisited": "10:08 AM",
+      "timeSpentSec": 30,
+      "timeSpentFormatted": "30s",
+      "device": "desktop",
+      "screen": "home",
+      "location": {
+        "country": "Local / Developer",
+        "countryCode": "DEV",
+        "city": "Nairobi",
+        "region": "Africa",
+        "flag": "💻"
+      },
+      "ip": "127.0.0.1",
+      "browser": "Chrome",
+      "os": "Windows"
+    },
     {
       "id": "v_1795522015187_sra07",
       "visitorId": "test-visitor-movie",
@@ -673,11 +721,16 @@
     "2026-11-24": {
       "visits": 10,
       "uniqueVisitors": 0
+    },
+    "2026-11-26": {
+      "visits": 2,
+      "uniqueVisitors": 0
     }
   },
   "countryCounts": {
     "Uganda": 19,
-    "Localhost": 12
+    "Localhost": 12,
+    "Local / Developer": 2
   },
   "cityCounts": {
     "Kampala, Uganda": {
@@ -691,21 +744,28 @@
       "country": "Localhost",
       "flag": "🏠",
       "count": 12
+    },
+    "Nairobi, Local / Developer": {
+      "city": "Nairobi",
+      "country": "Local / Developer",
+      "flag": "💻",
+      "count": 2
     }
   },
   "deviceCounts": {
     "mobile": 19,
     "tablet": 0,
-    "desktop": 12,
+    "desktop": 14,
     "tv": 0
   },
   "osCounts": {
     "iOS": 18,
-    "Windows": 12
+    "Windows": 14
   },
   "sessionDurations": {
     "test-session-456": 185,
-    "test-session-movie": 120
+    "test-session-movie": 120,
+    "s_mwx7n6wc_skfq9wy": 30
   },
   "sessionDurationsByVisitor": {
     "test-visitor-123": {
@@ -713,6 +773,9 @@
     },
     "test-visitor-movie": {
       "test-session-movie": 120
+    },
+    "v_mwx7n6wb_nt6s5ul": {
+      "s_mwx7n6wc_skfq9wy": 30
     }
   },
   "userProfiles": {
@@ -721,7 +784,7 @@
       "displayName": "Viewer #1",
       "firstSeen": "2026-11-17T10:33:51.635Z",
       "lastSeen": "2026-11-24T12:06:55.162Z",
-      "visitCount": 154,
+      "visitCount": 173,
       "totalTimeSpentSec": 185,
       "totalTimeSpentFormatted": "3m 5s",
       "isActiveNow": true,
@@ -743,7 +806,7 @@
       "displayName": "Viewer #2",
       "firstSeen": "2026-11-17T12:16:59.763Z",
       "lastSeen": "2026-11-24T12:06:55.186Z",
-      "visitCount": 77,
+      "visitCount": 89,
       "totalTimeSpentSec": 120,
       "totalTimeSpentFormatted": "2m 0s",
       "isActiveNow": true,
@@ -762,16 +825,38 @@
           "title": "The Notebook",
           "titleId": 11036,
           "type": "video",
-          "playCount": 77,
+          "playCount": 89,
           "firstPlayed": "2026-11-17T12:16:59.763Z",
-          "lastPlayed": "2026-11-24T12:06:55.186Z"
+          "lastPlayed": "2026-11-17T12:16:59.763Z"
         }
       ],
       "ip": "127.0.0.1"
+    },
+    "v_mwx7n6wb_nt6s5ul": {
+      "visitorId": "v_mwx7n6wb_nt6s5ul",
+      "displayName": "Viewer #3",
+      "firstSeen": "2026-11-26T07:08:10.962Z",
+      "lastSeen": "2026-11-26T07:08:18.021Z",
+      "visitCount": 2,
+      "totalTimeSpentSec": 30,
+      "totalTimeSpentFormatted": "30s",
+      "isActiveNow": true,
+      "location": {
+        "country": "Local / Developer",
+        "countryCode": "DEV",
+        "city": "Nairobi",
+        "region": "Africa",
+        "flag": "💻"
+      },
+      "ip": "127.0.0.1",
+      "device": "desktop",
+      "os": "Windows",
+      "browser": "Chrome",
+      "moviesPlayed": []
     }
   },
   "screenCounts": {
-    "home": 19,
+    "home": 21,
     "player": 12
   },
   "titleCounts": {
