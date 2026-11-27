@@ -438,9 +438,9 @@ export const MOCK_TITLES: Record<string, TitleDetails> = {
       { id: 154562, number: 4, name: 'Season 4', overview: 'Darkness returns to Hawkins.', poster: 'https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg', episodeCount: 9, airDate: '2022-05-27' }
     ],
     cast: [
-      { id: 135651, name: 'Millie Bobby Brown', character: 'Eleven', profile: 'https://image.tmdb.org/t/p/w185/873rC87X1yVqU8uF2h3D4lK.jpg' },
-      { id: 31549, name: 'Winona Ryder', character: 'Joyce Byers', profile: 'https://image.tmdb.org/t/p/w185/7VfF3iHn3yM2G0fX4k.jpg' },
-      { id: 35158, name: 'David Harbour', character: 'Jim Hopper', profile: 'https://image.tmdb.org/t/p/w185/chPekukMF5EWnW6bBmrg5Bu9wGa.jpg' }
+      { id: 135651, name: 'Millie Bobby Brown', character: 'Eleven', profile: 'https://image.tmdb.org/t/p/w185/515xNvaMC6xOEOlo0sFqW69ZqUH.jpg' },
+      { id: 31549, name: 'Winona Ryder', character: 'Joyce Byers', profile: 'https://image.tmdb.org/t/p/w185/xP2kNlsmXtzXq0geutflO4K9mSE.jpg' },
+      { id: 35158, name: 'David Harbour', character: 'Jim Hopper', profile: 'https://image.tmdb.org/t/p/w185/WJbEhM4040D2XBb1ko7OHR7t2q.jpg' }
     ],
     recommendations: [
       MOCK_ITEMS['93405'],
@@ -464,9 +464,9 @@ export const MOCK_TITLES: Record<string, TitleDetails> = {
     overview: 'A ticking-time-bomb insomniac and a slippery soap salesman channel primal male aggression into a shocking new form of therapy.',
     genres: ['Drama', 'Thriller'],
     cast: [
-      { id: 819, name: 'Edward Norton', character: 'The Narrator', profile: 'https://image.tmdb.org/t/p/w185/8A5epLg1H6kP2gJ8E5GjVf2Z0dC.jpg' },
-      { id: 287, name: 'Brad Pitt', character: 'Tyler Durden', profile: 'https://image.tmdb.org/t/p/w185/cckcYc2v0yh1tc9QjRelptsqqoW.jpg' },
-      { id: 1283, name: 'Helena Bonham Carter', character: 'Marla Singer', profile: 'https://image.tmdb.org/t/p/w185/DDeItmAStLq8wgk7p4E89yv3xM.jpg' }
+      { id: 819, name: 'Edward Norton', character: 'The Narrator', profile: 'https://image.tmdb.org/t/p/w185/8nytsqL59SFJTVYVrN72k6qkGgJ.jpg' },
+      { id: 287, name: 'Brad Pitt', character: 'Tyler Durden', profile: 'https://image.tmdb.org/t/p/w185/ajNaPmXVVMJFg9GWmu6MJzTaXdV.jpg' },
+      { id: 1283, name: 'Helena Bonham Carter', character: 'Marla Singer', profile: 'https://image.tmdb.org/t/p/w185/hJMbNSPJ2PCahsP3rNEU39C8GWU.jpg' }
     ],
     recommendations: [
       MOCK_ITEMS['680'],
@@ -520,8 +520,8 @@ export const MOCK_TITLES: Record<string, TitleDetails> = {
     overview: 'The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel.',
     genres: ['Adventure', 'Drama', 'Sci-Fi'],
     cast: [
-      { id: 10297, name: 'Matthew McConaughey', character: 'Joseph Cooper', profile: 'https://image.tmdb.org/t/p/w185/ehoVd06jB18V7k3g1L8s5h.jpg' },
-      { id: 1813, name: 'Anne Hathaway', character: 'Dr. Amelia Brand', profile: 'https://image.tmdb.org/t/p/w185/tLel4A4WNBfl32Fi1q4.jpg' }
+      { id: 10297, name: 'Matthew McConaughey', character: 'Joseph Cooper', profile: 'https://image.tmdb.org/t/p/w185/lCySuYjhXix3FzQdS4oceDDrXKI.jpg' },
+      { id: 1813, name: 'Anne Hathaway', character: 'Dr. Amelia Brand', profile: 'https://image.tmdb.org/t/p/w185/s6tflSD20MGz04ZR2R1lZvhmC4Y.jpg' }
     ],
     recommendations: [
       MOCK_ITEMS['27205'],

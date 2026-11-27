@@ -97,9 +97,9 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   }
 }
 
-function optimizeTmdbImageUrl(url?: string, size: 'poster' | 'backdrop' = 'poster'): string | undefined {
+function optimizeTmdbImageUrl(url?: string, size: 'poster' | 'backdrop' | 'profile' = 'poster'): string | undefined {
   if (!url) return undefined;
-  const targetWidth = size === 'poster' ? 'w342' : 'w780';
+  const targetWidth = size === 'poster' ? 'w342' : size === 'profile' ? 'w185' : 'w780';
 
   // Handle relative TMDB image paths (e.g. /rstcAnBeCkxNQjNp3YXrF6IP1tW.jpg or rstcAnBeCkxNQjNp3YXrF6IP1tW.jpg)
   if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:') && !url.startsWith('blob:')) {
@@ -110,6 +110,8 @@ function optimizeTmdbImageUrl(url?: string, size: 'poster' | 'backdrop' = 'poste
   if (url.includes('image.tmdb.org/t/p/')) {
     if (size === 'poster') {
       return url.replace(/\/t\/p\/(w500|original|w780|w1280)\//, '/t/p/w342/');
+    } else if (size === 'profile') {
+      return url.replace(/\/t\/p\/(w500|original|w780|w1280|w300|h632)\//, '/t/p/w185/');
     } else {
       return url.replace(/\/t\/p\/(original|w1280|w500)\//, '/t/p/w780/');
     }
@@ -612,7 +614,7 @@ function normalizeTitleDetails(raw: any, fallbackId: string, type: 'movie' | 'tv
         id: c.id,
         name: c.name,
         character: c.character || '',
-        profile: c.profile || c.profile_path
+        profile: optimizeTmdbImageUrl(c.profile || c.profile_path, 'profile')
       }))
     : [];
 

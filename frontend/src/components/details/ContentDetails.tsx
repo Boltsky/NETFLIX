@@ -1057,13 +1057,23 @@ const CastCard: React.FC<{
   index: number;
   onSelect?: () => void;
 }> = ({ member, index, onSelect }) => {
+  const [imageError, setImageError] = useState(false);
   const { ref, isFocused } = useFocusable({
     focusKey: `detail-cast-${index}`,
     groupId: 'detail-cast',
     onEnter: onSelect
   });
 
-  const profileUrl = member.profile || (member as any).profilePath || (member as any).profile_path;
+  const rawProfile = member.profile || (member as any).profilePath || (member as any).profile_path;
+  const profileUrl = rawProfile
+    ? (rawProfile.startsWith('http://') || rawProfile.startsWith('https://') || rawProfile.startsWith('data:') || rawProfile.startsWith('blob:')
+        ? rawProfile
+        : `https://image.tmdb.org/t/p/w185${rawProfile.startsWith('/') ? rawProfile : `/${rawProfile}`}`)
+    : undefined;
+
+  useEffect(() => {
+    setImageError(false);
+  }, [profileUrl]);
 
   return (
     <div
@@ -1086,29 +1096,22 @@ const CastCard: React.FC<{
             : 'border-white/10 group-hover:border-white/30'
         }`}
       >
-        {profileUrl ? (
+        {profileUrl && !imageError ? (
           <img
             src={profileUrl}
             alt={member.name}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-              if (fallback) fallback.style.display = 'flex';
-            }}
+            onError={() => setImageError(true)}
           />
-        ) : null}
-        <div
-          className={`w-full h-full flex flex-col items-center justify-center bg-zinc-800/90 text-zinc-400 p-1 text-center ${
-            profileUrl ? 'hidden' : 'flex'
-          }`}
-        >
-          <User className="w-5 h-5 sm:w-6 sm:h-6 opacity-40 mb-0.5" />
-          <span className="text-[9px] font-bold font-mono uppercase truncate max-w-full">
-            {member.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
-          </span>
-        </div>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800/90 text-zinc-400 p-1 text-center">
+            <User className="w-5 h-5 sm:w-6 sm:h-6 opacity-40 mb-0.5" />
+            <span className="text-[9px] font-bold font-mono uppercase truncate max-w-full">
+              {member.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+            </span>
+          </div>
+        )}
 
         {/* Subtle Bottom Vignette */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />

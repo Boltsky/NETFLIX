@@ -407,7 +407,7 @@ export const tmdbService = {
           id: c.id,
           name: c.name,
           character: c.character || '',
-          profile: c.profile_path ? `https://image.tmdb.org/t/p/w300${c.profile_path}` : undefined
+          profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : undefined
         }))
       : [];
 
