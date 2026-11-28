@@ -433,6 +433,16 @@ class FrameXTVAdapter {
             }
             const res = await this.fetchWithFailover(streamPath);
             const data = await res.json();
+            const mapSubtitles = (rawSubs) => Array.isArray(rawSubs)
+                ? rawSubs.map((sub) => ({
+                    url: sub.url,
+                    label: sub.label || sub.language || 'English',
+                    lang: sub.lang || sub.language || 'en',
+                    language: sub.language || sub.lang,
+                    format: sub.format === 'srt' ? 'srt' : 'vtt',
+                    isDefault: false
+                }))
+                : [];
             if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
                 let sources = data.sources
                     .map((src) => ({
@@ -443,7 +453,8 @@ class FrameXTVAdapter {
                     skipProxy: !!src.skipProxy
                 }))
                     .filter((src) => src.url && !isBlacklisted(src.url));
-                // Failover across alternate providers for reliable 1080p direct streams
+                let collectedSubs = mapSubtitles(data.subtitles);
+                // Failover across alternate providers for reliable 1080p direct streams + release-matched subtitles
                 const alternates = ['bowler', 'giant', 'executioner', 'grand_warden'];
                 if (sources.length === 0) {
                     for (const alt of alternates) {
@@ -466,6 +477,11 @@ class FrameXTVAdapter {
                                     .filter((src) => src.url && !isBlacklisted(src.url));
                                 if (altSources.length > 0) {
                                     sources = altSources;
+                                    const altSubs = mapSubtitles(altData.subtitles);
+                                    if (altSubs.length > 0) {
+                                        // Prioritize subtitles returned with the matching stream provider
+                                        collectedSubs = [...altSubs, ...collectedSubs];
+                                    }
                                     break;
                                 }
                             }
@@ -473,16 +489,7 @@ class FrameXTVAdapter {
                         catch { }
                     }
                 }
-                const subtitles = Array.isArray(data.subtitles)
-                    ? data.subtitles.map((sub) => ({
-                        url: sub.url,
-                        label: sub.label || sub.language || 'English',
-                        lang: sub.lang || sub.language || 'en',
-                        language: sub.language || sub.lang,
-                        format: sub.format === 'srt' ? 'srt' : 'vtt',
-                        isDefault: false
-                    }))
-                    : [];
+                const subtitles = collectedSubs;
                 return {
                     success: true,
                     contentId: id,
@@ -530,7 +537,16 @@ class FrameXTVAdapter {
                             episode: type === 'tv' ? e : undefined,
                             provider: `FrameX ${alt}`,
                             sources,
-                            subtitles: [],
+                            subtitles: Array.isArray(altData.subtitles)
+                                ? altData.subtitles.map((sub) => ({
+                                    url: sub.url,
+                                    label: sub.label || sub.language || 'English',
+                                    lang: sub.lang || sub.language || 'en',
+                                    language: sub.language || sub.lang,
+                                    format: sub.format === 'srt' ? 'srt' : 'vtt',
+                                    isDefault: false
+                                }))
+                                : [],
                             embedUrl,
                             embedServers,
                             alternates: ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Hls from 'hls.js';
 import { PlaybackResolution, MediaItem, StreamSource, SubtitleTrack } from '../../types';
-import { api } from '../../services/api';
+import { api, getBackendBaseUrl } from '../../services/api';
 import { analytics } from '../../services/analyticsService';
 import { adblockService } from '../../services/adblockService';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -22,7 +22,9 @@ import {
   Server,
   MousePointerClick,
   Maximize,
-  Minimize
+  Minimize,
+  Upload,
+  Clock
 } from 'lucide-react';
 
 interface VideoPlayerProps {
@@ -92,7 +94,52 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [activeSubtitle, setActiveSubtitle] = useState<number>(-1);
   const activeSubtitleRef = useRef<number>(-1);
   activeSubtitleRef.current = activeSubtitle;
+  const currentTimeRef = useRef<number>(currentTime);
+  currentTimeRef.current = currentTime;
+  const isPlayingRef = useRef<boolean>(isPlaying);
+  isPlayingRef.current = isPlaying;
+
   const [cues, setCues] = useState<SubtitleCue[]>([]);
+  const [customSubtitles, setCustomSubtitles] = useState<SubtitleTrack[]>([]);
+  const allSubtitles = useMemo<SubtitleTrack[]>(
+    () => [...(resolution?.subtitles || []), ...customSubtitles],
+    [resolution?.subtitles, customSubtitles]
+  );
+  const allSubtitlesRef = useRef<SubtitleTrack[]>([]);
+  allSubtitlesRef.current = allSubtitles;
+
+  const subtitleSyncKey = `cinewave_sub_sync_${item?.id || 'global'}`;
+  const [subtitleOffsetSec, setSubtitleOffsetSec] = useState<number>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(subtitleSyncKey) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.offsetSec === 'number' && Number.isFinite(parsed.offsetSec)) {
+          return parsed.offsetSec;
+        }
+      }
+    } catch {}
+    return 0;
+  });
+  const [subtitleFpsScale, setSubtitleFpsScale] = useState<number>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(subtitleSyncKey) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.fpsScale === 'number' && parsed.fpsScale > 0) {
+          return parsed.fpsScale;
+        }
+      }
+    } catch {}
+    return 1;
+  });
+  const [subtitleTime, setSubtitleTime] = useState<number>(initialResumeTimeSec);
+  const iframeTimeAnchorRef = useRef<{ time: number; perfMs: number } | null>(null);
+  const [manualSubTimerRunning, setManualSubTimerRunning] = useState<boolean>(false);
+  const manualSubTimerRunningRef = useRef<boolean>(false);
+  manualSubTimerRunningRef.current = manualSubTimerRunning;
+
+  const subtitleFileInputRef = useRef<HTMLInputElement | null>(null);
   const subtitleCacheRef = useRef<Map<string, SubtitleCue[]>>(new Map());
   const subtitleAbortRef = useRef<AbortController | null>(null);
   const [showAudioSubtitleModal, setShowAudioSubtitleModal] = useState(false);
@@ -877,7 +924,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setActiveSubtitle(-1);
     activeSubtitleRef.current = -1;
     setCues([]);
+    setCustomSubtitles([]);
     subtitleCacheRef.current.clear();
+    iframeTimeAnchorRef.current = null;
+    setManualSubTimerRunning(false);
+    setSubtitleTime(0);
     attemptedServersRef.current.clear();
     setSelectedServerIndex(0);
     setUseIframeFallback(false);
@@ -1091,11 +1142,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
 
     const enforceSubtitles = () => {
-      const desired = activeSubtitleRef.current;
+      // SubtitleOverlay handles cue rendering across all tracks with live offset & FPS sync;
+      // keep native browser textTracks disabled to avoid duplicate out-of-sync captions.
       if (video.textTracks) {
         for (let i = 0; i < video.textTracks.length; i++) {
           try {
-            video.textTracks[i].mode = (desired >= 0 && i === desired) ? 'showing' : 'disabled';
+            video.textTracks[i].mode = 'disabled';
           } catch {}
         }
       }
@@ -1178,9 +1230,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       applyResumeIfAvailable(video);
     };
     const onAddTrack = (e: any) => {
-      const desired = activeSubtitleRef.current;
       if (e?.track) {
-        e.track.mode = desired >= 0 ? 'showing' : 'disabled';
+        e.track.mode = 'disabled';
       }
     };
     const onError = () => {
@@ -1396,7 +1447,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
 
         if (!isScrubbingRef.current && cur >= 0) {
+          iframeTimeAnchorRef.current = { time: cur, perfMs: performance.now() };
           setCurrentTime(cur);
+          if (activeSubtitleRef.current >= 0) {
+            setSubtitleTime(cur);
+          }
           if (dur > 0) setDuration(dur);
 
           // Auto-play next episode when iframe approaches end of video
@@ -1426,6 +1481,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (reportedDur > 0 && reportedDur <= 210 && item.type === 'movie') {
           return;
         }
+        if (!iframeTimeAnchorRef.current) {
+          iframeTimeAnchorRef.current = { time: currentTimeRef.current || 0, perfMs: performance.now() };
+        }
         if (!hasPlaybackStartedRef.current) {
           hasPlaybackStartedRef.current = true;
           if (watchdogTimerRef.current) {
@@ -1439,6 +1497,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [useIframeFallback]);
+
+  // High-precision 60fps subtitle clock (runs only when a subtitle track is active)
+  useEffect(() => {
+    if (activeSubtitle < 0 || cues.length === 0) {
+      return;
+    }
+
+    let rafId = 0;
+    let lastEmit = -1;
+
+    const tick = () => {
+      if (!isScrubbingRef.current) {
+        let preciseTime = currentTimeRef.current;
+
+        if (!useIframeFallback && videoRef.current) {
+          const vt = videoRef.current.currentTime;
+          if (Number.isFinite(vt)) {
+            preciseTime = vt;
+          }
+        } else if (useIframeFallback) {
+          const anchor = iframeTimeAnchorRef.current;
+          if (anchor && (isPlayingRef.current || manualSubTimerRunningRef.current)) {
+            preciseTime = anchor.time + (performance.now() - anchor.perfMs) / 1000;
+          } else if (anchor) {
+            preciseTime = anchor.time;
+          }
+        }
+
+        if (Math.abs(preciseTime - lastEmit) >= 0.03) {
+          lastEmit = preciseTime;
+          setSubtitleTime(preciseTime);
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [activeSubtitle, cues.length, useIframeFallback, manualSubTimerRunning]);
 
   // Toast guidance when streaming from embedded player / backup player
   useEffect(() => {
@@ -1572,6 +1669,122 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [duration, commitSeek, isFullscreen, isPortrait]);
 
+  const persistSubtitleSync = useCallback((nextOffset: number, nextFps: number) => {
+    try {
+      localStorage.setItem(
+        subtitleSyncKey,
+        JSON.stringify({ offsetSec: nextOffset, fpsScale: nextFps })
+      );
+    } catch {}
+  }, [subtitleSyncKey]);
+
+  const adjustSubtitleOffset = useCallback((deltaSec: number) => {
+    setSubtitleOffsetSec((prev) => {
+      const next = Math.max(-120, Math.min(120, Math.round((prev + deltaSec) * 100) / 100));
+      persistSubtitleSync(next, subtitleFpsScale);
+      const sign = next > 0 ? '+' : '';
+      showPlayerToast(`Subtitle Sync: ${sign}${next.toFixed(1)}s`, 'server', 2000);
+      return next;
+    });
+  }, [persistSubtitleSync, subtitleFpsScale, showPlayerToast]);
+
+  const resetSubtitleSync = useCallback(() => {
+    setSubtitleOffsetSec(0);
+    setSubtitleFpsScale(1);
+    persistSubtitleSync(0, 1);
+    showPlayerToast('Subtitle Sync Reset (0.0s • 1.0x)', 'server', 2000);
+  }, [persistSubtitleSync, showPlayerToast]);
+
+  const handleFpsScaleChange = useCallback((nextScale: number) => {
+    setSubtitleFpsScale(nextScale);
+    persistSubtitleSync(subtitleOffsetSec, nextScale);
+    const label =
+      Math.abs(nextScale - 1) < 0.001
+        ? '1.0x Standard'
+        : nextScale > 1
+        ? '23.976→25fps'
+        : '25→23.976fps';
+    showPlayerToast(`Subtitle FPS: ${label}`, 'server', 2200);
+  }, [persistSubtitleSync, subtitleOffsetSec, showPlayerToast]);
+
+  const toggleManualEmbedSubTimer = useCallback(() => {
+    const nextRunning = !manualSubTimerRunningRef.current;
+    const nowPerf = performance.now();
+    const curAnchor = iframeTimeAnchorRef.current;
+    if (nextRunning) {
+      const baseTime = curAnchor ? curAnchor.time : currentTimeRef.current || 0;
+      iframeTimeAnchorRef.current = { time: baseTime, perfMs: nowPerf };
+      setManualSubTimerRunning(true);
+    } else {
+      const frozenTime = curAnchor
+        ? curAnchor.time + (nowPerf - curAnchor.perfMs) / 1000
+        : currentTimeRef.current || 0;
+      iframeTimeAnchorRef.current = { time: frozenTime, perfMs: nowPerf };
+      setManualSubTimerRunning(false);
+    }
+  }, []);
+
+  const nudgeEmbedSubTime = useCallback((deltaSec: number) => {
+    const nowPerf = performance.now();
+    const curAnchor = iframeTimeAnchorRef.current;
+    const curVal = curAnchor
+      ? curAnchor.time + ((isPlayingRef.current || manualSubTimerRunningRef.current) ? (nowPerf - curAnchor.perfMs) / 1000 : 0)
+      : currentTimeRef.current || 0;
+    const nextVal = Math.max(0, curVal + deltaSec);
+    iframeTimeAnchorRef.current = { time: nextVal, perfMs: nowPerf };
+    setSubtitleTime(nextVal);
+  }, []);
+
+  const handleSubtitleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      const buf = await file.arrayBuffer();
+      let decoded = '';
+      try {
+        decoded = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+      } catch {
+        decoded = new TextDecoder('windows-1252').decode(buf);
+      }
+
+      const ext = (file.name.split('.').pop() || 'srt').toLowerCase();
+      const format: 'vtt' | 'srt' | 'ass' =
+        ext === 'vtt' ? 'vtt' : ext === 'ass' || ext === 'ssa' ? 'ass' : 'srt';
+      const parsed = parseSubtitles(decoded, format);
+      if (parsed.length === 0) {
+        showPlayerToast(`Could not parse cues from ${file.name}`, 'alert', 3500);
+        return;
+      }
+
+      const cleanLabel = file.name.replace(/\.(srt|vtt|ass|ssa|txt)$/i, '').slice(0, 36) || 'Custom Subtitle';
+      const localUrl = `local://custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const newTrack: SubtitleTrack = {
+        url: localUrl,
+        label: `${cleanLabel} [Local]`,
+        lang: 'custom',
+        format,
+        isCustom: true,
+        isDefault: false,
+      };
+
+      subtitleCacheRef.current.set(localUrl, parsed);
+      const nextIndex = (resolution?.subtitles?.length || 0) + customSubtitles.length;
+      setCustomSubtitles((prev) => [...prev, newTrack]);
+      setActiveSubtitle(nextIndex);
+      activeSubtitleRef.current = nextIndex;
+      setCues(parsed);
+      if (useIframeFallback && !iframeTimeAnchorRef.current) {
+        iframeTimeAnchorRef.current = { time: currentTimeRef.current || 0, perfMs: performance.now() };
+      }
+      showPlayerToast(`Loaded ${parsed.length} lines from ${cleanLabel}`, 'play', 3000);
+    } catch (err: any) {
+      console.warn('[Netflix Player] Subtitle upload error:', err);
+      showPlayerToast('Failed to read subtitle file', 'alert', 3000);
+    }
+  }, [resolution?.subtitles?.length, customSubtitles.length, useIframeFallback, showPlayerToast]);
+
   // Remote key controller for TV
   useEffect(() => {
     const handleRemoteKey = (e: KeyboardEvent) => {
@@ -1602,7 +1815,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
         if (e.key === 'ArrowDown' || e.key === 'Down') {
           e.preventDefault();
-          const maxRows = modalCol === 0 ? 3 : modalCol === 1 ? (resolution?.subtitles?.length || 0) + 1 : servers.length;
+          const maxRows = modalCol === 0 ? 3 : modalCol === 1 ? allSubtitlesRef.current.length + 1 : servers.length;
           setModalRow((prev) => Math.min(maxRows - 1, prev + 1));
           return;
         }
@@ -1850,6 +2063,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
           break;
 
+        case '[':
+          e.preventDefault();
+          adjustSubtitleOffset(-0.5);
+          break;
+
+        case ']':
+          e.preventDefault();
+          adjustSubtitleOffset(0.5);
+          break;
+
+        case '\\':
+          e.preventDefault();
+          resetSubtitleSync();
+          break;
+
         case 'n':
         case 'N':
           e.preventDefault();
@@ -1889,7 +2117,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     enterCursorMode,
     useIframeFallback,
     toggleFullscreen,
-    togglePlayPause
+    togglePlayPause,
+    adjustSubtitleOffset,
+    resetSubtitleSync
   ]);
 
   // Subtitle switch with 0ms instant clearing, asynchronous fetch/parse, and memory caching
@@ -1906,35 +2136,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       subtitleAbortRef.current = null;
     }
 
-    // 3. Update Hls.js subtitle display
+    // 3. Keep native Hls.js & HTML5 video textTracks disabled so SubtitleOverlay renders once with live sync offset
     if (hlsRef.current) {
       try {
-        hlsRef.current.subtitleTrack = index;
-        hlsRef.current.subtitleDisplay = index >= 0;
+        hlsRef.current.subtitleTrack = -1;
+        hlsRef.current.subtitleDisplay = false;
       } catch (err) {
         console.warn('[Netflix Player] Failed to update HLS subtitleTrack:', err);
       }
     }
 
-    // 4. Update Native HTML5 video textTracks mode
     if (videoRef.current && videoRef.current.textTracks) {
       for (let i = 0; i < videoRef.current.textTracks.length; i++) {
         try {
-          videoRef.current.textTracks[i].mode = (index >= 0 && i === index) ? 'showing' : 'disabled';
+          videoRef.current.textTracks[i].mode = 'disabled';
         } catch (err) {
           console.warn('[Netflix Player] Failed to update textTrack mode:', err);
         }
       }
     }
 
-    // 5. PostMessage fallback to embed iframe
-    if (useIframeFallback && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ action: 'setSubtitle', index }, '*');
-      iframeRef.current.contentWindow.postMessage({
-        event: 'setSubtitle',
-        enabled: index >= 0,
-        index
-      }, '*');
+    // 4. Sync SubtitleOverlay clock immediately on activation
+    if (index >= 0) {
+      if (!useIframeFallback && videoRef.current && Number.isFinite(videoRef.current.currentTime)) {
+        setSubtitleTime(videoRef.current.currentTime);
+      } else if (useIframeFallback && !iframeTimeAnchorRef.current) {
+        iframeTimeAnchorRef.current = { time: currentTimeRef.current || 0, perfMs: performance.now() };
+      }
     }
 
     // If disabling subtitles (-1), complete immediately
@@ -1942,12 +2170,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return;
     }
 
-    const track = resolution?.subtitles?.[index];
+    const track = allSubtitlesRef.current[index];
     if (!track || !track.url) {
       return;
     }
 
-    // Check memory cache first
+    // Check memory cache first (instantaneous for pre-loaded and custom uploaded tracks)
     const cachedCues = subtitleCacheRef.current.get(track.url);
     if (cachedCues) {
       if (activeSubtitleRef.current === index) {
@@ -1959,28 +2187,41 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Fetch and parse subtitle track
     const controller = new AbortController();
     subtitleAbortRef.current = controller;
+    const backendBase = getBackendBaseUrl();
 
     try {
       let rawContent: string | null = null;
+      const isRelativeProxy = track.url.startsWith('/api/');
 
-      // Primary: Direct network fetch
-      try {
-        const res = await fetch(track.url, { signal: controller.signal });
-        if (res.ok) {
-          rawContent = await res.text();
+      // Primary: Direct network fetch (skip duplicate direct call if track is already a /api/ proxy path on different backend base)
+      if (!isRelativeProxy || backendBase === '') {
+        try {
+          const directTarget = isRelativeProxy ? `${backendBase}${track.url}` : track.url;
+          const res = await fetch(directTarget, { signal: controller.signal });
+          if (res.ok) {
+            const candidate = await res.text();
+            if (parseSubtitles(candidate, track.format).length > 0) {
+              rawContent = candidate;
+            }
+          }
+        } catch (fetchErr: any) {
+          if (fetchErr.name === 'AbortError') return;
+          console.warn('[Netflix Player] Direct subtitle fetch failed, trying proxy:', fetchErr?.message);
         }
-      } catch (fetchErr: any) {
-        if (fetchErr.name === 'AbortError') return;
-        console.warn('[Netflix Player] Direct fetch failed, attempting backend proxy:', fetchErr?.message);
       }
 
-      // Fallback: Backend CORS proxy
+      // Fallback: Same-origin / Backend CORS proxy with explicit URL prefix
       if (!rawContent) {
         try {
-          const proxyUrl = `/api/v1/subtitles/proxy?url=${encodeURIComponent(track.url)}`;
+          const proxyUrl = isRelativeProxy
+            ? `${backendBase}${track.url}`
+            : `${backendBase}/api/v1/subtitles/proxy?url=${encodeURIComponent(track.url)}`;
           const pRes = await fetch(proxyUrl, { signal: controller.signal });
           if (pRes.ok) {
-            rawContent = await pRes.text();
+            const candidate = await pRes.text();
+            if (parseSubtitles(candidate, track.format).length > 0) {
+              rawContent = candidate;
+            }
           }
         } catch (proxyErr: any) {
           if (proxyErr.name === 'AbortError') return;
@@ -1989,17 +2230,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       if (rawContent) {
         const parsed = parseSubtitles(rawContent, track.format);
-        subtitleCacheRef.current.set(track.url, parsed);
-        if (activeSubtitleRef.current === index) {
-          setCues(parsed);
+        if (parsed.length > 0) {
+          subtitleCacheRef.current.set(track.url, parsed);
+          if (activeSubtitleRef.current === index) {
+            setCues(parsed);
+          }
+        } else if (activeSubtitleRef.current === index) {
+          showPlayerToast('Subtitle track contained no valid lines. Try another or upload .srt', 'alert', 3200);
         }
+      } else if (activeSubtitleRef.current === index) {
+        showPlayerToast('Subtitle file unavailable from source. Try another or upload .srt', 'alert', 3200);
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.warn('[Netflix Player] Failed to load subtitle track:', err);
       }
     }
-  }, [resolution?.subtitles, useIframeFallback]);
+  }, [useIframeFallback, showPlayerToast]);
 
   const formatRemainingTime = (current: number, total: number) => {
     if (total <= 0 || current > total) return '--:--';
@@ -2122,7 +2369,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {!useIframeFallback && (
         <video
           ref={videoRef}
-          className={`w-full h-full object-contain bg-black ${activeSubtitle === -1 ? 'hide-subtitles' : ''}`}
+          className="w-full h-full object-contain bg-black hide-subtitles"
           playsInline
           crossOrigin="anonymous"
           onError={() => {
@@ -2133,18 +2380,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               setError('Unable to load stream for this title.');
             }
           }}
-        >
-          {resolution?.subtitles?.map((sub, idx) => (
-            <track
-              key={`track-${idx}`}
-              kind="subtitles"
-              src={sub.url}
-              srcLang={sub.lang}
-              label={sub.label}
-              default={false}
-            />
-          ))}
-        </video>
+        />
       )}
 
       {/* Engine 2: Multi-Server Embedded Iframe */}
@@ -2179,8 +2415,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Subtitle Overlay (Positioned at z-25, above video and iframe, below OSD controls) */}
       <SubtitleOverlay
         cues={cues}
-        currentTime={displayTime}
+        currentTime={isScrubbing ? scrubTargetTime : (activeSubtitle >= 0 && cues.length > 0 ? subtitleTime : displayTime)}
         activeSubtitle={activeSubtitle}
+        offsetSec={subtitleOffsetSec}
+        fpsScale={subtitleFpsScale}
+      />
+
+      {/* Hidden Custom Subtitle Upload Input */}
+      <input
+        ref={subtitleFileInputRef}
+        type="file"
+        accept=".srt,.vtt,.ass,.ssa,.txt"
+        onChange={handleSubtitleFileUpload}
+        className="hidden"
       />
 
       {/* Mobile Screen Tap Surface when controls are hidden - ONLY for direct video, NEVER for iframes */}
@@ -2223,6 +2470,61 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Top-right controls (Web Subtitles + Sync + TV Server Switcher) */}
+          <div className="flex items-center space-x-2 sm:space-x-3 pointer-events-auto">
+            {activeSubtitle >= 0 && (
+              <div className="hidden sm:flex items-center bg-black/60 backdrop-blur-md border border-white/20 rounded-full px-1.5 py-1 space-x-1 shadow-lg">
+                <button
+                  onClick={() => adjustSubtitleOffset(-0.5)}
+                  className="px-2 py-1 text-[11px] font-bold text-zinc-200 hover:text-white hover:bg-white/15 rounded-full transition"
+                  title="Shift Subtitles Earlier (-0.5s)"
+                >
+                  -0.5s
+                </button>
+                <span className="text-[11px] font-mono font-bold text-emerald-400 px-1">
+                  {subtitleOffsetSec > 0 ? `+${subtitleOffsetSec.toFixed(1)}s` : `${subtitleOffsetSec.toFixed(1)}s`}
+                </span>
+                <button
+                  onClick={() => adjustSubtitleOffset(0.5)}
+                  className="px-2 py-1 text-[11px] font-bold text-zinc-200 hover:text-white hover:bg-white/15 rounded-full transition"
+                  title="Delay Subtitles (+0.5s)"
+                >
+                  +0.5s
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setShowAudioSubtitleModal(true);
+                setModalCol(1);
+                setModalRow(activeSubtitle === -1 ? 0 : activeSubtitle + 1);
+              }}
+              className="px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all flex items-center space-x-2 shadow-lg"
+              title="Subtitles, Sync & Servers"
+            >
+              <Subtitles className={`w-4 h-4 ${activeSubtitle >= 0 ? 'text-[#E50914]' : 'text-white'}`} />
+              <span className="text-xs font-bold">
+                {activeSubtitle >= 0
+                  ? (allSubtitles[activeSubtitle]?.label?.split('(')[0]?.trim() || 'Subtitles')
+                  : 'Subtitles'}
+              </span>
+            </button>
+
+            {servers.length > 1 && !isNativeAndroidApp() && (
+              <button
+                onClick={() => {
+                  handleSwitchServer((selectedServerIndex + 1) % servers.length, true);
+                }}
+                className="hidden sm:flex px-3 py-2 rounded-full min-h-[40px] bg-black/60 hover:bg-black/90 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all items-center space-x-2 shadow-lg"
+                title="Switch Stream Server"
+              >
+                <Server className="w-4 h-4 text-[#E50914]" />
+                <span className="text-xs font-bold uppercase">{servers[selectedServerIndex]?.name || 'Server'}</span>
+              </button>
+            )}
           </div>
 
           {/* Top-right server buttons (Server Switch, Server Remote Virtual Cursor) - TV Remote Cursor Mode */}
@@ -2507,7 +2809,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 >
                   <Subtitles className={`w-5 h-5 sm:w-6 sm:h-6 ${focusedControl === 'subtitles' ? 'text-black' : 'text-white'}`} />
                   <span className="text-[11px] sm:text-xs font-semibold hidden sm:inline">
-                    {activeSubtitle === -1 ? 'Off' : resolution?.subtitles?.[activeSubtitle]?.label || 'On'}
+                    {activeSubtitle === -1
+                      ? 'Off'
+                      : `${allSubtitles[activeSubtitle]?.label || 'On'}${subtitleOffsetSec !== 0 ? ` (${subtitleOffsetSec > 0 ? '+' : ''}${subtitleOffsetSec.toFixed(1)}s)` : ''}`}
                   </span>
                 </button>
 
@@ -2622,7 +2926,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span>Off</span>
                 </div>
 
-                {resolution?.subtitles?.map((sub, i) => (
+                {allSubtitles.map((sub, i) => (
                   <div
                     key={`sub-select-${i}`}
                     onClick={() => selectSubtitle(i)}
@@ -2631,9 +2935,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     } ${modalCol === 1 && modalRow === i + 1 ? 'ring-2 ring-white bg-zinc-800 text-white' : ''}`}
                   >
                     {activeSubtitle === i && <Check className="w-4 h-4 text-white" />}
-                    <span>{sub.label}</span>
+                    <span className="truncate">{sub.label}</span>
                   </div>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={() => subtitleFileInputRef.current?.click()}
+                  className="mt-2 w-full flex items-center justify-center space-x-2 px-3 py-2 rounded border border-dashed border-zinc-600 hover:border-white text-zinc-200 hover:text-white bg-zinc-900/70 hover:bg-zinc-800 text-xs font-bold transition"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#E50914]" />
+                  <span>Add Subtitle (.srt/.vtt/.ass)</span>
+                </button>
               </div>
 
               {/* Column 3: Servers */}
@@ -2660,7 +2973,101 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             </div>
 
-            <div className="mt-8 pt-4 border-t border-zinc-700/80 flex items-center justify-between">
+            {/* Live Subtitle Sync & FPS Alignment Controls */}
+            <div className="mt-5 pt-4 border-t border-zinc-700/80 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-zinc-300">
+                  <Clock className="w-3.5 h-3.5 text-[#E50914]" />
+                  <span>Subtitle Timing Sync:</span>
+                  <span className={`font-mono ${subtitleOffsetSec !== 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                    {subtitleOffsetSec > 0 ? `+${subtitleOffsetSec.toFixed(1)}s (Delayed)` : subtitleOffsetSec < 0 ? `${subtitleOffsetSec.toFixed(1)}s (Earlier)` : '0.0s (Synced)'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-zinc-400">Keys: [ earlier • ] delay • \ reset</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[-5, -0.5, -0.1].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => adjustSubtitleOffset(delta)}
+                    className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-mono font-bold transition"
+                  >
+                    {delta}s
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={resetSubtitleSync}
+                  className="px-3 py-1.5 rounded bg-zinc-900 border border-zinc-600 hover:border-white text-zinc-200 text-xs font-bold transition"
+                >
+                  Reset
+                </button>
+                {[0.1, 0.5, 5].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => adjustSubtitleOffset(delta)}
+                    className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-mono font-bold transition"
+                  >
+                    +{delta}s
+                  </button>
+                ))}
+
+                <div className="flex items-center space-x-1 ml-auto">
+                  <span className="text-[11px] text-zinc-400 mr-1">FPS:</span>
+                  {[
+                    { label: '1.0x', value: 1 },
+                    { label: '23.976→25', value: 25 / 23.976023976 },
+                    { label: '25→23.976', value: 23.976023976 / 25 },
+                  ].map((preset) => {
+                    const active = Math.abs(subtitleFpsScale - preset.value) < 0.001;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => handleFpsScaleChange(preset.value)}
+                        className={`px-2 py-1 rounded text-[11px] font-bold transition ${
+                          active ? 'bg-[#E50914] text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {useIframeFallback && activeSubtitle >= 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/80 text-xs">
+                  <span className="text-zinc-400">
+                    Embed Clock: <strong className="text-white font-mono">{formatDisplayTime(subtitleTime)}</strong>
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={toggleManualEmbedSubTimer}
+                      className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-white font-bold"
+                    >
+                      {manualSubTimerRunning ? 'Pause Timer' : 'Start Timer'}
+                    </button>
+                    {[-10, -1, 1, 10].map((s) => (
+                      <button
+                        key={`embed-nudge-${s}`}
+                        type="button"
+                        onClick={() => nudgeEmbedSubTime(s)}
+                        className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono"
+                      >
+                        {s > 0 ? `+${s}s` : `${s}s`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-zinc-700/80 flex items-center justify-between">
               <span className="text-[11px] font-mono text-zinc-400">
                 {isNativeAndroidApp()
                   ? 'Remote: ◀ / ▶ column • ▲ / ▼ item • Enter select • Back close'

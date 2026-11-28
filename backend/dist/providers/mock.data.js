@@ -19,8 +19,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.4',
         year: '2021',
-        poster: 'https://image.tmdb.org/t/p/w500/dDlG06q6wYxH61yGzX0bU2n3M9V.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/oaGvjB0DvdhX9ar97fqBLoQYAwK.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/1QdXdRYfktUSONkl1oD5gc6Be0s.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/2meX1nMdScFOoV4370rqHWKmXhY.jpg',
         overview: 'Hundreds of cash-strapped players accept a strange invitation to compete in children\'s games. Inside, a tempting prize awaits with deadly high stakes.',
         genres: ['Action', 'Mystery', 'Drama']
     },
@@ -30,8 +30,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.5',
         year: '2022',
-        poster: 'https://image.tmdb.org/t/p/w500/9PFonQ9cc19qMXCuA1V4WpLoYqS.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/iHSwvRVsRyxKuOCzgEcBmILti4P.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/9PFonBhy4cQy7Jz20NpMygczOkv.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/iHSwvRVsRyxpX7FE7GbviaDvgGZ.jpg',
         overview: 'A sleuthing, supernaturally infused mystery charting Wednesday Addams\' years as a student at Nevermore Academy.',
         genres: ['Comedy', 'Fantasy', 'Mystery']
     },
@@ -41,8 +41,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.2',
         year: '2017',
-        poster: 'https://image.tmdb.org/t/p/w500/reEMJA1uzscCbk5r6ry1xOkMntk.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/gFZriCkpJYsApPwyQ9GKnMFv20E.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/reEMJA1uzscCbkpeRJeTT2bjqUp.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/xGexTKCJDkl12dTW4YCBDXWb1AD.jpg',
         overview: 'An unusual group of robbers attempt to carry out the most perfect robbery in Spanish history - stealing 2.4 billion euros from the Royal Mint of Spain.',
         genres: ['Crime', 'Drama', 'Action']
     },
@@ -52,8 +52,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '9.0',
         year: '2021',
-        poster: 'https://image.tmdb.org/t/p/w500/fqldf2t8ztc9aiwn397rWW2vvgd.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/rkB4LyZHo1NHXSTXYZaOXv7Z3IR.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/87C0wecB8bHb1PsrKBI4kJiEkgV.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/5cvnxEHT3e39DvT6ARw4GNCFrB0.jpg',
         overview: 'Amid the stark discord of twin cities Piltover and Zaun, two sisters fight on rival sides of a war between magic technologies and incompatible convictions.',
         genres: ['Animation', 'Sci-Fi', 'Action']
     },
@@ -74,8 +74,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.9',
         year: '2015',
-        poster: 'https://image.tmdb.org/t/p/w500/fC2HDm5t0kHsf7TmFEeQP6q9IR2.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/9faGSFi5jam6pDWGNdFaF06JBTw.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/fC2HDm5t0kHl7mTm7jxMR31b7by.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/rfxryDIv8huejujg4JueDJx8zCz.jpg',
         overview: 'Six years before he begins to represent Walter White, small-time attorney Jimmy McGill transforms into the charismatic criminal lawyer Saul Goodman.',
         genres: ['Crime', 'Drama']
     },
@@ -85,8 +85,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.3',
         year: '2011',
-        poster: 'https://image.tmdb.org/t/p/w500/7RumFHkKYxV8D0eJ3j5gL6k0aU1.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/sS67pW0aE8v1g5gM5G6t0q3Vz1L.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/seN6rRfN0I6n8iDXjlSMk1QjNcq.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/dg3OindVAGZBjlT3xYKqIAdukPL.jpg',
         overview: 'A contemporary British re-working of The Twilight Zone with stories that tap into the collective unease about our modern world.',
         genres: ['Sci-Fi', 'Drama', 'Thriller']
     },
@@ -97,7 +97,7 @@ exports.MOCK_ITEMS = {
         rating: '9.3',
         year: '2019',
         poster: 'https://image.tmdb.org/t/p/w500/hlLXt2tOPT6RRnjiUmoxyG1LTFi.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/uL6Ad12Fe4I5uK5q4qY0B6fVbM6.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/900tHlUYUkp7Ol04XFSoAaEIXcT.jpg',
         overview: 'The true story of one of the worst human-made catastrophes in history: the catastrophic nuclear accident in Soviet Ukraine in 1986.',
         genres: ['Drama', 'History']
     },
@@ -108,7 +108,7 @@ exports.MOCK_ITEMS = {
         rating: '8.7',
         year: '2017',
         poster: 'https://image.tmdb.org/t/p/w500/apbrbWs8M9lyOpJYU5WXrpFbk1Z.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/3lBDg3i6nn5R2NKFCJGF1zS0Gk0.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/3jDXL4Xvj3AzDOF6UH1xeyHW8MH.jpg',
         overview: 'A missing child sets four families on a frantic hunt for answers as they unearth a mind-bending mystery that spans three generations.',
         genres: ['Sci-Fi', 'Mystery', 'Drama']
     },
@@ -185,7 +185,7 @@ exports.MOCK_ITEMS = {
         rating: '8.1',
         year: '2021',
         poster: 'https://image.tmdb.org/t/p/w500/d5NXSklXo0qyIYkgV94XAgMIckC.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/jYEW4xZkZk2WTrdbMGAPFuBqbDc.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/xS0g3s4blsiPmtpjjb7chFjI1ip.jpg',
         overview: 'Paul Atreides, a brilliant and gifted young man born into a great destiny beyond his understanding, must travel to the most dangerous planet in the universe.',
         genres: ['Sci-Fi', 'Adventure']
     },
@@ -207,7 +207,7 @@ exports.MOCK_ITEMS = {
         rating: '8.4',
         year: '2018',
         poster: 'https://image.tmdb.org/t/p/w500/iiZZdoQBEYBv6id8su7ImL0oCbD.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/uUiId67v2BMVdpVMvtHaVLIqfgz.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/1ntePsIqeklfmrQJqZPncCydsqY.jpg',
         overview: 'Teen Miles Morales becomes the new Spider-Man and joins other Spider-Heroes from parallel dimensions to stop a threat to all reality.',
         genres: ['Animation', 'Action', 'Adventure']
     },
@@ -240,7 +240,7 @@ exports.MOCK_ITEMS = {
         rating: '8.5',
         year: '2000',
         poster: 'https://image.tmdb.org/t/p/w500/ty8TGRuvJLPUmAR1H1nRIsgwvim.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/ArWnZQIrQB2snEVfrZeRQCMe2Ur.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/Ar7QuJ7sJEiC0oP3I8fKBKIQD9u.jpg',
         overview: 'In the year 180, the death of Emperor Marcus Aurelius throws the Roman Empire into turmoil. His general, Maximus, is condemned to the arena.',
         genres: ['Action', 'Drama', 'Adventure']
     },
@@ -250,7 +250,7 @@ exports.MOCK_ITEMS = {
         type: 'movie',
         rating: '8.5',
         year: '2001',
-        poster: 'https://image.tmdb.org/t/p/w500/393r3eYA0HHvO37ReptJstqqiL8.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/jUo8cNmU400WtZiJss45HNXlQ2e.jpg',
         backdrop: 'https://image.tmdb.org/t/p/w1280/Ab8mkHmkYADjU7wQiOkia9BzGvS.jpg',
         overview: 'A young girl, Chihiro, becomes trapped in a strange new world of spirits. When her parents undergo a mysterious transformation, she must call upon the courage she never knew she had.',
         genres: ['Animation', 'Family', 'Fantasy']
@@ -262,7 +262,7 @@ exports.MOCK_ITEMS = {
         rating: '9.0',
         year: '2013',
         poster: 'https://image.tmdb.org/t/p/w500/hTP1DtLGFamjfu8WqjnuQdP1n4i.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/dK1l3b1r0yVn1dK0U5O5jM5Z1c5.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/rqbCbjB19amtOtFQbb3K2lgm2zv.jpg',
         overview: 'After his hometown is destroyed and his mother is killed, young Eren Jaeger vows to cleanse the earth of the giant humanoid Titans.',
         genres: ['Animation', 'Action', 'Sci-Fi']
     },
@@ -273,7 +273,7 @@ exports.MOCK_ITEMS = {
         rating: '8.4',
         year: '2022',
         poster: 'https://image.tmdb.org/t/p/w500/1X4h40fcB4WWUmIBK0auT4zRBAV.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/etj5CuMuam3hGQ3QIzegXiEb0Wq.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/577eXC8wFQT0eUrJcgznSiFPRmk.jpg',
         overview: 'The Targaryen dynasty is at the absolute apex of its power, with more than 15 dragons under their yoke.',
         genres: ['Action', 'Adventure', 'Drama', 'Fantasy']
     },
@@ -283,8 +283,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.7',
         year: '2013',
-        poster: 'https://image.tmdb.org/t/p/w500/cvhNj9eoRBe5SxjCbQTkh05UP5K.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/9xxLWtn8hK5r75a3t6mIoc1c2G.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/owhkU6KRqdXoUQpjV8uyZGPtX58.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/iFOkrSrJRwE27PwbyQeYLlMJXzw.jpg',
         overview: 'An eccentric sociopathic scientist drags his unintelligent grandson on insanely dangerous adventures across alternate dimensions.',
         genres: ['Animation', 'Comedy', 'Sci-Fi']
     },
@@ -294,8 +294,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.6',
         year: '2013',
-        poster: 'https://image.tmdb.org/t/p/w500/vUUqzWa2LnHIVqkaKVlVGkVcTTW.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/75gn9z1wE872688hWc5wXQy5oQv.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/vUUqzWa2LnHIVqkaKVlVGkVcZIW.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/dzq83RHwQcnP6WGJ6YkenIqeaa5.jpg',
         overview: 'A notorious gang in 1919 Birmingham, England, is led by the fierce Tommy Shelby, a crime boss set on moving up in the world.',
         genres: ['Crime', 'Drama', 'History']
     },
@@ -305,8 +305,8 @@ exports.MOCK_ITEMS = {
         type: 'tv',
         rating: '8.6',
         year: '2020',
-        poster: 'https://image.tmdb.org/t/p/w500/zU0htwkhNvBQdVSIKB9lf6vBi3V.jpg',
-        backdrop: 'https://image.tmdb.org/t/p/w1280/34OGjFEbHj0E3lE2wFlhvTl521.jpg',
+        poster: 'https://image.tmdb.org/t/p/w500/zU0htwkhNvBQdVSIKB9s6hgVeFK.jpg',
+        backdrop: 'https://image.tmdb.org/t/p/w1280/ktZaQ4FEmKpRgetiBooZETYQbmQ.jpg',
         overview: 'In a 1950s orphanage, a young girl reveals an astonishing talent for chess and begins an unlikely journey to stardom while grappling with addiction.',
         genres: ['Drama']
     }
@@ -437,9 +437,9 @@ exports.MOCK_TITLES = {
             { id: 154562, number: 4, name: 'Season 4', overview: 'Darkness returns to Hawkins.', poster: 'https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg', episodeCount: 9, airDate: '2022-05-27' }
         ],
         cast: [
-            { id: 135651, name: 'Millie Bobby Brown', character: 'Eleven', profile: 'https://image.tmdb.org/t/p/w185/873rC87X1yVqU8uF2h3D4lK.jpg' },
-            { id: 31549, name: 'Winona Ryder', character: 'Joyce Byers', profile: 'https://image.tmdb.org/t/p/w185/7VfF3iHn3yM2G0fX4k.jpg' },
-            { id: 35158, name: 'David Harbour', character: 'Jim Hopper', profile: 'https://image.tmdb.org/t/p/w185/chPekukMF5EWnW6bBmrg5Bu9wGa.jpg' }
+            { id: 135651, name: 'Millie Bobby Brown', character: 'Eleven', profile: 'https://image.tmdb.org/t/p/w185/515xNvaMC6xOEOlo0sFqW69ZqUH.jpg' },
+            { id: 31549, name: 'Winona Ryder', character: 'Joyce Byers', profile: 'https://image.tmdb.org/t/p/w185/xP2kNlsmXtzXq0geutflO4K9mSE.jpg' },
+            { id: 35158, name: 'David Harbour', character: 'Jim Hopper', profile: 'https://image.tmdb.org/t/p/w185/WJbEhM4040D2XBb1ko7OHR7t2q.jpg' }
         ],
         recommendations: [
             exports.MOCK_ITEMS['93405'],
@@ -463,9 +463,9 @@ exports.MOCK_TITLES = {
         overview: 'A ticking-time-bomb insomniac and a slippery soap salesman channel primal male aggression into a shocking new form of therapy.',
         genres: ['Drama', 'Thriller'],
         cast: [
-            { id: 819, name: 'Edward Norton', character: 'The Narrator', profile: 'https://image.tmdb.org/t/p/w185/8A5epLg1H6kP2gJ8E5GjVf2Z0dC.jpg' },
-            { id: 287, name: 'Brad Pitt', character: 'Tyler Durden', profile: 'https://image.tmdb.org/t/p/w185/cckcYc2v0yh1tc9QjRelptsqqoW.jpg' },
-            { id: 1283, name: 'Helena Bonham Carter', character: 'Marla Singer', profile: 'https://image.tmdb.org/t/p/w185/DDeItmAStLq8wgk7p4E89yv3xM.jpg' }
+            { id: 819, name: 'Edward Norton', character: 'The Narrator', profile: 'https://image.tmdb.org/t/p/w185/8nytsqL59SFJTVYVrN72k6qkGgJ.jpg' },
+            { id: 287, name: 'Brad Pitt', character: 'Tyler Durden', profile: 'https://image.tmdb.org/t/p/w185/ajNaPmXVVMJFg9GWmu6MJzTaXdV.jpg' },
+            { id: 1283, name: 'Helena Bonham Carter', character: 'Marla Singer', profile: 'https://image.tmdb.org/t/p/w185/hJMbNSPJ2PCahsP3rNEU39C8GWU.jpg' }
         ],
         recommendations: [
             exports.MOCK_ITEMS['680'],
@@ -519,8 +519,8 @@ exports.MOCK_TITLES = {
         overview: 'The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel.',
         genres: ['Adventure', 'Drama', 'Sci-Fi'],
         cast: [
-            { id: 10297, name: 'Matthew McConaughey', character: 'Joseph Cooper', profile: 'https://image.tmdb.org/t/p/w185/ehoVd06jB18V7k3g1L8s5h.jpg' },
-            { id: 1813, name: 'Anne Hathaway', character: 'Dr. Amelia Brand', profile: 'https://image.tmdb.org/t/p/w185/tLel4A4WNBfl32Fi1q4.jpg' }
+            { id: 10297, name: 'Matthew McConaughey', character: 'Joseph Cooper', profile: 'https://image.tmdb.org/t/p/w185/lCySuYjhXix3FzQdS4oceDDrXKI.jpg' },
+            { id: 1813, name: 'Anne Hathaway', character: 'Dr. Amelia Brand', profile: 'https://image.tmdb.org/t/p/w185/s6tflSD20MGz04ZR2R1lZvhmC4Y.jpg' }
         ],
         recommendations: [
             exports.MOCK_ITEMS['27205'],

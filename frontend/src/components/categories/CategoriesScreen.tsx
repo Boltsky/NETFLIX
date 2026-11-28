@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusable, useFocus } from '../focus/FocusContext';
 import { MediaItem, GenreCategory } from '../../types';
-import { api } from '../../services/api';
+import { api, prefetchTitleDetails } from '../../services/api';
 import { Flame, Film, Tv, Zap, Rocket, Skull, Laugh, Ghost, Sparkles, Heart, ShieldAlert, Compass, Globe, Award, HelpCircle } from 'lucide-react';
 
 const GENRE_CATEGORIES: Array<GenreCategory & { icon: any }> = [
@@ -352,6 +352,7 @@ const CategoryMovieCard: React.FC<CategoryMovieCardProps> = ({
     <div
       ref={ref}
       onClick={() => onSelect(item)}
+      onMouseEnter={() => prefetchTitleDetails(item.id, item.type)}
       onKeyDown={(e) => {
         if (e.key === 'ArrowDown' && isLastRow && onBottomDown) {
           onBottomDown();
@@ -368,6 +369,7 @@ const CategoryMovieCard: React.FC<CategoryMovieCardProps> = ({
           src={posterUrl}
           alt={item.title}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
       ) : (

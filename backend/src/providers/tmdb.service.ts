@@ -18,6 +18,11 @@ const TMDB_API_KEYS = [
 let activeKeyIndex = 0;
 let homeCatalogCache: HomeCatalog | null = null;
 let homeCatalogCacheTime = 0;
+let homeCatalogCacheDate = '';
+
+function getTodayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function getApiKey(): string {
   return TMDB_API_KEYS[activeKeyIndex % TMDB_API_KEYS.length];
@@ -108,147 +113,239 @@ export function mapTmdbMediaItem(raw: any, defaultType: 'movie' | 'tv' | 'anime'
 
 export const tmdbService = {
   async getHomeCatalog(): Promise<HomeCatalog | null> {
-    const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes in-memory cache
-    if (homeCatalogCache && (Date.now() - homeCatalogCacheTime < CACHE_TTL_MS)) {
+    const today = getTodayIsoDate();
+    const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes in-memory cache + daily rollover
+    if (
+      homeCatalogCache &&
+      homeCatalogCacheDate === today &&
+      Date.now() - homeCatalogCacheTime < CACHE_TTL_MS
+    ) {
       return homeCatalogCache;
     }
 
     try {
       const [
+        dailyMoviesData,
         nowPlayingData,
+        nowPlayingP2Data,
         trendingData,
+        trendingP2Data,
         popularMoviesData,
         popularTvData,
+        popularTvP2Data,
+        topRatedMoviesData,
+        topRatedTvData,
         upcomingData,
+        airingTodayData,
         onTheAirData,
         actionData,
         scifiData,
         thrillerData,
         comedyData,
-        animeData
+        animeMoviesData,
+        animeTvData,
+        dramaData,
+        horrorData
       ] = await Promise.all([
+        tmdbFetch<any>('/discover/movie', {
+          'primary_release_date.lte': today,
+          'vote_count.gte': 5,
+          sort_by: 'primary_release_date.desc',
+          page: 1
+        }),
         tmdbFetch<any>('/movie/now_playing', { page: 1 }),
+        tmdbFetch<any>('/movie/now_playing', { page: 2 }),
         tmdbFetch<any>('/trending/all/day', { page: 1 }),
+        tmdbFetch<any>('/trending/all/day', { page: 2 }),
         tmdbFetch<any>('/movie/popular', { page: 1 }),
         tmdbFetch<any>('/tv/popular', { page: 1 }),
+        tmdbFetch<any>('/tv/popular', { page: 2 }),
+        tmdbFetch<any>('/movie/top_rated', { page: 1 }),
+        tmdbFetch<any>('/tv/top_rated', { page: 1 }),
         tmdbFetch<any>('/movie/upcoming', { page: 1 }),
+        tmdbFetch<any>('/tv/airing_today', { page: 1 }),
         tmdbFetch<any>('/tv/on_the_air', { page: 1 }),
         tmdbFetch<any>('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc', page: 1 }),
         tmdbFetch<any>('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc', page: 1 }),
         tmdbFetch<any>('/discover/movie', { with_genres: 53, sort_by: 'popularity.desc', page: 1 }),
         tmdbFetch<any>('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc', page: 1 }),
-        tmdbFetch<any>('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc', page: 1 })
+        tmdbFetch<any>('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/tv', { with_genres: 16, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 18, sort_by: 'popularity.desc', page: 1 }),
+        tmdbFetch<any>('/discover/movie', { with_genres: 27, sort_by: 'popularity.desc', page: 1 })
       ]);
+
+      const mergeUnique = (lists: Array<any[] | undefined>, defaultType: 'movie' | 'tv' | 'anime'): MediaItem[] => {
+        const seen = new Set<string>();
+        const out: MediaItem[] = [];
+        for (const list of lists) {
+          if (!Array.isArray(list)) continue;
+          for (const raw of list) {
+            if (!raw || !raw.id) continue;
+            const mapped = mapTmdbMediaItem(raw, raw.media_type === 'tv' ? 'tv' : defaultType);
+            if (!seen.has(mapped.id)) {
+              seen.add(mapped.id);
+              out.push(mapped);
+            }
+          }
+        }
+        return out;
+      };
 
       const rails: CatalogRail[] = [];
 
-      if (nowPlayingData && Array.isArray(nowPlayingData.results) && nowPlayingData.results.length > 0) {
+      const newReleasesItems = mergeUnique([dailyMoviesData?.results, nowPlayingData?.results, nowPlayingP2Data?.results], 'movie');
+      if (newReleasesItems.length > 0) {
         rails.push({
           id: 'rail-new-releases',
-          title: 'Newly Released in Theaters & Streaming',
+          title: 'Added Daily • New Releases',
           type: 'movie',
           category: 'new_releases',
-          items: nowPlayingData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: newReleasesItems
         });
       }
 
-      if (trendingData && Array.isArray(trendingData.results) && trendingData.results.length > 0) {
+      const trendingItems = mergeUnique([trendingData?.results, trendingP2Data?.results], 'movie');
+      if (trendingItems.length > 0) {
         rails.push({
           id: 'rail-trending',
-          title: 'Trending Now',
+          title: 'Trending Today',
           type: 'movie',
           category: 'trending',
-          items: trendingData.results.map((r: any) => mapTmdbMediaItem(r, r.media_type === 'tv' ? 'tv' : 'movie'))
+          items: trendingItems
         });
       }
 
-      if (popularMoviesData && Array.isArray(popularMoviesData.results) && popularMoviesData.results.length > 0) {
+      if (popularMoviesData?.results?.length > 0) {
         rails.push({
           id: 'rail-popular-movies',
           title: 'Blockbuster Movies',
           type: 'movie',
           category: 'popular',
-          items: popularMoviesData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: mergeUnique([popularMoviesData.results], 'movie')
         });
       }
 
-      if (popularTvData && Array.isArray(popularTvData.results) && popularTvData.results.length > 0) {
+      const popularTvItems = mergeUnique([popularTvData?.results, popularTvP2Data?.results], 'tv');
+      if (popularTvItems.length > 0) {
         rails.push({
           id: 'rail-popular-tv',
           title: 'Popular TV Series',
           type: 'tv',
           category: 'tv',
-          items: popularTvData.results.map((r: any) => mapTmdbMediaItem(r, 'tv'))
+          items: popularTvItems
         });
       }
 
-      if (upcomingData && Array.isArray(upcomingData.results) && upcomingData.results.length > 0) {
+      const airingTvItems = mergeUnique([airingTodayData?.results, onTheAirData?.results], 'tv');
+      if (airingTvItems.length > 0) {
+        rails.push({
+          id: 'rail-tv-airing',
+          title: 'Airing Today & New Episodes',
+          type: 'tv',
+          category: 'tv_airing',
+          items: airingTvItems
+        });
+      }
+
+      if (topRatedMoviesData?.results?.length > 0) {
+        rails.push({
+          id: 'rail-top-rated-movies',
+          title: 'Top Rated Movies',
+          type: 'movie',
+          category: 'top_rated',
+          items: mergeUnique([topRatedMoviesData.results], 'movie')
+        });
+      }
+
+      if (topRatedTvData?.results?.length > 0) {
+        rails.push({
+          id: 'rail-top-rated-tv',
+          title: 'Critically Acclaimed Series',
+          type: 'tv',
+          category: 'tv',
+          items: mergeUnique([topRatedTvData.results], 'tv')
+        });
+      }
+
+      if (upcomingData?.results?.length > 0) {
         rails.push({
           id: 'rail-upcoming',
           title: 'Upcoming & In Theaters',
           type: 'movie',
           category: 'upcoming',
-          items: upcomingData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: mergeUnique([upcomingData.results], 'movie')
         });
       }
 
-      if (actionData && Array.isArray(actionData.results) && actionData.results.length > 0) {
+      if (actionData?.results?.length > 0) {
         rails.push({
           id: 'rail-action',
           title: 'Action & Adventure',
           type: 'movie',
           category: 'action',
-          items: actionData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: mergeUnique([actionData.results], 'movie')
         });
       }
 
-      if (scifiData && Array.isArray(scifiData.results) && scifiData.results.length > 0) {
+      if (scifiData?.results?.length > 0) {
         rails.push({
           id: 'rail-scifi',
           title: 'Sci-Fi & Fantasy',
           type: 'movie',
           category: 'scifi',
-          items: scifiData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: mergeUnique([scifiData.results], 'movie')
         });
       }
 
-      if (thrillerData && Array.isArray(thrillerData.results) && thrillerData.results.length > 0) {
+      if (thrillerData?.results?.length > 0) {
         rails.push({
           id: 'rail-thriller',
           title: 'Thrillers & Suspense',
           type: 'movie',
           category: 'thriller',
-          items: thrillerData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: mergeUnique([thrillerData.results], 'movie')
         });
       }
 
-      if (comedyData && Array.isArray(comedyData.results) && comedyData.results.length > 0) {
+      if (comedyData?.results?.length > 0) {
         rails.push({
           id: 'rail-comedy',
           title: 'Comedy Hits',
           type: 'movie',
           category: 'comedy',
-          items: comedyData.results.map((r: any) => mapTmdbMediaItem(r, 'movie'))
+          items: mergeUnique([comedyData.results], 'movie')
         });
       }
 
-      if (animeData && Array.isArray(animeData.results) && animeData.results.length > 0) {
+      const animeItems = mergeUnique([animeMoviesData?.results, animeTvData?.results], 'anime');
+      if (animeItems.length > 0) {
         rails.push({
           id: 'rail-anime',
           title: 'Acclaimed Anime & Animation',
           type: 'anime',
           category: 'anime',
-          items: animeData.results.map((r: any) => mapTmdbMediaItem(r, 'anime'))
+          items: animeItems
         });
       }
 
-      if (onTheAirData && Array.isArray(onTheAirData.results) && onTheAirData.results.length > 0) {
+      if (dramaData?.results?.length > 0) {
         rails.push({
-          id: 'rail-tv-airing',
-          title: 'Currently Airing Series',
-          type: 'tv',
-          category: 'tv_airing',
-          items: onTheAirData.results.map((r: any) => mapTmdbMediaItem(r, 'tv'))
+          id: 'rail-drama',
+          title: 'Critically Acclaimed Dramas',
+          type: 'movie',
+          category: 'drama',
+          items: mergeUnique([dramaData.results], 'movie')
+        });
+      }
+
+      if (horrorData?.results?.length > 0) {
+        rails.push({
+          id: 'rail-horror',
+          title: 'Chilling Horror & Thrills',
+          type: 'movie',
+          category: 'horror',
+          items: mergeUnique([horrorData.results], 'movie')
         });
       }
 
@@ -273,6 +370,7 @@ export const tmdbService = {
 
       homeCatalogCache = catalog;
       homeCatalogCacheTime = Date.now();
+      homeCatalogCacheDate = today;
       return catalog;
     } catch (err: any) {
       console.warn('[TMDB] getHomeCatalog error:', err.message);
@@ -314,8 +412,12 @@ export const tmdbService = {
       endpoint = '/movie/now_playing';
     } else if (category === 'upcoming') {
       endpoint = '/movie/upcoming';
+    } else if (category === 'airing_today') {
+      endpoint = '/tv/airing_today';
     } else if (category === 'tv_airing' || category === 'airing_tv' || category === 'on_the_air') {
       endpoint = '/tv/on_the_air';
+    } else if (category === 'top_rated') {
+      endpoint = isTv ? '/tv/top_rated' : '/movie/top_rated';
     } else if (options.genreId) {
       endpoint = isTv ? '/discover/tv' : '/discover/movie';
       params.with_genres = options.genreId;

@@ -261,7 +261,21 @@ export function parseSubtitles(rawContent: string, formatHint?: string): Subtitl
     return [];
   }
 
-  const trimmed = rawContent.trim();
+  const cleanedRaw = rawContent.replace(/^\uFEFF/, '');
+  const trimmed = cleanedRaw.trim();
+  const headLower = trimmed.slice(0, 600).toLowerCase();
+  if (
+    headLower.startsWith('<!doctype') ||
+    headLower.startsWith('<html') ||
+    headLower.includes('<html') ||
+    headLower.includes('<head>') ||
+    headLower.includes('<body') ||
+    headLower.includes('just a moment...') ||
+    headLower.includes('attention required! | cloudflare')
+  ) {
+    return [];
+  }
+
   const lowerHint = (formatHint || '').toLowerCase().trim();
 
   let cues: SubtitleCue[] = [];
@@ -273,16 +287,16 @@ export function parseSubtitles(rawContent: string, formatHint?: string): Subtitl
                 /^\s*Dialogue:\s*/m.test(trimmed);
 
   if (isAss) {
-    cues = parseAss(rawContent);
+    cues = parseAss(cleanedRaw);
     // Fallback: If ASS parsing produced 0 cues but content has time arrows, try SRT/VTT
     if (cues.length === 0 && trimmed.includes('-->')) {
-      cues = parseSrtOrVtt(rawContent);
+      cues = parseSrtOrVtt(cleanedRaw);
     }
   } else {
-    cues = parseSrtOrVtt(rawContent);
+    cues = parseSrtOrVtt(cleanedRaw);
     // Fallback: If SRT/VTT produced 0 cues but content has ASS markers, try ASS
     if (cues.length === 0 && (trimmed.includes('[Events]') || /^\s*Dialogue:\s*/m.test(trimmed))) {
-      cues = parseAss(rawContent);
+      cues = parseAss(cleanedRaw);
     }
   }
 
@@ -297,14 +311,92 @@ export function parseSubtitles(rawContent: string, formatHint?: string): Subtitl
   return cues;
 }
 
+interface CueIndexMeta {
+  sorted: boolean;
+  maxDur: number;
+}
+
+const cueIndexCache = new WeakMap<SubtitleCue[], CueIndexMeta>();
+
+function getCueIndexMeta(cues: SubtitleCue[]): CueIndexMeta {
+  const cached = cueIndexCache.get(cues);
+  if (cached) return cached;
+
+  let sorted = true;
+  let maxDur = 0;
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i];
+    if (i > 0 && c.start < cues[i - 1].start) {
+      sorted = false;
+    }
+    const dur = c.end - c.start;
+    if (dur > maxDur) maxDur = dur;
+  }
+
+  const meta: CueIndexMeta = { sorted, maxDur: Math.max(0, maxDur) + 0.05 };
+  cueIndexCache.set(cues, meta);
+  return meta;
+}
+
 /**
- * Helper: Retrieves all active cues at a given playback timestamp.
+ * Adjusts video playback time using user subtitle sync offset and FPS pull-down/speedup ratio.
+ * Negative offsetSec brings subtitles earlier; positive offsetSec delays subtitles.
+ */
+export function adjustCueTiming(
+  currentTime: number,
+  offsetSec: number = 0,
+  fpsScale: number = 1
+): number {
+  if (!Number.isFinite(currentTime)) return 0;
+  const safeScale = Number.isFinite(fpsScale) && fpsScale > 0 ? fpsScale : 1;
+  const safeOffset = Number.isFinite(offsetSec) ? offsetSec : 0;
+  return currentTime * safeScale - safeOffset;
+}
+
+/**
+ * Helper: Retrieves all active cues at a given playback timestamp using O(log N) binary search
+ * when sorted, while supporting overlapping long-duration cues cleanly.
  */
 export function getActiveCues(cues: SubtitleCue[], currentTime: number): SubtitleCue[] {
   if (!Array.isArray(cues) || cues.length === 0 || !Number.isFinite(currentTime)) {
     return [];
   }
-  return cues.filter(c => currentTime >= c.start && currentTime <= c.end);
+
+  const meta = getCueIndexMeta(cues);
+  if (!meta.sorted) {
+    return cues.filter((c) => currentTime >= c.start && currentTime <= c.end);
+  }
+
+  // Binary search for the rightmost cue with cue.start <= currentTime
+  let lo = 0;
+  let hi = cues.length - 1;
+  let rightBound = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (cues[mid].start <= currentTime) {
+      rightBound = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (rightBound < 0) return [];
+
+  const matched: SubtitleCue[] = [];
+  const minStart = currentTime - meta.maxDur;
+  for (let i = rightBound; i >= 0; i--) {
+    const c = cues[i];
+    if (c.start < minStart) break;
+    if (currentTime >= c.start && currentTime <= c.end) {
+      matched.push(c);
+    }
+  }
+
+  if (matched.length > 1) {
+    matched.reverse();
+  }
+  return matched;
 }
 
 /**

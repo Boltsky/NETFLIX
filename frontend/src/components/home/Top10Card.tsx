@@ -1,5 +1,6 @@
 import React from 'react';
 import { MediaItem } from '../../types';
+import { prefetchTitleDetails } from '../../services/api';
 import { useFocusable } from '../focus/FocusContext';
 
 interface Top10CardProps {
@@ -36,6 +37,7 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
     <div
       ref={ref}
       onClick={() => onSelect(item)}
+      onMouseEnter={() => prefetchTitleDetails(item.id, item.type)}
       className="relative flex items-center flex-shrink-0 cursor-pointer group tv-focusable select-none"
     >
       {/* Massive Netflix Stylized Rank Number */}
@@ -65,6 +67,7 @@ export const Top10Card: React.FC<Top10CardProps> = ({ item, rank, onSelect }) =>
             src={imgSrc}
             alt={item.title}
             loading="lazy"
+            decoding="async"
             onError={handleImageError}
             className="w-full h-full object-cover"
           />

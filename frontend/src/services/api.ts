@@ -32,6 +32,37 @@ const FRAMEX_BACKENDS = [
   'https://api.framextv.xyz'
 ];
 
+const TMDB_API_KEYS = [
+  '8265bd1679663a7ea12ac168da84d2e8',
+  '4113f36a5fa39233075242c75e340294',
+  'b86ae9481977e13e00e0fe7ce13a9ba0',
+  '15d2ade0fe30e38371f7d329acfb97d5'
+];
+let tmdbKeyIndex = 0;
+
+function getTodayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isServerlessWebHost(): boolean {
+  if (typeof window === 'undefined' || !window.location) return false;
+  if (import.meta !== undefined && import.meta.env?.VITE_API_URL) return false;
+  if (window.CINEWAVE_BACKEND_URL) return false;
+  const host = window.location.hostname || '';
+  return host.includes('vercel.app') || host.includes('onrender.com');
+}
+
+// Normal web browsers block api.framextv.* due to missing ACAO CORS headers.
+// Allow direct FrameX calls in Node/Vitest or native Android WebView (which intercepts requests).
+function canDirectFetchFramex(): boolean {
+  if (typeof window === 'undefined') return true;
+  const w: any = window;
+  if (w.AndroidTV || w.AndroidUpdater) return true;
+  const host = w.location?.hostname || '';
+  if (host === 'appassets.androidplatform.net') return true;
+  return !w.location?.protocol?.startsWith('http');
+}
+
 export function getBackendBaseUrl(): string {
   if (typeof window !== 'undefined' && window.CINEWAVE_BACKEND_URL) {
     return window.CINEWAVE_BACKEND_URL.replace(/\/+$/, '');
@@ -48,18 +79,23 @@ export function getBackendBaseUrl(): string {
       return `http://${host}:8080`;
     }
     if (host.includes('onrender.com') || host.includes('vercel.app')) {
-      return 'https://netflix-api-yosg.onrender.com';
+      return ''; // Same-origin Vercel /api/v1 serverless routes (avoids suspended Render 503 stalls)
     }
   }
   return '';
 }
 
 const BASE_URL = getBackendBaseUrl();
+let backendCircuitOpenUntil = 0;
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  if (backendCircuitOpenUntil > Date.now() && !endpoint.startsWith('/analytics/verify')) {
+    throw new Error('Backend circuit breaker open');
+  }
   const url = `${BASE_URL}/api/v1${endpoint}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  const timeoutMs = endpoint.startsWith('/playback') ? 5500 : 3800;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -74,6 +110,9 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
     clearTimeout(timeoutId);
 
     if (!res.ok) {
+      if (res.status >= 502) {
+        backendCircuitOpenUntil = Date.now() + 3 * 60 * 1000;
+      }
       let errorMsg = `API HTTP ${res.status}`;
       try {
         const errorData = await res.json();
@@ -93,9 +132,154 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
     return await res.json();
   } catch (err: any) {
     clearTimeout(timeoutId);
+    const msg = String(err?.message || '');
+    if (err?.name === 'AbortError' || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      if (typeof window !== 'undefined' && BASE_URL) {
+        backendCircuitOpenUntil = Date.now() + 3 * 60 * 1000;
+      }
+    }
     throw err;
   }
 }
+
+async function tmdbDirectFetch<T = any>(endpoint: string, params: Record<string, string | number> = {}): Promise<T | null> {
+  for (let attempt = 0; attempt < TMDB_API_KEYS.length; attempt++) {
+    const key = TMDB_API_KEYS[(tmdbKeyIndex + attempt) % TMDB_API_KEYS.length];
+    const query = new URLSearchParams({
+      api_key: key,
+      language: 'en-US',
+      ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))
+    });
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 3500);
+    try {
+      const res = await fetch(`https://api.themoviedb.org/3${endpoint}?${query.toString()}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' }
+      });
+      clearTimeout(tid);
+      if (res.ok) {
+        return (await res.json()) as T;
+      }
+      if (res.status === 401 || res.status === 429) {
+        tmdbKeyIndex = (tmdbKeyIndex + 1) % TMDB_API_KEYS.length;
+        continue;
+      }
+      return null;
+    } catch {
+      clearTimeout(tid);
+      tmdbKeyIndex = (tmdbKeyIndex + 1) % TMDB_API_KEYS.length;
+    }
+  }
+  return null;
+}
+
+const SUBTITLE_LANG_MAP: Record<string, [string, string]> = {
+  eng: ['English', 'en'],
+  en: ['English', 'en'],
+  spa: ['Spanish', 'es'],
+  es: ['Spanish', 'es'],
+  fre: ['French', 'fr'],
+  fra: ['French', 'fr'],
+  fr: ['French', 'fr'],
+  por: ['Portuguese', 'pt'],
+  pob: ['Portuguese (BR)', 'pt'],
+  ara: ['Arabic', 'ar'],
+  ar: ['Arabic', 'ar'],
+  ger: ['German', 'de'],
+  deu: ['German', 'de'],
+  ita: ['Italian', 'it'],
+  hin: ['Hindi', 'hi'],
+  jpn: ['Japanese', 'ja'],
+  kor: ['Korean', 'ko'],
+  zho: ['Chinese', 'zh'],
+  chi: ['Chinese', 'zh']
+};
+
+async function fetchMatchedSubtitles(
+  contentId: string,
+  type: 'movie' | 'tv' | 'anime',
+  season?: number,
+  episode?: number
+): Promise<SubtitleTrack[]> {
+  const isEpisodic = type === 'tv' || type === 'anime';
+  const s = season || 1;
+  const e = episode || 1;
+
+  try {
+    const ext = await tmdbDirectFetch<any>(`/${isEpisodic ? 'tv' : 'movie'}/${encodeURIComponent(contentId)}/external_ids`);
+    const imdbId = ext?.imdb_id;
+    if (!imdbId || !String(imdbId).startsWith('tt')) {
+      return [];
+    }
+
+    const stremioUrl = isEpisodic
+      ? `https://opensubtitles-v3.strem.io/subtitles/series/${encodeURIComponent(`${imdbId}:${s}:${e}`)}.json`
+      : `https://opensubtitles-v3.strem.io/subtitles/movie/${encodeURIComponent(imdbId)}.json`;
+
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(stremioUrl, { signal: controller.signal });
+    clearTimeout(tid);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!Array.isArray(data?.subtitles)) return [];
+
+    const sorted = [...data.subtitles].sort((a: any, b: any) => {
+      const aEn = String(a?.lang || '').toLowerCase().startsWith('en') ? 0 : 1;
+      const bEn = String(b?.lang || '').toLowerCase().startsWith('en') ? 0 : 1;
+      if (aEn !== bEn) return aEn - bEn;
+      const aRel = String(a?.movieReleaseName || a?.subtitleFileName || '').toLowerCase();
+      const bRel = String(b?.movieReleaseName || b?.subtitleFileName || '').toLowerCase();
+      const aScore = (aRel.includes('web') || aRel.includes('bluray') ? 0 : 1);
+      const bScore = (bRel.includes('web') || bRel.includes('bluray') ? 0 : 1);
+      return aScore - bScore;
+    });
+
+    const tracks: SubtitleTrack[] = [];
+    const perLangCount: Record<string, number> = {};
+    const seen = new Set<string>();
+
+    for (const item of sorted) {
+      if (!item?.url || seen.has(item.url)) continue;
+      seen.add(item.url);
+      const rawLang = String(item.lang || 'eng').toLowerCase();
+      const [displayLang, shortCode] = SUBTITLE_LANG_MAP[rawLang] || [rawLang.toUpperCase(), rawLang.slice(0, 2)];
+      perLangCount[displayLang] = (perLangCount[displayLang] || 0) + 1;
+      if (perLangCount[displayLang] > 4) continue;
+      const releaseName = String(item.movieReleaseName || item.subtitleFileName || '').trim();
+      const compactRelease = releaseName.length > 26 ? `${releaseName.slice(0, 26)}...` : releaseName;
+
+      tracks.push({
+        url: item.url,
+        label: compactRelease ? `${displayLang} (${compactRelease})` : `${displayLang} #${perLangCount[displayLang]}`,
+        lang: shortCode,
+        language: displayLang,
+        format: item.url.toLowerCase().includes('.vtt') ? 'vtt' : 'srt',
+        isDefault: false
+      });
+
+      if (tracks.length >= 16) break;
+    }
+
+    return tracks;
+  } catch {
+    return [];
+  }
+}
+
+const HOME_SWR_STORAGE_KEY = 'cinewave_home_swr_v2';
+const HOME_CACHE_TTL_MS = 15 * 60 * 1000;
+const CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const DETAILS_CACHE_TTL_MS = 15 * 60 * 1000;
+
+const categoryCache = new Map<string, { ts: number; data: CategoryResponse }>();
+const inflightCategoryRequests = new Map<string, Promise<CategoryResponse>>();
+const detailsCache = new Map<string, { ts: number; data: TitleDetails }>();
+const inflightDetailsRequests = new Map<string, Promise<TitleDetails>>();
+let homeMemoryCache: { date: string; ts: number; data: HomeCatalog } | null = null;
+let inflightHomePromise: Promise<HomeCatalog> | null = null;
 
 function optimizeTmdbImageUrl(url?: string, size: 'poster' | 'backdrop' | 'profile' = 'poster'): string | undefined {
   if (!url) return undefined;
@@ -278,15 +462,21 @@ async function fetchAlternateSources(
     }
   } catch {}
 
-  // 2. Direct upstream failover across backends
-  for (const b of FRAMEX_BACKENDS) {
-    try {
+  // 2. Direct upstream failover across backends in parallel (skip in CORS-restricted web browsers)
+  if (!canDirectFetchFramex()) {
+    return [];
+  }
+  const directResults = await Promise.allSettled(
+    FRAMEX_BACKENDS.map(async (b) => {
       let p = `${b}/api/stream?id=${encodeURIComponent(contentId)}&type=${isEpisodic ? 'tv' : 'movie'}&provider=${encodeURIComponent(provider)}`;
       if (isEpisodic) {
         p += `&season=${s}&episode=${e}`;
       }
-      const r = await fetch(p, { headers: { 'Accept': 'application/json' } });
-      if (r.ok) {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 2200);
+      try {
+        const r = await fetch(p, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
+        if (!r.ok) return [];
         const d = await r.json();
         if (d && d.success && Array.isArray(d.sources) && d.sources.length > 0) {
           return d.sources
@@ -302,8 +492,16 @@ async function fetchAlternateSources(
               server: src.server || provider
             }));
         }
+        return [];
+      } finally {
+        clearTimeout(tid);
       }
-    } catch {}
+    })
+  );
+  for (const res of directResults) {
+    if (res.status === 'fulfilled' && res.value.length > 0) {
+      return res.value;
+    }
   }
   return [];
 }
@@ -658,165 +856,389 @@ function normalizeTitleDetails(raw: any, fallbackId: string, type: 'movie' | 'tv
   };
 }
 
-export const api = {
-  // Catalog
-  async getHomeCatalog(): Promise<HomeCatalog> {
-    try {
-      const res = await apiFetch<any>('/catalog/home');
-      const normalized = normalizeHomeCatalog(res);
-      if (normalized.rails.length > 0 && normalized !== MOCK_HOME_CATALOG) {
-        return normalized;
-      }
-    } catch (err: any) {
-      console.warn('[Netflix API] Local /catalog/home fetch failed:', err?.message);
-    }
+async function getDirectTmdbHomeCatalog(): Promise<HomeCatalog | null> {
+  const today = getTodayIsoDate();
+  try {
+    const [
+      dailyMovies,
+      nowPlayingP1,
+      nowPlayingP2,
+      trendingP1,
+      trendingP2,
+      popularMovies,
+      popularTvP1,
+      popularTvP2,
+      topRatedMovies,
+      topRatedTv,
+      upcoming,
+      airingToday,
+      onTheAir,
+      action,
+      scifi,
+      thriller,
+      comedy,
+      animeMovies,
+      animeTv,
+      drama,
+      horror
+    ] = await Promise.all([
+      tmdbDirectFetch<any>('/discover/movie', {
+        'primary_release_date.lte': today,
+        'vote_count.gte': 5,
+        sort_by: 'primary_release_date.desc',
+        page: 1
+      }),
+      tmdbDirectFetch<any>('/movie/now_playing', { page: 1 }),
+      tmdbDirectFetch<any>('/movie/now_playing', { page: 2 }),
+      tmdbDirectFetch<any>('/trending/all/day', { page: 1 }),
+      tmdbDirectFetch<any>('/trending/all/day', { page: 2 }),
+      tmdbDirectFetch<any>('/movie/popular', { page: 1 }),
+      tmdbDirectFetch<any>('/tv/popular', { page: 1 }),
+      tmdbDirectFetch<any>('/tv/popular', { page: 2 }),
+      tmdbDirectFetch<any>('/movie/top_rated', { page: 1 }),
+      tmdbDirectFetch<any>('/tv/top_rated', { page: 1 }),
+      tmdbDirectFetch<any>('/movie/upcoming', { page: 1 }),
+      tmdbDirectFetch<any>('/tv/airing_today', { page: 1 }),
+      tmdbDirectFetch<any>('/tv/on_the_air', { page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 28, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 878, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 53, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 35, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 16, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/tv', { with_genres: 16, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 18, sort_by: 'popularity.desc', page: 1 }),
+      tmdbDirectFetch<any>('/discover/movie', { with_genres: 27, sort_by: 'popularity.desc', page: 1 })
+    ]);
 
-    // Direct multi-host fallback to upstream FrameXTV backends
-    for (const b of FRAMEX_BACKENDS) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        const directRes = await fetch(`${b}/api/home`, {
-          signal: controller.signal,
-          headers: { 'Accept': 'application/json' }
-        });
-        clearTimeout(timeoutId);
-        if (directRes.ok) {
-          const data = await directRes.json();
-          const normalized = normalizeHomeCatalog(data);
-          if (normalized.rails.length > 0) {
-            return normalized;
+    const mergeUnique = (lists: Array<any[] | undefined>, defaultType: 'movie' | 'tv' | 'anime'): MediaItem[] => {
+      const seen = new Set<string>();
+      const out: MediaItem[] = [];
+      for (const list of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const raw of list) {
+          if (!raw || !raw.id) continue;
+          const mapped = mapMediaItem(raw, raw.media_type === 'tv' ? 'tv' : defaultType);
+          if (!seen.has(mapped.id)) {
+            seen.add(mapped.id);
+            out.push(mapped);
           }
         }
-      } catch (e: any) {
-        console.warn(`[Netflix API] Direct home fallback failed on ${b}:`, e?.message);
+      }
+      return out;
+    };
+
+    const rails: CatalogRail[] = [];
+    const pushRail = (id: string, title: string, type: 'movie' | 'tv' | 'anime', category: string, lists: Array<any[] | undefined>) => {
+      const items = mergeUnique(lists, type);
+      if (items.length > 0) rails.push({ id, title, type, category, items });
+    };
+
+    pushRail('rail-new-releases', 'Added Daily • New Releases', 'movie', 'new_releases', [dailyMovies?.results, nowPlayingP1?.results, nowPlayingP2?.results]);
+    pushRail('rail-trending', 'Trending Today', 'movie', 'trending', [trendingP1?.results, trendingP2?.results]);
+    pushRail('rail-popular-movies', 'Blockbuster Movies', 'movie', 'popular', [popularMovies?.results]);
+    pushRail('rail-popular-tv', 'Popular TV Series', 'tv', 'tv', [popularTvP1?.results, popularTvP2?.results]);
+    pushRail('rail-tv-airing', 'Airing Today & New Episodes', 'tv', 'tv_airing', [airingToday?.results, onTheAir?.results]);
+    pushRail('rail-top-rated-movies', 'Top Rated Movies', 'movie', 'top_rated', [topRatedMovies?.results]);
+    pushRail('rail-top-rated-tv', 'Critically Acclaimed Series', 'tv', 'tv', [topRatedTv?.results]);
+    pushRail('rail-upcoming', 'Upcoming & In Theaters', 'movie', 'upcoming', [upcoming?.results]);
+    pushRail('rail-action', 'Action & Adventure', 'movie', 'action', [action?.results]);
+    pushRail('rail-scifi', 'Sci-Fi & Fantasy', 'movie', 'scifi', [scifi?.results]);
+    pushRail('rail-thriller', 'Thrillers & Suspense', 'movie', 'thriller', [thriller?.results]);
+    pushRail('rail-comedy', 'Comedy Hits', 'movie', 'comedy', [comedy?.results]);
+    pushRail('rail-anime', 'Acclaimed Anime & Animation', 'anime', 'anime', [animeMovies?.results, animeTv?.results]);
+    pushRail('rail-drama', 'Critically Acclaimed Dramas', 'movie', 'drama', [drama?.results]);
+    pushRail('rail-horror', 'Chilling Horror & Thrills', 'movie', 'horror', [horror?.results]);
+
+    if (rails.length < 3) return null;
+
+    const heroPool = [
+      ...(trendingP1?.results || []),
+      ...(nowPlayingP1?.results || []),
+      ...(popularMovies?.results || [])
+    ];
+    const heroRaw = heroPool.find((r: any) => r.backdrop_path && r.poster_path && r.overview && r.overview.length > 20) || heroPool[0];
+    const hero = heroRaw ? mapMediaItem(heroRaw, heroRaw.media_type === 'tv' ? 'tv' : 'movie') : (rails[0]?.items?.[0] || null);
+
+    return { hero, rails: deduplicateRails(rails) };
+  } catch (err: any) {
+    console.warn('[Netflix API] Direct TMDB home catalog failed:', err?.message);
+    return null;
+  }
+}
+
+function saveHomeCatalogCache(catalog: HomeCatalog): void {
+  const today = getTodayIsoDate();
+  const payload = { date: today, ts: Date.now(), data: catalog };
+  homeMemoryCache = payload;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(HOME_SWR_STORAGE_KEY, JSON.stringify(payload));
+    }
+  } catch {}
+}
+
+export function getCachedHomeCatalogSync(): { catalog: HomeCatalog; isFresh: boolean; isSameDay: boolean } | null {
+  const today = getTodayIsoDate();
+  const now = Date.now();
+  if (homeMemoryCache && homeMemoryCache.data?.rails?.length > 0) {
+    const isSameDay = homeMemoryCache.date === today;
+    const isFresh = isSameDay && (now - homeMemoryCache.ts < HOME_CACHE_TTL_MS);
+    if (isFresh) {
+      return { catalog: homeMemoryCache.data, isFresh: true, isSameDay: true };
+    }
+  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(HOME_SWR_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.data?.rails?.length > 0) {
+          // Seed media item cache cleanly
+          parsed.data.rails.forEach((r: CatalogRail) => (r.items || []).forEach(cacheMediaItem));
+          if (parsed.data.hero) cacheMediaItem(parsed.data.hero);
+          const isSameDay = parsed.date === today;
+          const isFresh = isSameDay && (now - Number(parsed.ts || 0) < HOME_CACHE_TTL_MS);
+          homeMemoryCache = { date: String(parsed.date || ''), ts: Number(parsed.ts || 0), data: parsed.data };
+          return { catalog: parsed.data, isFresh, isSameDay };
+        }
       }
     }
+  } catch {}
+  if (homeMemoryCache && homeMemoryCache.data?.rails?.length > 0) {
+    const isSameDay = homeMemoryCache.date === today;
+    return { catalog: homeMemoryCache.data, isFresh: false, isSameDay };
+  }
+  return null;
+}
 
-    console.warn('[Netflix API] Using rich offline fallback home catalog');
-    return MOCK_HOME_CATALOG;
+export function prefetchTitleDetails(id: string, type: 'movie' | 'tv' | 'anime'): void {
+  const key = `${type}:${id}`;
+  const hit = detailsCache.get(key);
+  if (hit && Date.now() - hit.ts < DETAILS_CACHE_TTL_MS) return;
+  if (inflightDetailsRequests.has(key)) return;
+  api.getTitleDetails(id, type).catch(() => {});
+}
+
+export const api = {
+  // Catalog
+  async getHomeCatalog(forceRefresh: boolean = false): Promise<HomeCatalog> {
+    const today = getTodayIsoDate();
+    if (!forceRefresh && homeMemoryCache && homeMemoryCache.date === today && Date.now() - homeMemoryCache.ts < HOME_CACHE_TTL_MS) {
+      return homeMemoryCache.data;
+    }
+
+    if (inflightHomePromise && !forceRefresh) {
+      return inflightHomePromise;
+    }
+
+    const fetchHome = async (): Promise<HomeCatalog> => {
+      try {
+        const res = await apiFetch<any>('/catalog/home');
+        const normalized = normalizeHomeCatalog(res);
+        // Require a rich live catalog (not the static 5-rail fallback)
+        if (normalized.rails.length >= 6 && normalized !== MOCK_HOME_CATALOG) {
+          saveHomeCatalogCache(normalized);
+          return normalized;
+        }
+      } catch (err: any) {
+        console.warn('[Netflix API] Local /catalog/home fetch failed:', err?.message);
+      }
+
+      // Direct multi-host fallback to upstream FrameXTV backends (when CORS-allowed)
+      if (canDirectFetchFramex()) {
+        for (const b of FRAMEX_BACKENDS) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const directRes = await fetch(`${b}/api/home`, {
+              signal: controller.signal,
+              headers: { 'Accept': 'application/json' }
+            });
+            clearTimeout(timeoutId);
+            if (directRes.ok) {
+              const data = await directRes.json();
+              const normalized = normalizeHomeCatalog(data);
+              if (normalized.rails.length >= 6) {
+                saveHomeCatalogCache(normalized);
+                return normalized;
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[Netflix API] Direct home fallback failed on ${b}:`, e?.message);
+          }
+        }
+      }
+
+      // Direct CORS-friendly TMDB live daily catalog fallback
+      const liveTmdbCatalog = await getDirectTmdbHomeCatalog();
+      if (liveTmdbCatalog && liveTmdbCatalog.rails.length >= 4) {
+        saveHomeCatalogCache(liveTmdbCatalog);
+        return liveTmdbCatalog;
+      }
+
+      console.warn('[Netflix API] Using rich offline fallback home catalog');
+      return {
+        hero: MOCK_HOME_CATALOG.hero ? mapMediaItem(MOCK_HOME_CATALOG.hero, 'tv') : null,
+        rails: deduplicateRails(
+          MOCK_HOME_CATALOG.rails.map((r) => ({
+            ...r,
+            items: r.items.map((i) => mapMediaItem(i, r.type))
+          }))
+        )
+      };
+    };
+
+    inflightHomePromise = fetchHome().finally(() => {
+      inflightHomePromise = null;
+    });
+    return inflightHomePromise;
   },
 
   async getCategoryMovies(options: CategoryQueryParams): Promise<CategoryResponse> {
     const page = Math.max(1, Number(options.page || 1));
     const category = options.category ? options.category.toLowerCase() : (options.genreId ? '' : 'popular');
     const genreId = options.genreId;
-    const type = options.type || (category === 'tv' || category === 'popular_tv' ? 'tv' : 'movie');
+    const type = options.type || (category === 'tv' || category === 'popular_tv' || category === 'airing_today' ? 'tv' : 'movie');
 
-    const params = new URLSearchParams();
-    if (category) params.set('category', category);
-    if (genreId) params.set('genreId', String(genreId));
-    if (type) params.set('type', type);
-    params.set('page', String(page));
-
-    // 1. Try local backend
-    try {
-      const res = await apiFetch<any>(`/catalog/category?${params.toString()}`);
-      if (res && res.success && Array.isArray(res.results)) {
-        return {
-          success: true,
-          category,
-          genreId,
-          page: Number(res.page || page),
-          totalPages: Number(res.totalPages || 100),
-          totalResults: Number(res.totalResults || 2000),
-          results: res.results.map((r: any) => mapMediaItem(r, type))
-        };
-      }
-    } catch (err: any) {
-      console.warn('[Netflix API] Local /catalog/category fetch failed:', err?.message);
+    const cacheKey = `${category}:${genreId || ''}:${type}:${page}`;
+    const cachedHit = categoryCache.get(cacheKey);
+    if (cachedHit && Date.now() - cachedHit.ts < CATEGORY_CACHE_TTL_MS) {
+      return cachedHit.data;
+    }
+    const existingInflight = inflightCategoryRequests.get(cacheKey);
+    if (existingInflight) {
+      return existingInflight;
     }
 
-    // 2. Direct upstream failover across backends
-    const GENRE_MAP: Record<string, number> = {
-      action: 28,
-      adventure: 12,
-      animation: 16,
-      comedy: 35,
-      crime: 80,
-      documentary: 99,
-      drama: 18,
-      family: 10751,
-      fantasy: 14,
-      history: 36,
-      horror: 27,
-      music: 10402,
-      mystery: 9648,
-      romance: 10749,
-      scifi: 878,
-      'sci-fi': 878,
-      thriller: 53,
-      war: 10752,
-      western: 37
-    };
+    const run = async (): Promise<CategoryResponse> => {
+      const params = new URLSearchParams();
+      if (category) params.set('category', category);
+      if (genreId) params.set('genreId', String(genreId));
+      if (type) params.set('type', type);
+      params.set('page', String(page));
 
-    const effectiveGenreId = genreId || GENRE_MAP[category];
-    let upstreamPath: string;
-    if (effectiveGenreId) {
-      upstreamPath = `/api/discover?genre=${effectiveGenreId}&page=${page}`;
-    } else if (category === 'trending') {
-      upstreamPath = `/api/trending?page=${page}`;
-    } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
-      upstreamPath = `/api/new-releases?page=${page}`;
-    } else if (category === 'upcoming') {
-      upstreamPath = `/api/upcoming?page=${page}`;
-    } else if (category === 'popular_tv' || category === 'tv' || type === 'tv') {
-      upstreamPath = `/api/tv?page=${page}`;
-    } else if (category === 'popular' || category === 'popular_movies' || category === 'movies') {
-      upstreamPath = `/api/movies?page=${page}`;
-    } else {
-      upstreamPath = `/api/movies?page=${page}`;
-    }
-
-    for (const b of FRAMEX_BACKENDS) {
-      try {
-        const directRes = await fetch(`${b}${upstreamPath}`, {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (directRes.ok) {
-          const data = await directRes.json();
-          if (data && Array.isArray(data.results)) {
-            return {
+      // 1. Try local/custom backend (skip empty serverless path when on static Vercel route without /catalog/category)
+      if (!isServerlessWebHost()) {
+        try {
+          const res = await apiFetch<any>(`/catalog/category?${params.toString()}`);
+          if (res && res.success && Array.isArray(res.results)) {
+            const out: CategoryResponse = {
               success: true,
               category,
-              genreId: effectiveGenreId,
-              page: Number(data.page || page),
-              totalPages: Number(data.totalPages || 100),
-              totalResults: Number(data.totalResults || (data.results.length * 10)),
-              results: data.results.map((r: any) => mapMediaItem(r, type))
+              genreId,
+              page: Number(res.page || page),
+              totalPages: Number(res.totalPages || 100),
+              totalResults: Number(res.totalResults || 2000),
+              results: res.results.map((r: any) => mapMediaItem(r, type))
             };
+            categoryCache.set(cacheKey, { ts: Date.now(), data: out });
+            return out;
+          }
+        } catch (err: any) {
+          console.warn('[Netflix API] Local /catalog/category fetch failed:', err?.message);
+        }
+      }
+
+      // 2. Direct upstream failover across backends (skip CORS-blocked hosts in normal web browsers)
+      const GENRE_MAP: Record<string, number> = {
+        action: 28,
+        adventure: 12,
+        animation: 16,
+        comedy: 35,
+        crime: 80,
+        documentary: 99,
+        drama: 18,
+        family: 10751,
+        fantasy: 14,
+        history: 36,
+        horror: 27,
+        music: 10402,
+        mystery: 9648,
+        romance: 10749,
+        scifi: 878,
+        'sci-fi': 878,
+        thriller: 53,
+        war: 10752,
+        western: 37
+      };
+
+      const effectiveGenreId = genreId || GENRE_MAP[category];
+      let upstreamPath: string;
+      if (effectiveGenreId) {
+        upstreamPath = `/api/discover?genre=${effectiveGenreId}&page=${page}`;
+      } else if (category === 'trending') {
+        upstreamPath = `/api/trending?page=${page}`;
+      } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
+        upstreamPath = `/api/new-releases?page=${page}`;
+      } else if (category === 'upcoming') {
+        upstreamPath = `/api/upcoming?page=${page}`;
+      } else if (category === 'popular_tv' || category === 'tv' || type === 'tv') {
+        upstreamPath = `/api/tv?page=${page}`;
+      } else {
+        upstreamPath = `/api/movies?page=${page}`;
+      }
+
+      if (canDirectFetchFramex() && category !== 'top_rated' && category !== 'airing_today') {
+        for (const b of FRAMEX_BACKENDS) {
+          try {
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 2000);
+            const directRes = await fetch(`${b}${upstreamPath}`, {
+              signal: controller.signal,
+              headers: { 'Accept': 'application/json' }
+            });
+            clearTimeout(tid);
+            if (directRes.ok) {
+              const data = await directRes.json();
+              if (data && Array.isArray(data.results)) {
+                const out: CategoryResponse = {
+                  success: true,
+                  category,
+                  genreId: effectiveGenreId,
+                  page: Number(data.page || page),
+                  totalPages: Number(data.totalPages || 100),
+                  totalResults: Number(data.totalResults || (data.results.length * 10)),
+                  results: data.results.map((r: any) => mapMediaItem(r, type))
+                };
+                categoryCache.set(cacheKey, { ts: Date.now(), data: out });
+                return out;
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[Netflix API] Direct category failover failed on ${b}:`, e?.message);
           }
         }
-      } catch (e: any) {
-        console.warn(`[Netflix API] Direct category failover failed on ${b}:`, e?.message);
-      }
-    }
-
-    // Direct TMDB category fallback (CORS-friendly for web browsers)
-    try {
-      const isTv = type === 'tv' || category === 'tv' || category === 'popular_tv';
-      let tmdbUrl = '';
-      if (category === 'trending') {
-        tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
-      } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
-        tmdbUrl = `https://api.themoviedb.org/3/movie/now_playing?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
-      } else if (category === 'upcoming') {
-        tmdbUrl = `https://api.themoviedb.org/3/movie/upcoming?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
-      } else if (category === 'tv_airing' || category === 'airing_tv' || category === 'on_the_air') {
-        tmdbUrl = `https://api.themoviedb.org/3/tv/on_the_air?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
-      } else if (effectiveGenreId) {
-        tmdbUrl = `https://api.themoviedb.org/3/discover/${isTv ? 'tv' : 'movie'}?api_key=8265bd1679663a7ea12ac168da84d2e8&with_genres=${effectiveGenreId}&sort_by=popularity.desc&page=${page}`;
-      } else if (isTv) {
-        tmdbUrl = `https://api.themoviedb.org/3/tv/popular?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
-      } else {
-        tmdbUrl = `https://api.themoviedb.org/3/movie/popular?api_key=8265bd1679663a7ea12ac168da84d2e8&page=${page}`;
       }
 
-      const tmdbRes = await fetch(tmdbUrl);
-      if (tmdbRes.ok) {
-        const tmdbData = await tmdbRes.json();
+      // 3. Direct TMDB category fetch (CORS-friendly & updated daily)
+      try {
+        const isTv = type === 'tv' || category === 'tv' || category === 'popular_tv' || category === 'airing_today';
+        let tmdbEndpoint = '/movie/popular';
+        const tmdbParams: Record<string, string | number> = { page };
+
+        if (category === 'trending') {
+          tmdbEndpoint = '/trending/all/day';
+        } else if (category === 'new_releases' || category === 'new-releases' || category === 'now_playing') {
+          tmdbEndpoint = '/movie/now_playing';
+        } else if (category === 'upcoming') {
+          tmdbEndpoint = '/movie/upcoming';
+        } else if (category === 'airing_today') {
+          tmdbEndpoint = '/tv/airing_today';
+        } else if (category === 'tv_airing' || category === 'airing_tv' || category === 'on_the_air') {
+          tmdbEndpoint = '/tv/on_the_air';
+        } else if (category === 'top_rated') {
+          tmdbEndpoint = isTv ? '/tv/top_rated' : '/movie/top_rated';
+        } else if (effectiveGenreId) {
+          tmdbEndpoint = isTv ? '/discover/tv' : '/discover/movie';
+          tmdbParams.with_genres = effectiveGenreId;
+          tmdbParams.sort_by = 'popularity.desc';
+        } else if (isTv) {
+          tmdbEndpoint = '/tv/popular';
+        }
+
+        const tmdbData = await tmdbDirectFetch<any>(tmdbEndpoint, tmdbParams);
         if (tmdbData && Array.isArray(tmdbData.results) && tmdbData.results.length > 0) {
-          return {
+          const out: CategoryResponse = {
             success: true,
             category,
             genreId: effectiveGenreId,
@@ -825,74 +1247,88 @@ export const api = {
             totalResults: Number(tmdbData.total_results || (tmdbData.results.length * 10)),
             results: tmdbData.results.map((r: any) => mapMediaItem(r, type))
           };
+          categoryCache.set(cacheKey, { ts: Date.now(), data: out });
+          return out;
         }
+      } catch (e: any) {
+        console.warn('[Netflix API] Direct TMDB category fallback failed:', e?.message);
       }
-    } catch (e: any) {
-      console.warn('[Netflix API] Direct TMDB category fallback failed:', e?.message);
-    }
 
-    // Fallback to mock catalog
-    const allMock = (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items);
-    const pageSize = 12;
-    const startIndex = ((page - 1) * pageSize) % Math.max(1, allMock.length);
-    const paged = allMock.slice(startIndex, startIndex + pageSize);
+      // Fallback to mock catalog
+      const allMock = (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items);
+      const pageSize = 12;
+      const startIndex = ((page - 1) * pageSize) % Math.max(1, allMock.length);
+      const paged = allMock.slice(startIndex, startIndex + pageSize);
 
-    return {
-      success: true,
-      category,
-      genreId: effectiveGenreId,
-      page,
-      totalPages: Math.ceil(allMock.length / pageSize) || 1,
-      totalResults: allMock.length,
-      results: paged
+      return {
+        success: true,
+        category,
+        genreId: effectiveGenreId,
+        page,
+        totalPages: Math.ceil(allMock.length / pageSize) || 1,
+        totalResults: allMock.length,
+        results: paged
+      };
     };
+
+    const promise = run().finally(() => {
+      inflightCategoryRequests.delete(cacheKey);
+    });
+    inflightCategoryRequests.set(cacheKey, promise);
+    return promise;
   },
 
   async search(query: string): Promise<MediaItem[]> {
     const q = query.trim();
     if (!q) return [];
 
-    try {
-      const res = await apiFetch<any>(`/catalog/search?q=${encodeURIComponent(q)}`);
-      if (res) {
-        const list = Array.isArray(res.results) ? res.results : (Array.isArray(res.data) ? res.data : null);
-        if (list && list.length > 0) {
-          return list.map((r: any) => mapMediaItem(r, r.type || 'movie'));
-        }
-      }
-    } catch (err: any) {
-      console.warn('[Netflix API] Local search failed, attempting direct FrameX failover:', err?.message);
-    }
-
-    // Direct FrameXTV search fallback across backends
-    for (const b of FRAMEX_BACKENDS) {
+    if (!isServerlessWebHost()) {
       try {
-        const directRes = await fetch(`${b}/api/search?q=${encodeURIComponent(q)}`, {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (directRes.ok) {
-          const data = await directRes.json();
-          if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
-            return data.results.map((r: any) => mapMediaItem(r, r.type || 'movie'));
+        const res = await apiFetch<any>(`/catalog/search?q=${encodeURIComponent(q)}`);
+        if (res) {
+          const list = Array.isArray(res.results) ? res.results : (Array.isArray(res.data) ? res.data : null);
+          if (list && list.length > 0) {
+            return list.map((r: any) => mapMediaItem(r, r.type || 'movie'));
           }
         }
-      } catch (e: any) {
-        console.warn(`[Netflix API] Search failover on ${b} failed:`, e?.message);
+      } catch (err: any) {
+        console.warn('[Netflix API] Local search failed, attempting failover:', err?.message);
       }
     }
 
-    // Direct TMDB search fallback (CORS-friendly for web browsers)
-    try {
-      const tmdbRes = await fetch(
-        `https://api.themoviedb.org/3/search/multi?api_key=8265bd1679663a7ea12ac168da84d2e8&query=${encodeURIComponent(q)}&page=1`
-      );
-      if (tmdbRes.ok) {
-        const tmdbData = await tmdbRes.json();
-        if (tmdbData && Array.isArray(tmdbData.results) && tmdbData.results.length > 0) {
-          return tmdbData.results
-            .filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv' || !r.media_type)
-            .map((r: any) => mapMediaItem(r, r.media_type || 'movie'));
+    if (canDirectFetchFramex()) {
+      for (const b of FRAMEX_BACKENDS) {
+        try {
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 2000);
+          const directRes = await fetch(`${b}/api/search?q=${encodeURIComponent(q)}`, {
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          clearTimeout(tid);
+          if (directRes.ok) {
+            const data = await directRes.json();
+            if (data && data.success && Array.isArray(data.results) && data.results.length > 0) {
+              return data.results.map((r: any) => mapMediaItem(r, r.type || 'movie'));
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[Netflix API] Search failover on ${b} failed:`, e?.message);
         }
+      }
+    }
+
+    // Direct TMDB search (CORS-friendly for web browsers)
+    try {
+      const tmdbData = await tmdbDirectFetch<any>('/search/multi', {
+        query: q,
+        include_adult: 'false',
+        page: 1
+      });
+      if (tmdbData && Array.isArray(tmdbData.results) && tmdbData.results.length > 0) {
+        return tmdbData.results
+          .filter((r: any) => r.media_type === 'movie' || r.media_type === 'tv' || !r.media_type)
+          .map((r: any) => mapMediaItem(r, r.media_type || 'movie'));
       }
     } catch (e: any) {
       console.warn('[Netflix API] Direct TMDB search failed:', e?.message);
@@ -907,47 +1343,65 @@ export const api = {
   async getTitleDetails(id: string, type: 'movie' | 'tv' | 'anime'): Promise<TitleDetails> {
     const cached = mediaItemCache.get(String(id));
     const effectiveType = cached?.type || type || 'movie';
+    const detailKey = `${effectiveType}:${id}`;
 
-    try {
-      const res = await apiFetch<any>(`/titles/${encodeURIComponent(id)}?type=${effectiveType}`);
-      if (res && (res.data || res.success)) {
-        const details = normalizeTitleDetails(res, id, effectiveType);
-        if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
-          return details;
-        }
-      }
-    } catch (err: any) {
-      console.warn(`[Netflix API] Local getTitleDetails failed for ${id}:`, err?.message);
+    const hit = detailsCache.get(detailKey);
+    if (hit && Date.now() - hit.ts < DETAILS_CACHE_TTL_MS) {
+      return hit.data;
+    }
+    const existingInflight = inflightDetailsRequests.get(detailKey);
+    if (existingInflight) {
+      return existingInflight;
     }
 
-    // Direct FrameXTV details fallback
-    for (const b of FRAMEX_BACKENDS) {
-      try {
-        const directRes = await fetch(`${b}/api/details?id=${encodeURIComponent(id)}&type=${effectiveType === 'tv' ? 'tv' : 'movie'}`, {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (directRes.ok) {
-          const data = await directRes.json();
-          if (data && (data.success || data.title || data.name)) {
-            const details = normalizeTitleDetails(data, id, effectiveType);
+    const loadDetails = async (): Promise<TitleDetails> => {
+      if (!isServerlessWebHost()) {
+        try {
+          const res = await apiFetch<any>(`/titles/${encodeURIComponent(id)}?type=${effectiveType}`);
+          if (res && (res.data || res.success)) {
+            const details = normalizeTitleDetails(res, id, effectiveType);
             if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
+              detailsCache.set(detailKey, { ts: Date.now(), data: details });
               return details;
             }
           }
+        } catch (err: any) {
+          console.warn(`[Netflix API] Local getTitleDetails failed for ${id}:`, err?.message);
         }
-      } catch (e: any) {
-        console.warn(`[Netflix API] Details fallback on ${b} failed:`, e?.message);
       }
-    }
 
-    // Direct TMDB details fallback (CORS-friendly for web browsers)
-    try {
-      const isTv = effectiveType === 'tv';
-      const tmdbRes = await fetch(
-        `https://api.themoviedb.org/3/${isTv ? 'tv' : 'movie'}/${encodeURIComponent(id)}?api_key=8265bd1679663a7ea12ac168da84d2e8&append_to_response=credits,recommendations,similar`
-      );
-      if (tmdbRes.ok) {
-        const tmdbData = await tmdbRes.json();
+      if (canDirectFetchFramex()) {
+        for (const b of FRAMEX_BACKENDS) {
+          try {
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 2000);
+            const directRes = await fetch(`${b}/api/details?id=${encodeURIComponent(id)}&type=${effectiveType === 'tv' ? 'tv' : 'movie'}`, {
+              signal: controller.signal,
+              headers: { 'Accept': 'application/json' }
+            });
+            clearTimeout(tid);
+            if (directRes.ok) {
+              const data = await directRes.json();
+              if (data && (data.success || data.title || data.name)) {
+                const details = normalizeTitleDetails(data, id, effectiveType);
+                if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
+                  detailsCache.set(detailKey, { ts: Date.now(), data: details });
+                  return details;
+                }
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[Netflix API] Details fallback on ${b} failed:`, e?.message);
+          }
+        }
+      }
+
+      // Direct TMDB details fallback (CORS-friendly for web browsers)
+      try {
+        const isTv = effectiveType === 'tv' || effectiveType === 'anime';
+        const tmdbData = await tmdbDirectFetch<any>(`/${isTv ? 'tv' : 'movie'}/${encodeURIComponent(id)}`, {
+          append_to_response: 'credits,recommendations,similar'
+        });
         if (tmdbData && (tmdbData.title || tmdbData.name)) {
           const details = normalizeTitleDetails(
             {
@@ -959,105 +1413,110 @@ export const api = {
             effectiveType
           );
           if (details && (!cached || isTitleConsistent(details.title, cached.title))) {
+            detailsCache.set(detailKey, { ts: Date.now(), data: details });
             return details;
           }
         }
+      } catch (e: any) {
+        console.warn(`[Netflix API] Direct TMDB details fallback failed for ${id}:`, e?.message);
       }
-    } catch (e: any) {
-      console.warn(`[Netflix API] Direct TMDB details fallback failed for ${id}:`, e?.message);
-    }
 
-    // Fallback to cached media item if available (guarantees title & poster match the clicked poster!)
-    if (cached) {
+      // Fallback to cached media item if available (guarantees title & poster match the clicked poster!)
+      if (cached) {
+        return {
+          id: String(cached.id),
+          title: cached.title,
+          type: cached.type === 'tv' ? 'tv' : 'movie',
+          poster: cached.poster,
+          backdrop: cached.backdrop || cached.poster,
+          overview: cached.overview || 'Now streaming in Ultra HD.',
+          year: cached.year,
+          rating: cached.rating,
+          genres: cached.genres || [],
+          cast: [],
+          recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).filter((i) => String(i.id) !== String(cached.id)).slice(0, 10),
+          numberOfSeasons: cached.type === 'tv' ? 1 : undefined,
+          seasons: cached.type === 'tv' ? [{ id: 1, number: 1, name: 'Season 1', overview: '', episodeCount: 10 }] : undefined
+        };
+      }
+
+      // Fallback to exact ID in mock titles
+      if (MOCK_TITLES[id]) {
+        return MOCK_TITLES[id];
+      }
+
+      // Safe fallback retaining id and type (never returning Stranger Things or Fight Club for unrelated IDs!)
       return {
-        id: String(cached.id),
-        title: cached.title,
-        type: cached.type === 'tv' ? 'tv' : 'movie',
-        poster: cached.poster,
-        backdrop: cached.backdrop || cached.poster,
-        overview: cached.overview || 'Now streaming in Ultra HD.',
-        year: cached.year,
-        rating: cached.rating,
-        genres: cached.genres || [],
+        id: String(id),
+        title: 'Title Details',
+        type: effectiveType === 'tv' ? 'tv' : 'movie',
+        poster: undefined,
+        backdrop: undefined,
+        overview: 'Now streaming on Netflix.',
+        genres: [],
         cast: [],
-        recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).filter((i) => String(i.id) !== String(cached.id)).slice(0, 10),
-        numberOfSeasons: cached.type === 'tv' ? 1 : undefined,
-        seasons: cached.type === 'tv' ? [{ id: 1, number: 1, name: 'Season 1', overview: '', episodeCount: 10 }] : undefined
+        recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).slice(0, 10)
       };
-    }
-
-    // Fallback to exact ID in mock titles
-    if (MOCK_TITLES[id]) {
-      return MOCK_TITLES[id];
-    }
-
-    // Safe fallback retaining id and type (never returning Stranger Things or Fight Club for unrelated IDs!)
-    return {
-      id: String(id),
-      title: 'Title Details',
-      type: effectiveType === 'tv' ? 'tv' : 'movie',
-      poster: undefined,
-      backdrop: undefined,
-      overview: 'Now streaming on Netflix.',
-      genres: [],
-      cast: [],
-      recommendations: (MOCK_HOME_CATALOG.rails || []).flatMap((r) => r.items).slice(0, 10)
     };
+
+    const promise = loadDetails().finally(() => {
+      inflightDetailsRequests.delete(detailKey);
+    });
+    inflightDetailsRequests.set(detailKey, promise);
+    return promise;
   },
 
   async getSeasonEpisodes(id: string, seasonNumber: number): Promise<Episode[]> {
-    try {
-      const res = await apiFetch<any>(`/titles/${encodeURIComponent(id)}/episodes?season=${seasonNumber}`);
-      if (res && Array.isArray(res.episodes)) {
-        return res.episodes;
+    if (!isServerlessWebHost()) {
+      try {
+        const res = await apiFetch<any>(`/titles/${encodeURIComponent(id)}/episodes?season=${seasonNumber}`);
+        if (res && Array.isArray(res.episodes)) {
+          return res.episodes;
+        }
+      } catch (err: any) {
+        console.warn(`[Netflix API] Local episodes failed for ${id}:`, err?.message);
       }
-    } catch (err: any) {
-      console.warn(`[Netflix API] Local episodes failed for ${id}:`, err?.message);
     }
 
-    // Direct FrameXTV season episodes fallback
-    for (const b of FRAMEX_BACKENDS) {
-      try {
-        const directRes = await fetch(`${b}/api/season?id=${encodeURIComponent(id)}&season=${seasonNumber}`, {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (directRes.ok) {
-          const data = await directRes.json();
-          if (data && data.success && Array.isArray(data.episodes)) {
-            return data.episodes.map((ep: any) => ({
-              id: ep.id || ep.episode_number,
-              number: ep.episode_number ?? ep.number ?? 1,
-              name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
-              overview: ep.overview || '',
-              still: ep.still || ep.still_path,
-              airDate: ep.air_date,
-              rating: ep.vote_average ?? ep.rating
-            }));
+    if (canDirectFetchFramex()) {
+      for (const b of FRAMEX_BACKENDS) {
+        try {
+          const directRes = await fetch(`${b}/api/season?id=${encodeURIComponent(id)}&season=${seasonNumber}`, {
+            headers: { 'Accept': 'application/json' }
+          });
+          if (directRes.ok) {
+            const data = await directRes.json();
+            if (data && data.success && Array.isArray(data.episodes)) {
+              return data.episodes.map((ep: any) => ({
+                id: ep.id || ep.episode_number,
+                number: ep.episode_number ?? ep.number ?? 1,
+                name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
+                overview: ep.overview || '',
+                still: ep.still || ep.still_path,
+                airDate: ep.air_date,
+                rating: ep.vote_average ?? ep.rating
+              }));
+            }
           }
+        } catch (e: any) {
+          console.warn(`[Netflix API] Season episodes fallback on ${b} failed:`, e?.message);
         }
-      } catch (e: any) {
-        console.warn(`[Netflix API] Season episodes fallback on ${b} failed:`, e?.message);
       }
     }
 
     // Direct TMDB season episodes fallback (CORS-friendly for web browsers)
     try {
-      const tmdbRes = await fetch(
-        `https://api.themoviedb.org/3/tv/${encodeURIComponent(id)}/season/${seasonNumber}?api_key=8265bd1679663a7ea12ac168da84d2e8`
-      );
-      if (tmdbRes.ok) {
-        const data = await tmdbRes.json();
-        if (data && Array.isArray(data.episodes)) {
-          return data.episodes.map((ep: any) => ({
-            id: ep.id || ep.episode_number,
-            number: ep.episode_number ?? ep.number ?? 1,
-            name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
-            overview: ep.overview || '',
-            still: ep.still_path ? `https://image.tmdb.org/t/p/w500${ep.still_path}` : (ep.still || undefined),
-            airDate: ep.air_date,
-            rating: ep.vote_average ?? ep.rating
-          }));
-        }
+      const data = await tmdbDirectFetch<any>(`/tv/${encodeURIComponent(id)}/season/${seasonNumber}`);
+      if (data && Array.isArray(data.episodes)) {
+        return data.episodes.map((ep: any) => ({
+          id: ep.id || ep.episode_number,
+          number: ep.episode_number ?? ep.number ?? 1,
+          name: ep.name || `Episode ${ep.episode_number ?? ep.number ?? 1}`,
+          overview: ep.overview || '',
+          still: ep.still_path ? `https://image.tmdb.org/t/p/w500${ep.still_path}` : (ep.still || undefined),
+          airDate: ep.air_date,
+          rating: ep.vote_average ?? ep.rating
+        }));
       }
     } catch (e: any) {
       console.warn(`[Netflix API] Direct TMDB season episodes fallback failed for ${id}:`, e?.message);
@@ -1114,31 +1573,6 @@ export const api = {
       }
     ];
 
-    const defaultFallbackSubtitles: SubtitleTrack[] = [
-      {
-        url: `https://subs5.strem.io/en/download/subencoding-stremio-utf8/src-api/file/default_${contentId}`,
-        label: 'English',
-        lang: 'en',
-        language: 'en',
-        format: 'vtt',
-        isDefault: false
-      }
-    ];
-
-    const fallbackResolution: PlaybackResolution = {
-      success: true,
-      contentId: String(contentId),
-      mediaType: effectiveType,
-      season: isEpisodic ? s : undefined,
-      episode: isEpisodic ? e : undefined,
-      provider: 'Verified Multi-Server Embed',
-      sources: [],
-      subtitles: defaultFallbackSubtitles,
-      embedUrl: embedServers[0].url,
-      embedServers,
-      alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
-    };
-
     const params = new URLSearchParams({
       contentId: String(contentId),
       type: effectiveType
@@ -1146,10 +1580,47 @@ export const api = {
     if (season !== undefined) params.set('season', String(season));
     if (episode !== undefined) params.set('episode', String(episode));
 
+    // Fetch verified IMDb-matched OpenSubtitles v3 tracks in parallel with playback backend lookup
+    const matchedSubsPromise = fetchMatchedSubtitles(contentId, effectiveType, s, e);
+
+    const mergeSubtitles = (primary: any[], fallback: SubtitleTrack[]): SubtitleTrack[] => {
+      const seen = new Set<string>();
+      const out: SubtitleTrack[] = [];
+      for (const list of [primary, fallback]) {
+        if (!Array.isArray(list)) continue;
+        for (const sub of list) {
+          if (!sub?.url || seen.has(sub.url)) continue;
+          seen.add(sub.url);
+          out.push({
+            ...sub,
+            isDefault: false
+          });
+        }
+      }
+      if (out.length === 0) {
+        // Safe non-crashing track placeholder when offline/tests
+        out.push({
+          url: 'https://subs5.strem.io/en/download/subencoding-stremio-utf8/src-api/file/1951845855',
+          label: 'English',
+          lang: 'en',
+          language: 'English',
+          format: 'srt',
+          isDefault: false
+        });
+      }
+      return out;
+    };
+
     try {
-      const res = await apiFetch<PlaybackResolution>(`/playback/resolve?${params.toString()}`);
+      const [res, osSubs] = await Promise.all([
+        apiFetch<PlaybackResolution>(`/playback/resolve?${params.toString()}`).catch((err) => {
+          console.warn('[Netflix API] Local resolvePlayback failed:', err?.message);
+          return null;
+        }),
+        matchedSubsPromise
+      ]);
+
       if (res && res.success) {
-        // Validate sources to verify they match the requested movie title and normalize streams
         let validSources = (res.sources || [])
           .map((src: any) => ({
             ...src,
@@ -1157,144 +1628,155 @@ export const api = {
           }))
           .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle));
 
-        // Multi-provider alternate stream resolution for instant 1080p playback
-        const candidateAlternates = Array.isArray(res.alternates) && res.alternates.length > 0
-          ? res.alternates
-          : ['bowler', 'super_pekka', 'miner', 'headhunter', 'super_barbarian', 'giant'];
-
-        if (validSources.length === 0) {
-          for (const altProvider of candidateAlternates) {
-            try {
-              const altSources = await fetchAlternateSources(contentId, effectiveType, altProvider, season, episode, expectedTitle);
-              if (altSources.length > 0) {
-                validSources = altSources;
-                break;
-              }
-            } catch {}
+        // Avoid redundant browser waterfall if serverless already checked cloud providers
+        if (validSources.length === 0 && !isServerlessWebHost()) {
+          const candidateAlternates = Array.isArray(res.alternates) && res.alternates.length > 0
+            ? res.alternates
+            : ['bowler', 'giant', 'executioner'];
+          const altResults = await Promise.allSettled(
+            candidateAlternates.slice(0, 3).map((altProvider) =>
+              fetchAlternateSources(contentId, effectiveType, altProvider, season, episode, expectedTitle)
+            )
+          );
+          for (const r of altResults) {
+            if (r.status === 'fulfilled' && r.value.length > 0) {
+              validSources = r.value;
+              break;
+            }
           }
         }
-
-
 
         return {
           ...res,
           mediaType: effectiveType,
           sources: validSources,
-          subtitles: (res.subtitles || []).map((sub: any) => ({
-            ...sub,
-            isDefault: false
-          })),
+          subtitles: mergeSubtitles(res.subtitles || [], osSubs),
           embedServers: embedServers,
           embedUrl: res.embedUrl || embedServers[0].url
         };
       }
-    } catch (err: any) {
-      console.warn('[Netflix API] Local resolvePlayback failed:', err?.message);
-    }
 
-    // Direct FrameX stream fallback
-    for (const b of FRAMEX_BACKENDS) {
-      try {
-        let streamPath = `${b}/api/stream?id=${encodeURIComponent(contentId)}&type=${effectiveType === 'tv' ? 'tv' : 'movie'}`;
-        if (effectiveType === 'tv') {
-          streamPath += `&season=${s}&episode=${e}`;
-        }
-        const directRes = await fetch(streamPath, {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (directRes.ok) {
+      if (!canDirectFetchFramex()) {
+        return {
+          success: true,
+          contentId: String(contentId),
+          mediaType: effectiveType,
+          season: isEpisodic ? s : undefined,
+          episode: isEpisodic ? e : undefined,
+          provider: 'Verified Multi-Server Embed',
+          sources: [],
+          subtitles: mergeSubtitles([], osSubs),
+          embedUrl: embedServers[0].url,
+          embedServers,
+          alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+        };
+      }
+    } catch {}
+
+    const osSubs = await matchedSubsPromise;
+
+    // Direct FrameX stream fallback (Node / Android WebView) in parallel with bounded timeout
+    if (canDirectFetchFramex()) {
+      const fetchFramexDirect = async (base: string, providerParam?: string) => {
+        let streamPath = `${base}/api/stream?id=${encodeURIComponent(contentId)}&type=${effectiveType === 'tv' ? 'tv' : 'movie'}`;
+        if (providerParam) streamPath += `&provider=${encodeURIComponent(providerParam)}`;
+        if (effectiveType === 'tv') streamPath += `&season=${s}&episode=${e}`;
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 2200);
+        try {
+          const directRes = await fetch(streamPath, {
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          if (!directRes.ok) return null;
           const data = await directRes.json();
-          if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
-            // Strictly validate every direct source before accepting and normalize streams
-            let validSources = data.sources
-              .map((src: any) => ({
-                ...src,
-                url: normalizeStreamUrl(src.url)
-              }))
-              .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
-              .map((src: any) => ({
-                url: src.url,
-                quality: src.quality || '1080p',
-                type: src.type === 'hls' ? 'hls' : 'mp4',
-                server: src.server || data.provider || 'FrameX'
-              }));
+          if (!data || !data.success) return null;
+          const validSources: StreamSource[] = Array.isArray(data.sources)
+            ? data.sources
+                .map((src: any) => ({ ...src, url: normalizeStreamUrl(src.url) }))
+                .filter((src: any) => isStreamUrlAccurate(src.url, expectedTitle))
+                .map((src: any) => ({
+                  url: src.url,
+                  quality: src.quality || '1080p',
+                  type: (src.type === 'hls' ? 'hls' : 'mp4') as 'hls' | 'mp4',
+                  server: src.server || providerParam || data.provider || 'FrameX'
+                }))
+            : [];
+          return { data, validSources };
+        } catch {
+          return null;
+        } finally {
+          clearTimeout(tid);
+        }
+      };
 
-            // Multi-provider alternate stream failover if primary sources were filtered or empty
-            if (validSources.length === 0) {
-              const directAlts = Array.isArray(data.alternates) && data.alternates.length > 0
-                ? data.alternates
-                : ['bowler', 'giant', 'executioner', 'grand_warden'];
-              for (const alt of directAlts) {
-                try {
-                  const altSources = await fetchAlternateSources(contentId, effectiveType, alt, season, episode, expectedTitle);
-                  if (altSources.length > 0) {
-                    validSources = altSources;
-                    break;
-                  }
-                } catch {}
-              }
-            }
-
-
-
-            return {
-              success: true,
-              contentId: String(contentId),
-              mediaType: effectiveType,
-              season: isEpisodic ? s : undefined,
-              episode: isEpisodic ? e : undefined,
-              provider: data.provider || 'FrameX Direct',
-              sources: validSources,
-              subtitles: (Array.isArray(data.subtitles) ? data.subtitles : []).map((sub: any) => ({
-                ...sub,
-                isDefault: false
-              })),
-              embedUrl: embedServers[0].url,
-              embedServers,
-              alternates: Array.isArray(data.alternates) ? data.alternates : ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
-            };
+      const candidateCalls: Array<Promise<{ data: any; validSources: StreamSource[] } | null>> = [
+        ...FRAMEX_BACKENDS.map((b) => fetchFramexDirect(b)),
+        fetchFramexDirect(FRAMEX_BACKENDS[0], 'bowler'),
+        fetchFramexDirect(FRAMEX_BACKENDS[0], 'giant')
+      ];
+      const settled = await Promise.allSettled(candidateCalls);
+      const validHits: Array<{ data: any; validSources: StreamSource[] }> = [];
+      let fallbackMetaHit: { data: any; validSources: StreamSource[] } | null = null;
+      for (const r of settled) {
+        if (r.status === 'fulfilled' && r.value) {
+          if (r.value.validSources.length > 0) {
+            validHits.push(r.value);
+          } else if (!fallbackMetaHit) {
+            fallbackMetaHit = r.value;
           }
         }
-      } catch (e: any) {
-        console.warn(`[Netflix API] Stream fallback on ${b} failed:`, e?.message);
+      }
+
+      const best = validHits[0] || fallbackMetaHit;
+      if (best) {
+        return {
+          success: true,
+          contentId: String(contentId),
+          mediaType: effectiveType,
+          season: isEpisodic ? s : undefined,
+          episode: isEpisodic ? e : undefined,
+          provider: best.data.provider || 'FrameX Direct',
+          sources: best.validSources,
+          subtitles: mergeSubtitles(Array.isArray(best.data.subtitles) ? best.data.subtitles : [], osSubs),
+          embedUrl: embedServers[0].url,
+          embedServers,
+          alternates: Array.isArray(best.data.alternates) ? best.data.alternates : ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
+        };
       }
     }
 
-    // Direct multi-provider failover across provider pool before embed fallback
-    for (const alt of ['bowler', 'giant', 'executioner', 'grand_warden']) {
-      try {
-        const altSources = await fetchAlternateSources(contentId, effectiveType, alt, season, episode, expectedTitle);
-        if (altSources.length > 0) {
-          return {
-            success: true,
-            contentId: String(contentId),
-            mediaType: effectiveType,
-            season: isEpisodic ? s : undefined,
-            episode: isEpisodic ? e : undefined,
-            provider: `FrameX ${alt} Direct`,
-            sources: altSources,
-            subtitles: defaultFallbackSubtitles,
-            embedUrl: embedServers[0].url,
-            embedServers,
-            alternates: ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']
-          };
-        }
-      } catch {}
-    }
-
-
-
-    return fallbackResolution;
+    return {
+      success: true,
+      contentId: String(contentId),
+      mediaType: effectiveType,
+      season: isEpisodic ? s : undefined,
+      episode: isEpisodic ? e : undefined,
+      provider: 'Verified Multi-Server Embed',
+      sources: [],
+      subtitles: mergeSubtitles([], osSubs),
+      embedUrl: embedServers[0].url,
+      embedServers,
+      alternates: ['framex', 'autoembed', '2embed', 'vidsrc', 'vidlink']
+    };
   },
 
   // Watchlist
   async getWatchlist(profileId: string = 'default-profile'): Promise<WatchlistItem[]> {
+    const readLocal = (): WatchlistItem[] => {
+      try {
+        const stored = localStorage.getItem(`cinewave_watchlist_${profileId}`);
+        return stored ? JSON.parse(stored) : [];
+      } catch {
+        return [];
+      }
+    };
+    if (isServerlessWebHost()) return readLocal();
     try {
       const res = await apiFetch<{ success: boolean; items: WatchlistItem[] }>(`/users/me/watchlist?profileId=${encodeURIComponent(profileId)}`);
       return res.items || [];
     } catch {
-      const stored = localStorage.getItem(`cinewave_watchlist_${profileId}`);
-      return stored ? JSON.parse(stored) : [];
+      return readLocal();
     }
   },
 
@@ -1308,13 +1790,7 @@ export const api = {
     rating?: string;
   }): Promise<WatchlistItem> {
     const profileId = item.profileId || 'default-profile';
-    try {
-      const res = await apiFetch<{ success: boolean; item: WatchlistItem }>('/users/me/watchlist', {
-        method: 'POST',
-        body: JSON.stringify(item)
-      });
-      return res.item;
-    } catch {
+    const saveLocal = (): WatchlistItem => {
       const stored = localStorage.getItem(`cinewave_watchlist_${profileId}`);
       const list: WatchlistItem[] = stored ? JSON.parse(stored) : [];
       const newItem: WatchlistItem = {
@@ -1325,16 +1801,21 @@ export const api = {
       const updated = [newItem, ...list.filter(w => w.contentId !== item.contentId)];
       localStorage.setItem(`cinewave_watchlist_${profileId}`, JSON.stringify(updated));
       return newItem;
+    };
+    if (isServerlessWebHost()) return saveLocal();
+    try {
+      const res = await apiFetch<{ success: boolean; item: WatchlistItem }>('/users/me/watchlist', {
+        method: 'POST',
+        body: JSON.stringify(item)
+      });
+      return res.item;
+    } catch {
+      return saveLocal();
     }
   },
 
   async removeFromWatchlist(contentId: string, profileId: string = 'default-profile'): Promise<boolean> {
-    try {
-      const res = await apiFetch<{ success: boolean; removed: boolean }>(`/users/me/watchlist/${encodeURIComponent(contentId)}?profileId=${encodeURIComponent(profileId)}`, {
-        method: 'DELETE'
-      });
-      return res.removed;
-    } catch {
+    const removeLocal = (): boolean => {
       const stored = localStorage.getItem(`cinewave_watchlist_${profileId}`);
       if (stored) {
         const list: WatchlistItem[] = JSON.parse(stored);
@@ -1343,6 +1824,15 @@ export const api = {
         return true;
       }
       return false;
+    };
+    if (isServerlessWebHost()) return removeLocal();
+    try {
+      const res = await apiFetch<{ success: boolean; removed: boolean }>(`/users/me/watchlist/${encodeURIComponent(contentId)}?profileId=${encodeURIComponent(profileId)}`, {
+        method: 'DELETE'
+      });
+      return res.removed;
+    } catch {
+      return removeLocal();
     }
   },
 
@@ -1381,6 +1871,25 @@ export const api = {
       }
     } catch {}
 
+    const formatLocal = (): PlaybackProgress[] => {
+      const map = new Map<string, PlaybackProgress>();
+      localList.forEach((p) => {
+        if (!p || !p.contentId) return;
+        const isEpisodic = p.mediaType === 'tv' || p.mediaType === 'anime';
+        const key = isEpisodic
+          ? `${p.contentId}-s${p.season || 1}-e${p.episode || 1}`
+          : String(p.contentId);
+        if (!map.has(key)) map.set(key, p);
+      });
+      return Array.from(map.values())
+        .filter(p => !(p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')))
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    };
+
+    if (isServerlessWebHost()) {
+      return formatLocal();
+    }
+
     try {
       const res = await apiFetch<{ success: boolean; progress: PlaybackProgress[] }>(
         `/users/me/progress?profileId=${encodeURIComponent(profileId)}`
@@ -1412,18 +1921,7 @@ export const api = {
         .filter(p => !(p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')))
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     } catch {
-      const map = new Map<string, PlaybackProgress>();
-      localList.forEach((p) => {
-        if (!p || !p.contentId) return;
-        const isEpisodic = p.mediaType === 'tv' || p.mediaType === 'anime';
-        const key = isEpisodic
-          ? `${p.contentId}-s${p.season || 1}-e${p.episode || 1}`
-          : String(p.contentId);
-        if (!map.has(key)) map.set(key, p);
-      });
-      return Array.from(map.values())
-        .filter(p => !(p.durationMs === 0 && p.positionMs === 0 && (!p.poster || p.title === 'Untitled')))
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return formatLocal();
     }
   },
 
@@ -1470,7 +1968,11 @@ export const api = {
       localStorage.setItem(`cinewave_progress_${profileId}`, JSON.stringify(updated));
     } catch {}
 
-    // 2. Sync to backend with query params
+    // 2. Sync to backend with query params (skip on serverless hosts with no /users API)
+    if (isServerlessWebHost()) {
+      return newProgress;
+    }
+
     try {
       const qParams = new URLSearchParams({
         profileId,
@@ -1502,6 +2004,9 @@ export const api = {
 
   // Anonymous Visitor Telemetry & Analytics Logging
   logVisit: async (payload: VisitPayload): Promise<{ success: boolean }> => {
+    if (isServerlessWebHost()) {
+      return { success: true };
+    }
     try {
       const res = await apiFetch<{ success: boolean }>('/analytics/visit', {
         method: 'POST',

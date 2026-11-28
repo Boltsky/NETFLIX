@@ -484,6 +484,18 @@ export class FrameXTVAdapter implements IContentProvider {
       const res = await this.fetchWithFailover(streamPath);
       const data: any = await res.json();
 
+      const mapSubtitles = (rawSubs: any): SubtitleTrack[] =>
+        Array.isArray(rawSubs)
+          ? rawSubs.map((sub: any) => ({
+              url: sub.url,
+              label: sub.label || sub.language || 'English',
+              lang: sub.lang || sub.language || 'en',
+              language: sub.language || sub.lang,
+              format: sub.format === 'srt' ? 'srt' : 'vtt',
+              isDefault: false
+            }))
+          : [];
+
       if (data && data.success && Array.isArray(data.sources) && data.sources.length > 0) {
         let sources: StreamSource[] = data.sources
           .map((src: any) => ({
@@ -495,7 +507,9 @@ export class FrameXTVAdapter implements IContentProvider {
           }))
           .filter((src: any) => src.url && !isBlacklisted(src.url));
 
-        // Failover across alternate providers for reliable 1080p direct streams
+        let collectedSubs: SubtitleTrack[] = mapSubtitles(data.subtitles);
+
+        // Failover across alternate providers for reliable 1080p direct streams + release-matched subtitles
         const alternates = ['bowler', 'giant', 'executioner', 'grand_warden'];
         if (sources.length === 0) {
           for (const alt of alternates) {
@@ -518,6 +532,11 @@ export class FrameXTVAdapter implements IContentProvider {
                   .filter((src: any) => src.url && !isBlacklisted(src.url));
                 if (altSources.length > 0) {
                   sources = altSources;
+                  const altSubs = mapSubtitles(altData.subtitles);
+                  if (altSubs.length > 0) {
+                    // Prioritize subtitles returned with the matching stream provider
+                    collectedSubs = [...altSubs, ...collectedSubs];
+                  }
                   break;
                 }
               }
@@ -525,18 +544,7 @@ export class FrameXTVAdapter implements IContentProvider {
           }
         }
 
-
-
-        const subtitles: SubtitleTrack[] = Array.isArray(data.subtitles)
-          ? data.subtitles.map((sub: any) => ({
-              url: sub.url,
-              label: sub.label || sub.language || 'English',
-              lang: sub.lang || sub.language || 'en',
-              language: sub.language || sub.lang,
-              format: sub.format === 'srt' ? 'srt' : 'vtt',
-              isDefault: false
-            }))
-          : [];
+        const subtitles: SubtitleTrack[] = collectedSubs;
 
         return {
           success: true,
@@ -585,7 +593,16 @@ export class FrameXTVAdapter implements IContentProvider {
               episode: type === 'tv' ? e : undefined,
               provider: `FrameX ${alt}`,
               sources,
-              subtitles: [],
+              subtitles: Array.isArray(altData.subtitles)
+                ? altData.subtitles.map((sub: any) => ({
+                    url: sub.url,
+                    label: sub.label || sub.language || 'English',
+                    lang: sub.lang || sub.language || 'en',
+                    language: sub.language || sub.lang,
+                    format: sub.format === 'srt' ? 'srt' : 'vtt',
+                    isDefault: false
+                  }))
+                : [],
               embedUrl,
               embedServers,
               alternates: ['framex', 'autoembed', 'vidbolt', 'vidup', 'vidsrc']

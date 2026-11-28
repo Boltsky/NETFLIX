@@ -1,26 +1,27 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { HomeCatalog, MediaItem, PlaybackProgress, WatchlistItem, CatalogRail, DownloadedItem } from './types';
-import { api } from './services/api';
+import { api, getCachedHomeCatalogSync } from './services/api';
 import { FocusProvider, useFocus } from './components/focus/FocusContext';
 import { NetflixSidebar, NetflixNavTab } from './components/common/NetflixSidebar';
 import { NetflixMobileNav } from './components/common/NetflixMobileNav';
 import { ProfileSelector, NetflixProfile, BOLT_PROFILE } from './components/profile/ProfileSelector';
 import { HeroBanner } from './components/home/HeroBanner';
 import { ContentRail } from './components/home/ContentRail';
-import { ContentDetails } from './components/details/ContentDetails';
-import { VideoPlayer } from './components/player/VideoPlayer';
-import { SearchScreen } from './components/search/SearchScreen';
-import { WatchlistScreen } from './components/watchlist/WatchlistScreen';
-import { DownloadsScreen } from './components/downloads/DownloadsScreen';
-import { CategoriesScreen } from './components/categories/CategoriesScreen';
-import { SettingsScreen } from './components/settings/SettingsScreen';
-import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { analytics } from './services/analyticsService';
 import { updateService } from './services/updateService';
 import { isNativeAndroidApp } from './services/platform';
 import { getAppSettings } from './services/settingsService';
 import { AppUpdateManifest, CURRENT_APP_VERSION } from './version';
-import { UpdateModal } from './components/common/UpdateModal';
+
+const ContentDetails = lazy(() => import('./components/details/ContentDetails').then((m) => ({ default: m.ContentDetails })));
+const VideoPlayer = lazy(() => import('./components/player/VideoPlayer').then((m) => ({ default: m.VideoPlayer })));
+const SearchScreen = lazy(() => import('./components/search/SearchScreen').then((m) => ({ default: m.SearchScreen })));
+const WatchlistScreen = lazy(() => import('./components/watchlist/WatchlistScreen').then((m) => ({ default: m.WatchlistScreen })));
+const DownloadsScreen = lazy(() => import('./components/downloads/DownloadsScreen').then((m) => ({ default: m.DownloadsScreen })));
+const CategoriesScreen = lazy(() => import('./components/categories/CategoriesScreen').then((m) => ({ default: m.CategoriesScreen })));
+const SettingsScreen = lazy(() => import('./components/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })));
+const AnalyticsDashboard = lazy(() => import('./components/analytics/AnalyticsDashboard').then((m) => ({ default: m.AnalyticsDashboard })));
+const UpdateModal = lazy(() => import('./components/common/UpdateModal').then((m) => ({ default: m.UpdateModal })));
 
 const DEFAULT_PROFILE: NetflixProfile = BOLT_PROFILE;
 
@@ -83,8 +84,9 @@ export const App: React.FC = () => {
   const [activeProfile, setActiveProfile] = useState<NetflixProfile>(DEFAULT_PROFILE);
   const [currentScreen, setCurrentScreen] = useState<Screen>('profiles');
   const [previousScreen, setPreviousScreen] = useState<Screen>('home');
-  const [catalog, setCatalog] = useState<HomeCatalog | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialSwr = useMemo(() => getCachedHomeCatalogSync(), []);
+  const [catalog, setCatalog] = useState<HomeCatalog | null>(() => initialSwr?.catalog ?? null);
+  const [loading, setLoading] = useState(() => !initialSwr?.catalog);
   const [progressList, setProgressList] = useState<PlaybackProgress[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
 
@@ -164,12 +166,16 @@ export const App: React.FC = () => {
     }
   };
 
-  // Load home catalog & progress for active profile
+  // Load home catalog & progress for active profile (with instant SWR render + daily background sync)
   const loadData = useCallback((profileId: string = activeProfile.id) => {
-    setLoading(true);
+    const swr = getCachedHomeCatalogSync();
+    if (!swr?.catalog) {
+      setLoading(true);
+    }
+    const forceFreshDaily = Boolean(swr && (!swr.isFresh || !swr.isSameDay));
 
     Promise.allSettled([
-      api.getHomeCatalog(),
+      api.getHomeCatalog(forceFreshDaily),
       api.getProgress(profileId),
       api.getWatchlist(profileId)
     ]).then(([catRes, progRes, watchRes]) => {
@@ -187,14 +193,8 @@ export const App: React.FC = () => {
   }, [activeProfile.id]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Synchronize progress and watchlist whenever active profile changes
-  useEffect(() => {
-    api.getProgress(activeProfile.id).then(setProgressList).catch(() => {});
-    api.getWatchlist(activeProfile.id).then(setWatchlist).catch(() => {});
-  }, [activeProfile.id]);
+    loadData(activeProfile.id);
+  }, [loadData, activeProfile.id]);
 
   // History state model for browser and mobile device navigation
   interface HistoryStateData {
@@ -555,13 +555,15 @@ export const App: React.FC = () => {
       'rail-trending_movies': { category: 'trending', type: 'movie' },
       'rail-popular-movies': { category: 'popular', type: 'movie' },
       'rail-popular_movies': { category: 'popular', type: 'movie' },
+      'rail-top-rated-movies': { category: 'top_rated', type: 'movie' },
       'rail-popular-tv': { category: 'tv', type: 'tv' },
       'rail-popular_tv': { category: 'tv', type: 'tv' },
+      'rail-top-rated-tv': { category: 'top_rated', type: 'tv' },
       'rail-popular-anime': { category: 'anime', type: 'anime', genreId: 16 },
       'rail-popular_anime': { category: 'anime', type: 'anime', genreId: 16 },
       'rail-anime': { category: 'anime', type: 'anime', genreId: 16 },
       'rail-upcoming': { category: 'upcoming', type: 'movie' },
-      'rail-tv-airing': { category: 'tv_airing', type: 'tv' },
+      'rail-tv-airing': { category: 'airing_today', type: 'tv' },
       'rail-action': { genreId: 28, type: 'movie' },
       'rail-action_movies': { genreId: 28, type: 'movie' },
       'rail-scifi': { genreId: 878, type: 'movie' },
@@ -645,13 +647,16 @@ export const App: React.FC = () => {
 
   const isInWatchlist = (id: string) => (watchlist || []).some((w) => w && w.contentId === id);
 
-  // Map progress into percentage
-  const progressMap: Record<string, number> = {};
-  (progressList || []).forEach((p) => {
-    if (p && p.contentId && p.durationMs > 0) {
-      progressMap[p.contentId] = Math.round((p.positionMs / p.durationMs) * 100);
-    }
-  });
+  // Map progress into percentage (memoized to avoid object re-creation across home cards)
+  const progressMap: Record<string, number> = useMemo(() => {
+    const map: Record<string, number> = {};
+    (progressList || []).forEach((p) => {
+      if (p && p.contentId && p.durationMs > 0) {
+        map[p.contentId] = Math.round((p.positionMs / p.durationMs) * 100);
+      }
+    });
+    return map;
+  }, [progressList]);
 
   // Filter rails for tab views (guarantee unique rail IDs)
   const filteredRails: CatalogRail[] = useMemo(() => {
@@ -664,13 +669,21 @@ export const App: React.FC = () => {
       if (r.id === 'rail-top-10' || r.category === 'top-10') return false;
       if (currentScreen === 'series') return r.type === 'tv' || r.type === 'anime';
       if (currentScreen === 'movies') return r.type === 'movie';
-      if (currentScreen === 'popular') return r.category === 'trending' || r.category === 'popular' || r.category === 'new_releases' || r.category === 'upcoming';
+      if (currentScreen === 'popular') {
+        return (
+          r.category === 'trending' ||
+          r.category === 'popular' ||
+          r.category === 'new_releases' ||
+          r.category === 'upcoming' ||
+          r.category === 'airing_today'
+        );
+      }
       return true; // 'home'
     });
   }, [catalog?.rails, currentScreen]);
 
-  // Extra dynamic rails loaded upon scrolling down (Continuous Vertical Infinite Scroll)
-  const ADDITIONAL_RAILS_QUEUE = useMemo(() => [
+  // Extra dynamic rails loaded upon scrolling down (separate rich queues for Movies/Home vs Series)
+  const MOVIE_EXTRA_RAILS = useMemo(() => [
     { id: 'rail-drama', title: 'Critically Acclaimed Dramas', genreId: 18, type: 'movie' as const, category: 'drama' },
     { id: 'rail-horror', title: 'Chilling Horror & Thrills', genreId: 27, type: 'movie' as const, category: 'horror' },
     { id: 'rail-crime', title: 'Gripping Crime Stories', genreId: 80, type: 'movie' as const, category: 'crime' },
@@ -681,10 +694,22 @@ export const App: React.FC = () => {
     { id: 'rail-documentary', title: 'Eye-Opening Documentaries', genreId: 99, type: 'movie' as const, category: 'documentary' }
   ], []);
 
-  const [loadedExtraRailIndex, setLoadedExtraRailIndex] = useState(0);
+  const SERIES_EXTRA_RAILS = useMemo(() => [
+    { id: 'rail-tv-action', title: 'Action & Adventure Series', genreId: 10759, type: 'tv' as const, category: 'tv_action' },
+    { id: 'rail-tv-scifi', title: 'Sci-Fi & Fantasy Series', genreId: 10765, type: 'tv' as const, category: 'tv_scifi' },
+    { id: 'rail-tv-crime', title: 'Crime & Detective Series', genreId: 80, type: 'tv' as const, category: 'tv_crime' },
+    { id: 'rail-tv-mystery', title: 'Mystery & Suspense Series', genreId: 9648, type: 'tv' as const, category: 'tv_mystery' },
+    { id: 'rail-tv-comedy', title: 'Binge-Worthy Comedy Series', genreId: 35, type: 'tv' as const, category: 'tv_comedy' },
+    { id: 'rail-tv-drama', title: 'Acclaimed Drama Series', genreId: 18, type: 'tv' as const, category: 'tv_drama' },
+    { id: 'rail-tv-documentary', title: 'Docuseries & True Crime', genreId: 99, type: 'tv' as const, category: 'tv_documentary' }
+  ], []);
+
+  const failedExtraRailsRef = useRef<Set<string>>(new Set());
   const loadingExtraRailRef = useRef(false);
 
   useEffect(() => {
+    const activeQueue = currentScreen === 'series' ? SERIES_EXTRA_RAILS : MOVIE_EXTRA_RAILS;
+
     const handleScroll = async () => {
       if (
         currentScreen !== 'home' &&
@@ -695,26 +720,18 @@ export const App: React.FC = () => {
         return;
       }
       if (loadingExtraRailRef.current) return;
-      if (loadedExtraRailIndex >= ADDITIONAL_RAILS_QUEUE.length) return;
+
+      const existingIds = new Set((catalog?.rails || []).map((r) => r.id));
+      const targetRail = activeQueue.find(
+        (q) => !existingIds.has(q.id) && !failedExtraRailsRef.current.has(q.id)
+      );
+      if (!targetRail) return;
 
       const scrollBottom = window.innerHeight + window.scrollY;
       const threshold = document.documentElement.scrollHeight - 900;
 
       if (scrollBottom >= threshold) {
         loadingExtraRailRef.current = true;
-        const targetRail = ADDITIONAL_RAILS_QUEUE[loadedExtraRailIndex];
-        if (!targetRail) {
-          loadingExtraRailRef.current = false;
-          return;
-        }
-
-        const existingRail = catalog?.rails?.some((r) => r.id === targetRail.id);
-        if (existingRail) {
-          setLoadedExtraRailIndex((prev) => prev + 1);
-          loadingExtraRailRef.current = false;
-          return;
-        }
-
         try {
           const res = await api.getCategoryMovies({
             category: targetRail.genreId ? undefined : targetRail.category,
@@ -726,8 +743,7 @@ export const App: React.FC = () => {
           if (res && Array.isArray(res.results) && res.results.length > 0) {
             setCatalog((prev) => {
               if (!prev) return prev;
-              const alreadyHas = prev.rails.some((r) => r.id === targetRail.id);
-              if (alreadyHas) return prev;
+              if (prev.rails.some((r) => r.id === targetRail.id)) return prev;
               return {
                 ...prev,
                 rails: [
@@ -742,9 +758,11 @@ export const App: React.FC = () => {
                 ]
               };
             });
+          } else {
+            failedExtraRailsRef.current.add(targetRail.id);
           }
-          setLoadedExtraRailIndex((prev) => prev + 1);
         } catch (err) {
+          failedExtraRailsRef.current.add(targetRail.id);
           console.warn('[App] Failed to load vertical rail:', err);
         } finally {
           loadingExtraRailRef.current = false;
@@ -754,7 +772,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [currentScreen, loadedExtraRailIndex, catalog?.rails, ADDITIONAL_RAILS_QUEUE]);
+  }, [currentScreen, catalog?.rails, MOVIE_EXTRA_RAILS, SERIES_EXTRA_RAILS]);
 
   // Continue Watching Rail with catalog poster & title enrichment and strict deduplication by contentId
   const continueWatchingItems: MediaItem[] = useMemo(() => {
@@ -841,110 +859,126 @@ export const App: React.FC = () => {
 
         {/* SCREEN 1: Netflix Video Player */}
         {currentScreen === 'player' && playerTarget && (
-          <VideoPlayer
-            key={`${playerTarget.item.id}-s${playerTarget.season || 1}-e${playerTarget.episode || 1}`}
-            item={playerTarget.item}
-            season={playerTarget.season}
-            episode={playerTarget.episode}
-            initialTime={playerTarget.initialTime}
-            profileId={activeProfile.id}
-            offlineBlobUrl={offlineBlobUrl}
-            onExit={handleExitPlayer}
-            onNextEpisode={handleNextEpisode}
-            onGoHome={() => {
-              setSelectedTitle(null);
-              setPlayerTarget(null);
-              navigateTo('home');
-            }}
-          />
+          <Suspense fallback={<div className="fixed inset-0 bg-black flex items-center justify-center"><div className="w-12 h-12 rounded-full border-4 border-[#E50914] border-t-transparent animate-spin" /></div>}>
+            <VideoPlayer
+              key={`${playerTarget.item.id}-s${playerTarget.season || 1}-e${playerTarget.episode || 1}`}
+              item={playerTarget.item}
+              season={playerTarget.season}
+              episode={playerTarget.episode}
+              initialTime={playerTarget.initialTime}
+              profileId={activeProfile.id}
+              offlineBlobUrl={offlineBlobUrl}
+              onExit={handleExitPlayer}
+              onNextEpisode={handleNextEpisode}
+              onGoHome={() => {
+                setSelectedTitle(null);
+                setPlayerTarget(null);
+                navigateTo('home');
+              }}
+            />
+          </Suspense>
         )}
 
         {/* SCREEN 2: Title Details - Full Screen Edge-to-Edge */}
         {currentScreen === 'details' && selectedTitle && (
-          <ContentDetails
-            contentId={selectedTitle.id}
-            mediaType={selectedTitle.type}
-            profileId={activeProfile.id}
-            onPlay={handleLaunchPlayer}
-            onPlayOffline={handlePlayOffline}
-            onBack={() => {
-              setSelectedTitle(null);
-              navigateTo('home');
-            }}
-            onGoHome={() => {
-              setSelectedTitle(null);
-              navigateTo('home');
-            }}
-            onSelectCast={(actorName) => {
-              setSearchQuery(actorName);
-              navigateTo('search');
-            }}
-            isInWatchlist={isInWatchlist(selectedTitle.id)}
-            onToggleWatchlist={handleToggleWatchlist}
-            onSelectRelated={handleOpenDetails}
-          />
+          <Suspense fallback={<div className="min-h-screen bg-[#141414] flex items-center justify-center"><div className="w-12 h-12 rounded-full border-4 border-[#E50914] border-t-transparent animate-spin" /></div>}>
+            <ContentDetails
+              contentId={selectedTitle.id}
+              mediaType={selectedTitle.type}
+              profileId={activeProfile.id}
+              onPlay={handleLaunchPlayer}
+              onPlayOffline={handlePlayOffline}
+              onBack={() => {
+                setSelectedTitle(null);
+                navigateTo('home');
+              }}
+              onGoHome={() => {
+                setSelectedTitle(null);
+                navigateTo('home');
+              }}
+              onSelectCast={(actorName) => {
+                setSearchQuery(actorName);
+                navigateTo('search');
+              }}
+              isInWatchlist={isInWatchlist(selectedTitle.id)}
+              onToggleWatchlist={handleToggleWatchlist}
+              onSelectRelated={handleOpenDetails}
+            />
+          </Suspense>
         )}
 
         {/* SCREEN 3: Netflix Search */}
         {currentScreen === 'search' && (
           <div className="md:pl-18 pl-0 pb-16 md:pb-0">
-            <SearchScreen
-              query={searchQuery}
-              onQueryChange={setSearchQuery}
-              results={searchResults}
-              onResultsChange={setSearchResults}
-              profileId={activeProfile.id}
-              onSelectTitle={handleOpenDetails}
-              onSelectCardFocus={(cardId) => setLastFocusedSearchCardId(cardId)}
-              recommendedTitles={top10Items.length > 0 ? top10Items : (catalog?.rails?.[0]?.items || [])}
-            />
+            <Suspense fallback={<div className="min-h-screen bg-[#141414]" />}>
+              <SearchScreen
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                results={searchResults}
+                onResultsChange={setSearchResults}
+                profileId={activeProfile.id}
+                onSelectTitle={handleOpenDetails}
+                onSelectCardFocus={(cardId) => setLastFocusedSearchCardId(cardId)}
+                recommendedTitles={top10Items.length > 0 ? top10Items : (catalog?.rails?.[0]?.items || [])}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* SCREEN 4: My List */}
         {currentScreen === 'watchlist' && (
           <div className="md:pl-18 pl-0 pb-16 md:pb-0">
-            <WatchlistScreen
-              profileId={activeProfile.id}
-              onSelectTitle={handleOpenDetails}
-              onExplore={() => navigateTo('home')}
-            />
+            <Suspense fallback={<div className="min-h-screen bg-[#141414]" />}>
+              <WatchlistScreen
+                profileId={activeProfile.id}
+                onSelectTitle={handleOpenDetails}
+                onExplore={() => navigateTo('home')}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* SCREEN 4.5: Downloads */}
         {currentScreen === 'downloads' && (
           <div className="md:pl-18 pl-0 pb-16 md:pb-0">
-            <DownloadsScreen
-              onPlayOffline={handlePlayOffline}
-              onExplore={() => navigateTo('home')}
-              onSelectTitle={handleOpenDetails}
-            />
+            <Suspense fallback={<div className="min-h-screen bg-[#141414]" />}>
+              <DownloadsScreen
+                onPlayOffline={handlePlayOffline}
+                onExplore={() => navigateTo('home')}
+                onSelectTitle={handleOpenDetails}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* SCREEN 5: Categories & Genres Explorer */}
         {currentScreen === 'categories' && (
-          <CategoriesScreen
-            onSelectTitle={handleOpenDetails}
-            onGoHome={() => navigateTo('home')}
-          />
+          <Suspense fallback={<div className="min-h-screen bg-[#141414]" />}>
+            <CategoriesScreen
+              onSelectTitle={handleOpenDetails}
+              onGoHome={() => navigateTo('home')}
+            />
+          </Suspense>
         )}
 
         {/* SCREEN 6: Settings Screen */}
         {currentScreen === 'settings' && (
-          <SettingsScreen
-            onBack={navigateBack}
-            onCheckUpdates={handleManualCheckUpdate}
-            onOpenAnalytics={() => navigateTo('analytics')}
-            activeProfile={activeProfile}
-            onSwitchProfile={() => navigateTo('profiles')}
-          />
+          <Suspense fallback={<div className="min-h-screen bg-[#141414]" />}>
+            <SettingsScreen
+              onBack={navigateBack}
+              onCheckUpdates={handleManualCheckUpdate}
+              onOpenAnalytics={() => navigateTo('analytics')}
+              activeProfile={activeProfile}
+              onSwitchProfile={() => navigateTo('profiles')}
+            />
+          </Suspense>
         )}
 
         {/* SCREEN 7: Visitor Analytics Dashboard */}
         {currentScreen === 'analytics' && (
-          <AnalyticsDashboard onBack={navigateBack} />
+          <Suspense fallback={<div className="min-h-screen bg-[#141414]" />}>
+            <AnalyticsDashboard onBack={navigateBack} />
+          </Suspense>
         )}
 
         {/* SCREEN 6: Main TV Browsing (Home, Series, Movies, New & Popular) */}
@@ -1028,10 +1062,12 @@ export const App: React.FC = () => {
 
         {/* In-App Update Modal (Native Android TV only) */}
         {showUpdateModal && availableUpdate && isNativeAndroidApp() && (
-          <UpdateModal
-            update={availableUpdate}
-            onClose={() => setShowUpdateModal(false)}
-          />
+          <Suspense fallback={null}>
+            <UpdateModal
+              update={availableUpdate}
+              onClose={() => setShowUpdateModal(false)}
+            />
+          </Suspense>
         )}
       </div>
     </FocusProvider>

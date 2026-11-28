@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MediaItem } from '../../types';
+import { prefetchTitleDetails } from '../../services/api';
 import { useFocusable } from '../focus/FocusContext';
 
 interface MediaCardProps {
@@ -53,6 +54,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     <div
       ref={ref}
       onClick={() => onSelect(item)}
+      onMouseEnter={() => prefetchTitleDetails(item.id, item.type)}
       onKeyDown={(e) => {
         if (e.key === 'ArrowRight' && onNearEnd) {
           onNearEnd();
@@ -70,6 +72,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           src={imgSrc}
           alt={item.title}
           loading="lazy"
+          decoding="async"
           onError={handleImageError}
           className="w-full h-full object-cover"
         />

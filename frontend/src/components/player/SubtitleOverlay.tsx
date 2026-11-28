@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import type { SubtitleCue } from '../../utils/subtitleParser';
+import { SubtitleCue, adjustCueTiming, getActiveCues } from '../../utils/subtitleParser';
+import type { SubtitleCue as _SubtitleCueType } from '../../utils/subtitleParser';
 
 export type { SubtitleCue };
 
@@ -89,6 +90,8 @@ export interface SubtitleOverlayProps {
   cues?: SubtitleCue[];
   currentTime: number;
   activeSubtitle: number; // -1 = Disabled, >= 0 = Track Index
+  offsetSec?: number;
+  fpsScale?: number;
   styles?: Partial<SubtitleStyles>;
   className?: string;
 }
@@ -107,6 +110,8 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
   cues,
   currentTime,
   activeSubtitle,
+  offsetSec = 0,
+  fpsScale = 1,
   styles,
   className = ''
 }) => {
@@ -115,13 +120,17 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
     return null;
   }
 
-  // 2. Filter active cues matching playback timestamp
+  // 2. Filter active cues matching playback timestamp (adjusted by user sync offset & FPS)
   const activeCues = useMemo(() => {
     if (!Number.isFinite(currentTime) || currentTime < 0) {
       return [];
     }
-    return cues.filter((cue) => currentTime >= cue.start && currentTime <= cue.end);
-  }, [cues, currentTime]);
+    const adjustedTime = adjustCueTiming(currentTime, offsetSec, fpsScale);
+    if (adjustedTime < 0) {
+      return [];
+    }
+    return getActiveCues(cues, adjustedTime);
+  }, [cues, currentTime, offsetSec, fpsScale]);
 
   if (activeCues.length === 0) {
     return null;

@@ -11,6 +11,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: false
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-hls': ['hls.js'],
+          'vendor-icons': ['lucide-react']
+        }
+      }
+    }
   }
 });

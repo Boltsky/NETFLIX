@@ -111,7 +111,7 @@ export const ContentDetails: React.FC<ContentDetailsProps> = ({
     <div className="relative min-h-screen w-full bg-[#141414] text-white pb-24 select-none px-4 sm:px-8 md:px-12 lg:px-16 overflow-x-hidden">
       {/* Ambient Backdrop with Atmospheric Scrims */}
       <div
-        className="fixed inset-0 bg-cover bg-center md:bg-right-top opacity-30 pointer-events-none transition-all duration-700 blur-[2px]"
+        className="fixed inset-0 bg-cover bg-center md:bg-right-top opacity-25 pointer-events-none transition-opacity duration-500"
         style={{ backgroundImage: `url(${backdropUrl})` }}
       />
       {/* Dual Gradient Scrims: Left-to-right and Top-to-bottom for signature Netflix hero look */}
@@ -968,7 +968,7 @@ const EpisodeCard: React.FC<{
       {/* Still Preview */}
       <div className="relative aspect-video w-full bg-zinc-950">
         {episode.still ? (
-          <img src={episode.still} alt={episode.name} className="w-full h-full object-cover" />
+          <img src={episode.still} alt={episode.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-700">
             <Play className="w-8 h-8" />

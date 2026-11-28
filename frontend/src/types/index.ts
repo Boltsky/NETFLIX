@@ -103,6 +103,7 @@ export interface SubtitleTrack {
   language?: string;
   format: 'vtt' | 'srt' | 'ass';
   isDefault?: boolean;
+  isCustom?: boolean;
 }
 
 export interface EmbedServer {
