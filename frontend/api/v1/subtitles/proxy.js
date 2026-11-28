@@ -1,13 +1,41 @@
 const ALLOWED_SUBTITLE_HOST_SUFFIXES = [
   'strem.io',
   'opensubtitles.org',
+  'fhxod.com',
   'bhcxy.com',
   'fodcyy.com',
   'wyzie.ru',
   'framextv.cc',
   'framextv.pro',
-  'subdl.com'
+  'subdl.com',
+  'subf2m.co',
+  'febbox.com'
 ];
+
+function isPrivateOrLoopbackHost(host) {
+  if (!host) return true;
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host === '[::1]' ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.startsWith('10.') ||
+    host.startsWith('192.168.') ||
+    host.startsWith('169.254.') ||
+    host.startsWith('127.')
+  ) {
+    return true;
+  }
+  const octets = host.split('.');
+  if (octets.length === 4 && octets[0] === '172') {
+    const second = Number(octets[1]);
+    if (second >= 16 && second <= 31) return true;
+  }
+  return false;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -29,11 +57,18 @@ export default async function handler(req, res) {
   }
 
   const host = parsed.hostname.toLowerCase();
-  const isAllowed = ALLOWED_SUBTITLE_HOST_SUFFIXES.some(
+  if (isPrivateOrLoopbackHost(host)) {
+    return res.status(403).send('Subtitle host not allowed');
+  }
+
+  const matchesKnownHost = ALLOWED_SUBTITLE_HOST_SUFFIXES.some(
     (suffix) => host === suffix || host.endsWith(`.${suffix}`)
   );
+  const looksLikeSubtitlePath =
+    /\.(srt|vtt|ass|ssa|txt)(\?|$)/i.test(parsed.pathname) ||
+    parsed.pathname.toLowerCase().includes('/subtitle');
 
-  if (!isAllowed) {
+  if (!matchesKnownHost && !(parsed.protocol === 'https:' && looksLikeSubtitlePath)) {
     return res.status(403).send('Subtitle host not allowed');
   }
 
@@ -50,6 +85,11 @@ export default async function handler(req, res) {
 
     const buf = await upstream.arrayBuffer();
     let text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    if (text.includes('\uFFFD')) {
+      try {
+        text = new TextDecoder('windows-1252').decode(buf);
+      } catch {}
+    }
 
     // Reject HTML error pages (e.g., Cloudflare 403 / Stremio 469) cleanly
     const trimmed = text.trim().toLowerCase();
